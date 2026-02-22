@@ -43,8 +43,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
-    this.setDisplaySize(TILE_SIZE - 8, TILE_SIZE - 8);
-    this.setTint(COLORS.PLAYER);
+    // Larger display size — easier to see in the dungeon
+    this.setDisplaySize(TILE_SIZE + 4, TILE_SIZE + 4);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setSize(TILE_SIZE - 12, TILE_SIZE - 12);
@@ -154,7 +154,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Flash white on attack
     this.setTint(COLORS.PLAYER_ATTACK);
     this.scene.time.delayedCall(80, () => {
-      if (this.active) this.setTint(COLORS.PLAYER);
+      if (this.active) this.clearTint();
     });
 
     return true;
@@ -183,7 +183,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Flash red
     this.setTint(0xff4444);
     this.scene.time.delayedCall(150, () => {
-      if (this.active) this.setTint(COLORS.PLAYER);
+      if (this.active) this.clearTint();
     });
 
     this.onDamage?.(dmg);

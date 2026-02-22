@@ -208,6 +208,7 @@ export class GameScene extends Phaser.Scene {
     // Reusable brush image (not added to scene display list)
     const brushSize = FOG_RADIUS * TILE_SIZE * 2;
     this.fogBrushImg = this.add.image(0, 0, "fog_brush")
+      .setOrigin(0, 0)  // top-left anchored so erase coords align with world position
       .setDisplaySize(brushSize, brushSize)
       .setVisible(false);
 
