@@ -1,4 +1,4 @@
-import { auth, signIn, signOut } from "@/auth";
+import { auth, signOut } from "@/auth";
 import GameWrapper from "./GameWrapper";
 
 export default async function HomePage() {
@@ -31,19 +31,12 @@ export default async function HomePage() {
         ) : (
           <>
             <span className="text-gray-600">Sign in to save your progress</span>
-            <form
-              action={async () => {
-                "use server";
-                await signIn("github", { redirectTo: "/" });
-              }}
+            <a
+              href="/api/auth/signin/github"
+              className="text-blue-400 hover:text-white underline transition-colors"
             >
-              <button
-                type="submit"
-                className="text-blue-400 hover:text-white underline transition-colors"
-              >
-                Sign in with GitHub
-              </button>
-            </form>
+              Sign in with GitHub
+            </a>
           </>
         )}
       </div>
