@@ -198,7 +198,9 @@ export class GameScene extends Phaser.Scene {
     this.fogState = new Uint8Array(MAP_WIDTH * MAP_HEIGHT); // all 0 = unseen
 
     // Black fog overlay covering the whole map
+    // setOrigin(0,0) is critical — default (0.5,0.5) would only cover one quadrant
     this.fogRT = this.add.renderTexture(0, 0, totalW, totalH);
+    this.fogRT.setOrigin(0, 0);
     this.fogRT.fill(0x000000, 1);
     this.fogRT.setDepth(50);
 
@@ -264,6 +266,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private zoomLabel!: Phaser.GameObjects.Text;
+  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
 
   // ── UI ────────────────────────────────────────────────────────────────────
 
@@ -273,6 +276,16 @@ export class GameScene extends Phaser.Scene {
     const BAR_W = 200;
     const BAR_H = 12;
     const PAD = 12;
+
+    // UI camera — zoom locked at 1 so HUD never scales with player zoom.
+    // Ignore all game world objects (everything added before this call).
+    // UI elements created below will be visible to uiCamera only.
+    this.uiCamera = this.cameras.add(0, 0, W, H);
+    this.uiCamera.setZoom(1);
+    this.uiCamera.ignore(this.children.list.slice());
+
+    // Snapshot index: everything added from here is a UI element
+    const uiStart = this.children.list.length;
 
     // HP bar background
     this.hpBar = this.add
@@ -345,7 +358,8 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(102);
 
-    // UI elements use setScrollFactor(0) so they stay fixed without a second camera
+    // Tell main camera to ignore all UI elements (rendered by uiCamera only)
+    this.cameras.main.ignore(this.children.list.slice(uiStart));
 
     // Zoom controls — bottom right
     const BTN = 26;
