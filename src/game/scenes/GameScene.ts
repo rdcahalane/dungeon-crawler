@@ -14,6 +14,7 @@ export class GameScene extends Phaser.Scene {
   private dungeon!: DungeonData;
   private player!: Player;
   private enemies: Enemy[] = [];
+  private enemyGroup!: Phaser.Physics.Arcade.Group;
   private items: Phaser.GameObjects.Sprite[] = [];
   private wallGroup!: Phaser.Physics.Arcade.StaticGroup;
   private currentFloor = 1;
@@ -137,13 +138,21 @@ export class GameScene extends Phaser.Scene {
   // ── Enemies ──────────────────────────────────────────────────────────────
 
   private spawnEnemies() {
+    this.enemyGroup = this.physics.add.group();
+
     for (const spawn of this.dungeon.enemies) {
       const ex = spawn.tx * TILE_SIZE + TILE_SIZE / 2;
       const ey = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
       const enemy = new Enemy(this, ex, ey, spawn.type);
       this.enemies.push(enemy);
+      this.enemyGroup.add(enemy);
       this.physics.add.collider(enemy, this.wallGroup);
     }
+
+    // Player ↔ enemies: solid collision (no walking through)
+    this.physics.add.collider(this.player, this.enemyGroup);
+    // Enemies ↔ enemies: stop them stacking on each other
+    this.physics.add.collider(this.enemyGroup, this.enemyGroup);
   }
 
   // ── Items ─────────────────────────────────────────────────────────────────
