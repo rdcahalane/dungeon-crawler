@@ -2,7 +2,7 @@ import { auth, signOut } from "@/auth";
 import GameWrapper from "./GameWrapper";
 
 export default async function HomePage() {
-  const session = await auth();
+  const session = await auth().catch(() => null);
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
