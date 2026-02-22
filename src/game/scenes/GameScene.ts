@@ -350,8 +350,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   // Reposition all HUD elements to stay at fixed screen position regardless of zoom.
-  // scrollFactor(0) elements appear at (worldX * zoom, worldY * zoom) on screen,
-  // so setting worldPos = desiredScreenPos / zoom keeps them fixed.
+  //
+  // Phaser zooms scrollFactor(0) objects from the camera's center (W/2, H/2):
+  //   screenPos = (worldPos - camCenter) * zoom + camCenter
+  // Solving for worldPos given the desired screenPos:
+  //   worldPos = (screenPos - camCenter) / zoom + camCenter
+  //
+  // Scale: the object visually scales by zoom, so set ownScale = 1/zoom to stay constant.
   private repositionUI(zoom: number) {
     if (!this.hpBar) return;
     const W = this.scale.width;
@@ -361,28 +366,28 @@ export class GameScene extends Phaser.Scene {
     const PAD = 12;
     const BTN = 26;
     const iz = 1 / zoom;
+    const cx = W / 2;
+    const cy = H / 2;
 
-    const s = (v: number) => v * iz; // screen coord → world coord at current zoom
+    const wx = (sx: number) => (sx - cx) / zoom + cx;
+    const wy = (sy: number) => (sy - cy) / zoom + cy;
 
-    this.hpBar.setPosition(s(PAD + BAR_W / 2), s(H - PAD - BAR_H * 2.5)).setScale(iz);
-    this.hpBarFill.setPosition(s(PAD), s(H - PAD - BAR_H * 2.5)).setScale(iz);
-    this.xpBar.setPosition(s(PAD + BAR_W / 2), s(H - PAD - BAR_H * 0.5)).setScale(iz);
-    this.xpBarFill.setPosition(s(PAD), s(H - PAD - BAR_H * 0.5)).setScale(iz);
-    this.hpText.setPosition(s(PAD + BAR_W + 8), s(H - PAD - BAR_H * 2.5)).setScale(iz);
-    this.levelText.setPosition(s(PAD), s(H - PAD - BAR_H * 4)).setScale(iz);
-    this.floorText.setPosition(s(W - PAD), s(PAD)).setScale(iz);
-    this.killsText.setPosition(s(W - PAD), s(PAD + 22)).setScale(iz);
-    this.statusText.setPosition(s(W / 2), s(H * 0.15)).setScale(iz);
-    this.zoomLabel.setPosition(s(W - PAD - BTN * 1.75), s(H - PAD - BTN * 1.6)).setScale(iz);
-    this.zoomMinusBg.setPosition(s(W - PAD - BTN * 2.4), s(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomMinusBorder.setPosition(s(W - PAD - BTN * 2.4), s(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomMinusText.setPosition(s(W - PAD - BTN * 2.4), s(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomPlusBg.setPosition(s(W - PAD - BTN * 1.1), s(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomPlusBorder.setPosition(s(W - PAD - BTN * 1.1), s(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomPlusText.setPosition(s(W - PAD - BTN * 1.1), s(H - PAD - BTN / 2)).setScale(iz);
-
-    // HP bar fill width also needs to account for zoom (updateUI sets displaySize)
-    // Handled in updateUI() which always runs after repositionUI()
+    this.hpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 2.5)).setScale(iz);
+    this.hpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 2.5)).setScale(iz);
+    this.xpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 0.5)).setScale(iz);
+    this.xpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 0.5)).setScale(iz);
+    this.hpText.setPosition(wx(PAD + BAR_W + 8), wy(H - PAD - BAR_H * 2.5)).setScale(iz);
+    this.levelText.setPosition(wx(PAD), wy(H - PAD - BAR_H * 4)).setScale(iz);
+    this.floorText.setPosition(wx(W - PAD), wy(PAD)).setScale(iz);
+    this.killsText.setPosition(wx(W - PAD), wy(PAD + 22)).setScale(iz);
+    this.statusText.setPosition(wx(W / 2), wy(H * 0.15)).setScale(iz);
+    this.zoomLabel.setPosition(wx(W - PAD - BTN * 1.75), wy(H - PAD - BTN * 1.6)).setScale(iz);
+    this.zoomMinusBg.setPosition(wx(W - PAD - BTN * 2.4), wy(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomMinusBorder.setPosition(wx(W - PAD - BTN * 2.4), wy(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomMinusText.setPosition(wx(W - PAD - BTN * 2.4), wy(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomPlusBg.setPosition(wx(W - PAD - BTN * 1.1), wy(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomPlusBorder.setPosition(wx(W - PAD - BTN * 1.1), wy(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomPlusText.setPosition(wx(W - PAD - BTN * 1.1), wy(H - PAD - BTN / 2)).setScale(iz);
   }
 
   private updateUI() {
