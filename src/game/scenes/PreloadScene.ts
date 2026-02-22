@@ -70,56 +70,55 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // ── Stone brick wall ──────────────────────────────────────────────────────
+  // ── Rocky cave wall ───────────────────────────────────────────────────────
+  // Warm earthy brown-grays — clearly distinct from the cool blue-gray floor
 
   private createWallTexture() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
 
-    // Mortar base
-    g.fillStyle(0x1a1a26);
+    // Deep crevice base — very dark warm brown
+    g.fillStyle(0x110d08);
     g.fillRect(0, 0, S, S);
 
-    // Row A (y: 1–12): two bricks side by side
-    const rowA = [
-      { x: 1, y: 1, w: 13, h: 11 },
-      { x: 16, y: 1, w: 15, h: 11 },
-    ];
-    // Row B (y: 14–25): three bricks (offset for bonding pattern)
-    const rowB = [
-      { x: 1, y: 14, w: 8, h: 11 },
-      { x: 11, y: 14, w: 10, h: 11 },
-      { x: 23, y: 14, w: 8, h: 11 },
-    ];
-    // Row C partial (y: 27–31): bottom edge
-    const rowC = [
-      { x: 1, y: 27, w: 13, h: 4 },
-      { x: 16, y: 27, w: 15, h: 4 },
+    // Four irregular rock chunks, each a different warm earth tone
+    const chunks = [
+      { x: 0,  y: 0,  w: 17, h: 14, face: 0x4e3f30, hi: 0x6a5642, lo: 0x2e2216 },
+      { x: 19, y: 0,  w: 13, h: 15, face: 0x463828, hi: 0x5e4c38, lo: 0x2a1e12 },
+      { x: 0,  y: 16, w: 15, h: 16, face: 0x52412e, hi: 0x6e5840, lo: 0x301f10 },
+      { x: 17, y: 17, w: 15, h: 15, face: 0x483a28, hi: 0x604e38, lo: 0x2c1e0e },
     ];
 
-    for (const row of [rowA, rowB, rowC]) {
-      for (const b of row) {
-        // Brick face
-        g.fillStyle(0x36364a);
-        g.fillRect(b.x, b.y, b.w, b.h);
-        // Top highlight
-        g.fillStyle(0x4a4a5e, 0.7);
-        g.fillRect(b.x, b.y, b.w, 1);
-        // Left highlight
-        g.fillStyle(0x44445a, 0.5);
-        g.fillRect(b.x, b.y, 1, b.h);
-        // Bottom shadow
-        g.fillStyle(0x26263a, 0.8);
-        g.fillRect(b.x, b.y + b.h - 1, b.w, 1);
-        // Right shadow
-        g.fillStyle(0x26263a, 0.6);
-        g.fillRect(b.x + b.w - 1, b.y, 1, b.h);
-        // Surface variation dots
-        g.fillStyle(0x2e2e40, 0.5);
-        g.fillRect(b.x + 3, b.y + 3, 1, 1);
-        g.fillRect(b.x + b.w - 4, b.y + b.h - 3, 1, 1);
-      }
+    for (const c of chunks) {
+      // Drop-shadow for depth
+      g.fillStyle(0x080604);
+      g.fillRect(c.x + 2, c.y + 2, c.w, c.h);
+      // Rock face
+      g.fillStyle(c.face);
+      g.fillRect(c.x, c.y, c.w, c.h);
+      // Top & left highlights (light hitting the upper face)
+      g.fillStyle(c.hi, 0.75);
+      g.fillRect(c.x,     c.y, c.w, 2);
+      g.fillRect(c.x,     c.y, 2,   c.h);
+      // Bottom & right shadow
+      g.fillStyle(c.lo, 0.85);
+      g.fillRect(c.x,          c.y + c.h - 2, c.w, 2);
+      g.fillRect(c.x + c.w - 2, c.y,           2,   c.h);
+      // Inner facet — upper-left lighter patch simulates a flat struck surface
+      g.fillStyle(c.hi, 0.25);
+      g.fillRect(c.x + 2, c.y + 2, Math.floor(c.w * 0.45), Math.floor(c.h * 0.35));
+      // Pitting / crack dots
+      g.fillStyle(0x0a0806, 0.9);
+      g.fillRect(c.x + 5,      c.y + 4,      1, 1);
+      g.fillRect(c.x + c.w - 5, c.y + c.h - 4, 1, 1);
+      g.fillRect(c.x + 3,      c.y + c.h - 5, 1, 1);
     }
+
+    // Crack lines between chunks — dark hairline gaps
+    g.fillStyle(0x080604);
+    g.fillRect(17, 0,  2, 17); // vertical crack
+    g.fillRect(0,  15, 17, 2); // horizontal crack left
+    g.fillRect(17, 16, S - 17, 2); // horizontal crack right
 
     g.generateTexture("wall", S, S);
     g.destroy();
