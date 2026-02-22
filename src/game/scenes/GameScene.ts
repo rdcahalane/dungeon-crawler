@@ -30,16 +30,6 @@ export class GameScene extends Phaser.Scene {
   private torchInner!: Phaser.GameObjects.Image;
   private torchOuter!: Phaser.GameObjects.Image;
 
-  // UI elements (scrollFactor 0 — fixed to screen)
-  private hpText!: Phaser.GameObjects.Text;
-  private hpBar!: Phaser.GameObjects.Rectangle;
-  private hpBarFill!: Phaser.GameObjects.Rectangle;
-  private xpBar!: Phaser.GameObjects.Rectangle;
-  private xpBarFill!: Phaser.GameObjects.Rectangle;
-  private floorText!: Phaser.GameObjects.Text;
-  private levelText!: Phaser.GameObjects.Text;
-  private killsText!: Phaser.GameObjects.Text;
-  private statusText!: Phaser.GameObjects.Text;
   private kills = 0;
 
   constructor() {
@@ -68,9 +58,12 @@ export class GameScene extends Phaser.Scene {
     this.spawnItems();
     this.initFog();
     this.setupCamera();
-    this.createUI();
-    this.repositionUI(1);
-    this.updateUI();
+
+    // Launch the HUD as a sibling scene (its camera never zooms)
+    if (!this.scene.isActive("HUDScene")) {
+      this.scene.launch("HUDScene");
+    }
+    this.emitHUD();
   }
 
   // ── Tilemap ──────────────────────────────────────────────────────────────
@@ -113,22 +106,22 @@ export class GameScene extends Phaser.Scene {
     this.player.setCallbacks({
       onDamage: (dmg) => {
         this.spawnFloatingText(this.player.x, this.player.y - 20, `-${dmg}`, COLORS.DAMAGE_TEXT);
-        this.updateUI();
+        this.emitHUD();
         this.cameras.main.shake(80, 0.005);
       },
       onHeal: (amount) => {
         this.spawnFloatingText(this.player.x, this.player.y - 20, `+${amount}`, COLORS.HEAL_TEXT);
-        this.updateUI();
+        this.emitHUD();
       },
       onDead: () => this.handlePlayerDeath(),
       onXP: (gained) => {
         this.spawnFloatingText(this.player.x, this.player.y - 30, `+${gained} XP`, COLORS.XP_TEXT, 12);
-        this.updateUI();
+        this.emitHUD();
       },
       onLevelUp: (level) => {
         this.spawnFloatingText(this.player.x, this.player.y - 50, `LEVEL UP! ${level}`, 0xffd700, 18);
         this.cameras.main.flash(200, 80, 80, 20);
-        this.updateUI();
+        this.emitHUD();
       },
     });
 
@@ -273,155 +266,20 @@ export class GameScene extends Phaser.Scene {
   private adjustZoom(delta: number) {
     const next = Phaser.Math.Clamp(this.cameras.main.zoom + delta, 0.4, 2.5);
     this.cameras.main.setZoom(next);
-    if (this.zoomLabel) this.zoomLabel.setText(`${Math.round(next * 100)}%`);
-    this.repositionUI(next);
+    this.events.emit("hud:zoom", next);
   }
 
-  private zoomLabel!: Phaser.GameObjects.Text;
-  private zoomMinusBg!: Phaser.GameObjects.Rectangle;
-  private zoomPlusBg!: Phaser.GameObjects.Rectangle;
-  private zoomMinusBorder!: Phaser.GameObjects.Rectangle;
-  private zoomPlusBorder!: Phaser.GameObjects.Rectangle;
-  private zoomMinusText!: Phaser.GameObjects.Text;
-  private zoomPlusText!: Phaser.GameObjects.Text;
+  // ── HUD event emitter ─────────────────────────────────────────────────────
 
-  // ── UI ────────────────────────────────────────────────────────────────────
-
-  private createUI() {
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const BAR_W = 200;
-    const BAR_H = 12;
-    const PAD = 12;
-    const BTN = 26;
-
-    // All UI elements use setScrollFactor(0).
-    // adjustZoom() calls repositionUI() to counteract zoom on position and scale.
-
-    this.hpBar = this.add
-      .rectangle(PAD + BAR_W / 2, H - PAD - BAR_H * 2.5, BAR_W, BAR_H, COLORS.HP_BAR_BG)
-      .setScrollFactor(0).setDepth(100);
-    this.hpBarFill = this.add
-      .rectangle(PAD, H - PAD - BAR_H * 2.5, BAR_W, BAR_H, COLORS.HP_BAR)
-      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
-
-    this.xpBar = this.add
-      .rectangle(PAD + BAR_W / 2, H - PAD - BAR_H * 0.5, BAR_W, BAR_H * 0.7, COLORS.HP_BAR_BG)
-      .setScrollFactor(0).setDepth(100);
-    this.xpBarFill = this.add
-      .rectangle(PAD, H - PAD - BAR_H * 0.5, BAR_W, BAR_H * 0.7, COLORS.XP_BAR)
-      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
-
-    this.hpText = this.add
-      .text(PAD + BAR_W + 8, H - PAD - BAR_H * 2.5, "", { fontSize: "12px", color: "#ffffff", fontFamily: "monospace" })
-      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(102);
-
-    this.levelText = this.add
-      .text(PAD, H - PAD - BAR_H * 4, "", { fontSize: "12px", color: "#aaaaaa", fontFamily: "monospace" })
-      .setScrollFactor(0).setDepth(102);
-
-    this.floorText = this.add
-      .text(W - PAD, PAD, "", { fontSize: "14px", color: "#ffd700", fontFamily: "monospace" })
-      .setOrigin(1, 0).setScrollFactor(0).setDepth(102);
-
-    this.killsText = this.add
-      .text(W - PAD, PAD + 22, "", { fontSize: "12px", color: "#aaaaaa", fontFamily: "monospace" })
-      .setOrigin(1, 0).setScrollFactor(0).setDepth(102);
-
-    this.statusText = this.add
-      .text(W / 2, H * 0.15, "", { fontSize: "14px", color: "#cccccc", fontFamily: "monospace" })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(102);
-
-    // Zoom controls
-    this.zoomMinusBg = this.add.rectangle(W - PAD - BTN * 2.4, H - PAD - BTN / 2, BTN, BTN, 0x1a1a2e)
-      .setScrollFactor(0).setDepth(110).setInteractive();
-    this.zoomMinusBorder = this.add.rectangle(W - PAD - BTN * 2.4, H - PAD - BTN / 2, BTN, BTN)
-      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
-    this.zoomMinusText = this.add.text(W - PAD - BTN * 2.4, H - PAD - BTN / 2, "−", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
-
-    this.zoomPlusBg = this.add.rectangle(W - PAD - BTN * 1.1, H - PAD - BTN / 2, BTN, BTN, 0x1a1a2e)
-      .setScrollFactor(0).setDepth(110).setInteractive();
-    this.zoomPlusBorder = this.add.rectangle(W - PAD - BTN * 1.1, H - PAD - BTN / 2, BTN, BTN)
-      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
-    this.zoomPlusText = this.add.text(W - PAD - BTN * 1.1, H - PAD - BTN / 2, "+", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
-
-    this.zoomLabel = this.add.text(W - PAD - BTN * 1.75, H - PAD - BTN * 1.6, "100%", { fontSize: "11px", color: "#666688", fontFamily: "monospace" })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
-
-    this.zoomMinusBg.on("pointerover", () => this.zoomMinusBg.setFillStyle(0x2a2a4e));
-    this.zoomMinusBg.on("pointerout", () => this.zoomMinusBg.setFillStyle(0x1a1a2e));
-    this.zoomMinusBg.on("pointerdown", () => this.adjustZoom(-0.15));
-    this.zoomPlusBg.on("pointerover", () => this.zoomPlusBg.setFillStyle(0x2a2a4e));
-    this.zoomPlusBg.on("pointerout", () => this.zoomPlusBg.setFillStyle(0x1a1a2e));
-    this.zoomPlusBg.on("pointerdown", () => this.adjustZoom(0.15));
-  }
-
-  // Reposition all HUD elements to stay at fixed screen position regardless of zoom.
-  //
-  // Phaser zooms scrollFactor(0) objects from the camera's center (W/2, H/2):
-  //   screenPos = (worldPos - camCenter) * zoom + camCenter
-  // Solving for worldPos given the desired screenPos:
-  //   worldPos = (screenPos - camCenter) / zoom + camCenter
-  //
-  // Bars are excluded from setScale here — their sizes are set in updateUI.
-  private repositionUI(zoom: number) {
-    if (!this.hpBar) return;
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const BAR_W = 200;
-    const BAR_H = 12;
-    const PAD = 12;
-    const BTN = 26;
-    const iz = 1 / zoom;
-    const cx = W / 2;
-    const cy = H / 2;
-
-    const wx = (sx: number) => (sx - cx) / zoom + cx;
-    const wy = (sy: number) => (sy - cy) / zoom + cy;
-
-    // Bars: position only — size is handled by updateUI via setDisplaySize (zoom-aware)
-    this.hpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 2.5));
-    this.hpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 2.5));
-    this.xpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 0.5));
-    this.xpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 0.5));
-    this.hpText.setPosition(wx(PAD + BAR_W + 8), wy(H - PAD - BAR_H * 2.5)).setScale(iz);
-    this.levelText.setPosition(wx(PAD), wy(H - PAD - BAR_H * 4)).setScale(iz);
-    this.floorText.setPosition(wx(W - PAD), wy(PAD)).setScale(iz);
-    this.killsText.setPosition(wx(W - PAD), wy(PAD + 22)).setScale(iz);
-    this.statusText.setPosition(wx(W / 2), wy(H * 0.15)).setScale(iz);
-    this.zoomLabel.setPosition(wx(W - PAD - BTN * 1.75), wy(H - PAD - BTN * 1.6)).setScale(iz);
-    this.zoomMinusBg.setPosition(wx(W - PAD - BTN * 2.4), wy(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomMinusBorder.setPosition(wx(W - PAD - BTN * 2.4), wy(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomMinusText.setPosition(wx(W - PAD - BTN * 2.4), wy(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomPlusBg.setPosition(wx(W - PAD - BTN * 1.1), wy(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomPlusBorder.setPosition(wx(W - PAD - BTN * 1.1), wy(H - PAD - BTN / 2)).setScale(iz);
-    this.zoomPlusText.setPosition(wx(W - PAD - BTN * 1.1), wy(H - PAD - BTN / 2)).setScale(iz);
-  }
-
-  private updateUI() {
+  emitHUD() {
     if (!this.player) return;
-    const { hp, maxHp, level, xp, xpToNext } = this.player.stats;
-    const BAR_W = 200;
-    const BAR_H = 12;
-    const iz = 1 / this.cameras.main.zoom;
-
-    // Bar sizes are zoom-compensated here (repositionUI only moves them, not scales)
-    this.hpBar.setDisplaySize(BAR_W * iz, BAR_H * iz);
-
-    const hpPct = hp / maxHp;
-    this.hpBarFill.setDisplaySize(BAR_W * hpPct * iz, BAR_H * iz);
-    this.hpBarFill.setFillStyle(hpPct > 0.5 ? COLORS.HP_BAR : hpPct > 0.25 ? 0xffa726 : COLORS.HP_BAR_LOW);
-
-    this.xpBar.setDisplaySize(BAR_W * iz, BAR_H * 0.7 * iz);
-    const xpPct = xp / xpToNext;
-    this.xpBarFill.setDisplaySize(BAR_W * xpPct * iz, BAR_H * 0.7 * iz);
-
-    this.hpText.setText(`${hp}/${maxHp}`);
-    this.levelText.setText(`LV ${level}  ATK ${this.player.stats.attack}  DEF ${this.player.stats.defense}`);
-    this.floorText.setText(`Floor ${this.currentFloor}`);
-    this.killsText.setText(`Kills: ${this.kills}`);
+    const s = this.player.stats;
+    this.events.emit("hud:update", {
+      hp: s.hp, maxHp: s.maxHp,
+      attack: s.attack, defense: s.defense,
+      level: s.level, xp: s.xp, xpToNext: s.xpToNext,
+      floor: this.currentFloor, kills: this.kills,
+    });
   }
 
   // ── Update loop ──────────────────────────────────────────────────────────
@@ -495,7 +353,7 @@ export class GameScene extends Phaser.Scene {
         if (enemy.hp <= 0) {
           this.player.gainXP(enemy.xp);
           this.kills++;
-          this.updateUI();
+          this.emitHUD();
 
           // Death particles
           this.spawnDeathEffect(enemy.x, enemy.y, enemy.typeKey);
@@ -548,23 +406,23 @@ export class GameScene extends Phaser.Scene {
     switch (type) {
       case "HEALTH_POTION":
         this.player.heal(30);
-        this.showStatus("Health Potion +30 HP");
+        this.events.emit("hud:status", "Health Potion +30 HP");
         break;
       case "WEAPON":
         p.attack += 5;
         this.spawnFloatingText(this.player.x, this.player.y - 30, "ATK +5", COLORS.WEAPON);
-        this.showStatus("Weapon Upgrade +5 ATK");
-        this.updateUI();
+        this.events.emit("hud:status", "Weapon Upgrade +5 ATK");
+        this.emitHUD();
         break;
       case "ARMOR":
         p.defense += 2;
         this.spawnFloatingText(this.player.x, this.player.y - 30, "DEF +2", COLORS.ARMOR);
-        this.showStatus("Armor Shard +2 DEF");
-        this.updateUI();
+        this.events.emit("hud:status", "Armor Shard +2 DEF");
+        this.emitHUD();
         break;
       case "XP_ORB":
         this.player.gainXP(40);
-        this.showStatus("XP Orb +40 XP");
+        this.events.emit("hud:status", "XP Orb +40 XP");
         break;
     }
   }
@@ -633,10 +491,4 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showStatus(msg: string) {
-    this.statusText.setText(msg);
-    this.time.delayedCall(2000, () => {
-      if (this.statusText) this.statusText.setText("");
-    });
-  }
 }

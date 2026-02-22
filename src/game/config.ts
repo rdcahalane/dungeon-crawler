@@ -3,6 +3,7 @@ import { PreloadScene } from "./scenes/PreloadScene";
 import { MainMenuScene } from "./scenes/MainMenuScene";
 import { GameScene } from "./scenes/GameScene";
 import { GameOverScene } from "./scenes/GameOverScene";
+import { HUDScene } from "./scenes/HUDScene";
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -16,5 +17,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [PreloadScene, MainMenuScene, GameScene, GameOverScene],
+  scene: [PreloadScene, MainMenuScene, GameScene, HUDScene, GameOverScene],
 };
