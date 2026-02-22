@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, TILE, COLORS, ITEM_TYPES, MAP_WIDTH, MAP_HEIGHT } from "../constants";
+import { TILE_SIZE, TILE, COLORS, MAP_WIDTH, MAP_HEIGHT } from "../constants";
 import { generateDungeon, DungeonData } from "../systems/DungeonGenerator";
 import { Player } from "../entities/Player";
 import { Enemy } from "../entities/Enemy";
@@ -18,9 +18,8 @@ export class GameScene extends Phaser.Scene {
   private wallGroup!: Phaser.Physics.Arcade.StaticGroup;
   private currentFloor = 1;
   private floatingTexts: FloatingText[] = [];
-  private uiCam!: Phaser.Cameras.Scene2D.Camera;
 
-  // UI elements (fixed to uiCam)
+  // UI elements (scrollFactor 0 — fixed to screen)
   private hpText!: Phaser.GameObjects.Text;
   private hpBar!: Phaser.GameObjects.Rectangle;
   private hpBarFill!: Phaser.GameObjects.Rectangle;
@@ -164,10 +163,6 @@ export class GameScene extends Phaser.Scene {
     const totalH = MAP_HEIGHT * TILE_SIZE;
     this.cameras.main.setBounds(0, 0, totalW, totalH);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
-
-    // UI camera (doesn't scroll)
-    this.uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-    this.uiCam.setScroll(0, 0);
   }
 
   // ── UI ────────────────────────────────────────────────────────────────────
@@ -250,11 +245,7 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(102);
 
-    // Ignore UI elements from main camera
-    this.cameras.main.ignore([
-      this.hpBar, this.hpBarFill, this.xpBar, this.xpBarFill,
-      this.hpText, this.levelText, this.floorText, this.killsText, this.statusText,
-    ]);
+    // UI elements use setScrollFactor(0) so they stay fixed without a second camera
   }
 
   private updateUI() {
