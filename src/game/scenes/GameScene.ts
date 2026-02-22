@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, TILE, COLORS, MAP_WIDTH, MAP_HEIGHT } from "../constants";
+import { TILE_SIZE, TILE, COLORS, MAP_WIDTH, MAP_HEIGHT, FOG_RADIUS } from "../constants";
 import { generateDungeon, DungeonData } from "../systems/DungeonGenerator";
 import { Player } from "../entities/Player";
 import { Enemy } from "../entities/Enemy";
@@ -18,6 +18,16 @@ export class GameScene extends Phaser.Scene {
   private wallGroup!: Phaser.Physics.Arcade.StaticGroup;
   private currentFloor = 1;
   private floatingTexts: FloatingText[] = [];
+
+  // Fog of war
+  private fogRT!: Phaser.GameObjects.RenderTexture;
+  private fogBrushImg!: Phaser.GameObjects.Image;
+  private fogState!: Uint8Array; // 0=unseen, 1=explored
+  private lastFogTile = { tx: -1, ty: -1 };
+
+  // Torch glow
+  private torchInner!: Phaser.GameObjects.Image;
+  private torchOuter!: Phaser.GameObjects.Image;
 
   // UI elements (scrollFactor 0 — fixed to screen)
   private hpText!: Phaser.GameObjects.Text;
@@ -52,8 +62,10 @@ export class GameScene extends Phaser.Scene {
 
     this.buildTilemap();
     this.spawnPlayer();
+    this.spawnTorchGlow();
     this.spawnEnemies();
     this.spawnItems();
+    this.initFog();
     this.setupCamera();
     this.createUI();
     this.updateUI();
@@ -154,6 +166,73 @@ export class GameScene extends Phaser.Scene {
         ease: "Sine.easeInOut",
       });
     }
+  }
+
+  // ── Torch glow ────────────────────────────────────────────────────────────
+
+  private spawnTorchGlow() {
+    const px = this.player.x;
+    const py = this.player.y;
+
+    this.torchOuter = this.add
+      .image(px, py, "torch_glow")
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(2.8)
+      .setAlpha(0.35)
+      .setDepth(47);
+
+    this.torchInner = this.add
+      .image(px, py, "torch_glow")
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(1.6)
+      .setAlpha(0.55)
+      .setDepth(48);
+  }
+
+  // ── Fog of war ────────────────────────────────────────────────────────────
+
+  private initFog() {
+    const totalW = MAP_WIDTH * TILE_SIZE;
+    const totalH = MAP_HEIGHT * TILE_SIZE;
+
+    this.fogState = new Uint8Array(MAP_WIDTH * MAP_HEIGHT); // all 0 = unseen
+
+    // Black fog overlay covering the whole map
+    this.fogRT = this.add.renderTexture(0, 0, totalW, totalH);
+    this.fogRT.fill(0x000000, 1);
+    this.fogRT.setDepth(50);
+
+    // Reusable brush image (not added to scene display list)
+    const brushSize = FOG_RADIUS * TILE_SIZE * 2;
+    this.fogBrushImg = this.add.image(0, 0, "fog_brush")
+      .setDisplaySize(brushSize, brushSize)
+      .setVisible(false);
+
+    // Reveal starting area immediately
+    const { tx, ty } = this.dungeon.playerStart;
+    this.revealFog(tx, ty);
+    this.lastFogTile = { tx, ty };
+  }
+
+  private revealFog(ptx: number, pty: number) {
+    const r = FOG_RADIUS;
+    const brushRadius = r * TILE_SIZE;
+
+    // Mark tiles in radius as explored
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const tx = ptx + dx;
+        const ty = pty + dy;
+        if (tx < 0 || ty < 0 || tx >= MAP_WIDTH || ty >= MAP_HEIGHT) continue;
+        this.fogState[ty * MAP_WIDTH + tx] = 1;
+      }
+    }
+
+    // Erase fog permanently at this position using the soft brush
+    const bx = ptx * TILE_SIZE + TILE_SIZE / 2 - brushRadius;
+    const by = pty * TILE_SIZE + TILE_SIZE / 2 - brushRadius;
+    this.fogRT.erase(this.fogBrushImg, bx, by);
   }
 
   // ── Camera ────────────────────────────────────────────────────────────────
@@ -272,6 +351,22 @@ export class GameScene extends Phaser.Scene {
     if (!this.player || this.player.stats.hp <= 0) return;
 
     this.player.update(delta);
+
+    // Torch glow — follows player with flicker
+    const flicker =
+      0.5 +
+      Math.sin(this.time.now * 0.008) * 0.04 +
+      (Math.random() - 0.5) * 0.025;
+    this.torchInner.setPosition(this.player.x, this.player.y).setAlpha(flicker);
+    this.torchOuter.setPosition(this.player.x, this.player.y).setAlpha(flicker * 0.55);
+
+    // Fog of war — only recalculate on tile change
+    const curTx = Math.floor(this.player.x / TILE_SIZE);
+    const curTy = Math.floor(this.player.y / TILE_SIZE);
+    if (curTx !== this.lastFogTile.tx || curTy !== this.lastFogTile.ty) {
+      this.lastFogTile = { tx: curTx, ty: curTy };
+      this.revealFog(curTx, curTy);
+    }
 
     // Attack
     if (this.player.tryAttack()) {

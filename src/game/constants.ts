@@ -1,6 +1,7 @@
 export const TILE_SIZE = 32;
 export const MAP_WIDTH = 64;
 export const MAP_HEIGHT = 48;
+export const FOG_RADIUS = 5; // tiles
 
 export const TILE = {
   WALL: 0,
