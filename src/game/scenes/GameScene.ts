@@ -365,7 +365,7 @@ export class GameScene extends Phaser.Scene {
   // Solving for worldPos given the desired screenPos:
   //   worldPos = (screenPos - camCenter) / zoom + camCenter
   //
-  // Scale: the object visually scales by zoom, so set ownScale = 1/zoom to stay constant.
+  // Bars are excluded from setScale here — their sizes are set in updateUI.
   private repositionUI(zoom: number) {
     if (!this.hpBar) return;
     const W = this.scale.width;
@@ -381,10 +381,11 @@ export class GameScene extends Phaser.Scene {
     const wx = (sx: number) => (sx - cx) / zoom + cx;
     const wy = (sy: number) => (sy - cy) / zoom + cy;
 
-    this.hpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 2.5)).setScale(iz);
-    this.hpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 2.5)).setScale(iz);
-    this.xpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 0.5)).setScale(iz);
-    this.xpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 0.5)).setScale(iz);
+    // Bars: position only — size is handled by updateUI via setDisplaySize (zoom-aware)
+    this.hpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 2.5));
+    this.hpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 2.5));
+    this.xpBar.setPosition(wx(PAD + BAR_W / 2), wy(H - PAD - BAR_H * 0.5));
+    this.xpBarFill.setPosition(wx(PAD), wy(H - PAD - BAR_H * 0.5));
     this.hpText.setPosition(wx(PAD + BAR_W + 8), wy(H - PAD - BAR_H * 2.5)).setScale(iz);
     this.levelText.setPosition(wx(PAD), wy(H - PAD - BAR_H * 4)).setScale(iz);
     this.floorText.setPosition(wx(W - PAD), wy(PAD)).setScale(iz);
@@ -403,17 +404,19 @@ export class GameScene extends Phaser.Scene {
     if (!this.player) return;
     const { hp, maxHp, level, xp, xpToNext } = this.player.stats;
     const BAR_W = 200;
-    const zoom = this.cameras.main.zoom;
-    const iz = 1 / zoom;
+    const BAR_H = 12;
+    const iz = 1 / this.cameras.main.zoom;
+
+    // Bar sizes are zoom-compensated here (repositionUI only moves them, not scales)
+    this.hpBar.setDisplaySize(BAR_W * iz, BAR_H * iz);
 
     const hpPct = hp / maxHp;
-    // Width scales inversely with zoom since the fill rect also has setScale(iz)
-    this.hpBarFill.setDisplaySize(BAR_W * hpPct, 12);
+    this.hpBarFill.setDisplaySize(BAR_W * hpPct * iz, BAR_H * iz);
     this.hpBarFill.setFillStyle(hpPct > 0.5 ? COLORS.HP_BAR : hpPct > 0.25 ? 0xffa726 : COLORS.HP_BAR_LOW);
-    void iz; // repositionUI handles scale
 
+    this.xpBar.setDisplaySize(BAR_W * iz, BAR_H * 0.7 * iz);
     const xpPct = xp / xpToNext;
-    this.xpBarFill.setDisplaySize(BAR_W * xpPct, 8);
+    this.xpBarFill.setDisplaySize(BAR_W * xpPct * iz, BAR_H * 0.7 * iz);
 
     this.hpText.setText(`${hp}/${maxHp}`);
     this.levelText.setText(`LV ${level}  ATK ${this.player.stats.attack}  DEF ${this.player.stats.defense}`);
