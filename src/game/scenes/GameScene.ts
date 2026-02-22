@@ -44,6 +44,13 @@ export class GameScene extends Phaser.Scene {
   create() {
     this.dungeon = generateDungeon(this.currentFloor);
 
+    // Set physics world to the full map size BEFORE spawning anything
+    this.physics.world.setBounds(
+      0, 0,
+      MAP_WIDTH * TILE_SIZE,
+      MAP_HEIGHT * TILE_SIZE
+    );
+
     this.buildTilemap();
     this.spawnPlayer();
     this.spawnEnemies();
@@ -67,15 +74,14 @@ export class GameScene extends Phaser.Scene {
         const wy = ty * TILE_SIZE + TILE_SIZE / 2;
 
         if (t === TILE.WALL) {
-          const w = this.add.image(wx, wy, "wall").setDepth(1);
-          const body = this.physics.add.staticImage(wx, wy, "wall");
-          body.setVisible(false);
-          body.setDepth(0);
-          this.wallGroup.add(body);
-          w.setDepth(1);
+          this.add.image(wx, wy, "wall").setDepth(1);
+          // Use a rectangle as the physics body (much lighter than staticImage)
+          const rect = this.add.rectangle(wx, wy, TILE_SIZE, TILE_SIZE);
+          this.physics.add.existing(rect, true); // true = static
+          this.wallGroup.add(rect);
         } else if (t === TILE.STAIRS) {
-          this.add.image(wx, wy, "stairs").setDepth(2);
           this.add.image(wx, wy, "floor").setDepth(1);
+          this.add.image(wx, wy, "stairs").setDepth(2);
         } else {
           this.add.image(wx, wy, "floor").setDepth(1);
         }
