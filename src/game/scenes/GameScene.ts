@@ -242,7 +242,28 @@ export class GameScene extends Phaser.Scene {
     const totalH = MAP_HEIGHT * TILE_SIZE;
     this.cameras.main.setBounds(0, 0, totalW, totalH);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
+
+    // Scroll wheel zoom
+    this.input.on(
+      "wheel",
+      (_ptr: unknown, _objs: unknown, _dx: number, deltaY: number) => {
+        this.adjustZoom(-deltaY * 0.001);
+      }
+    );
+
+    // Keyboard zoom: = / + to zoom in, - to zoom out
+    this.input.keyboard!.on("keydown-PLUS", () => this.adjustZoom(0.1));
+    this.input.keyboard!.on("keydown-EQUALS", () => this.adjustZoom(0.1));
+    this.input.keyboard!.on("keydown-MINUS", () => this.adjustZoom(-0.1));
   }
+
+  private adjustZoom(delta: number) {
+    const next = Phaser.Math.Clamp(this.cameras.main.zoom + delta, 0.4, 2.5);
+    this.cameras.main.setZoom(next);
+    if (this.zoomLabel) this.zoomLabel.setText(`${Math.round(next * 100)}%`);
+  }
+
+  private zoomLabel!: Phaser.GameObjects.Text;
 
   // ── UI ────────────────────────────────────────────────────────────────────
 
@@ -325,6 +346,40 @@ export class GameScene extends Phaser.Scene {
       .setDepth(102);
 
     // UI elements use setScrollFactor(0) so they stay fixed without a second camera
+
+    // Zoom controls — bottom right
+    const BTN = 26;
+    const zx = W - PAD;
+    const zy = H - PAD;
+
+    // "-" button
+    const minusBg = this.add.rectangle(zx - BTN * 2.4, zy - BTN / 2, BTN, BTN, 0x1a1a2e)
+      .setScrollFactor(0).setDepth(110).setInteractive();
+    this.add.rectangle(zx - BTN * 2.4, zy - BTN / 2, BTN, BTN)
+      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
+    this.add.text(zx - BTN * 2.4, zy - BTN / 2, "−", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
+
+    // "+" button
+    const plusBg = this.add.rectangle(zx - BTN * 1.1, zy - BTN / 2, BTN, BTN, 0x1a1a2e)
+      .setScrollFactor(0).setDepth(110).setInteractive();
+    this.add.rectangle(zx - BTN * 1.1, zy - BTN / 2, BTN, BTN)
+      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
+    this.add.text(zx - BTN * 1.1, zy - BTN / 2, "+", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
+
+    // Zoom label
+    this.zoomLabel = this.add.text(zx - BTN * 1.75, zy - BTN * 1.6, "100%", {
+      fontSize: "11px", color: "#666688", fontFamily: "monospace",
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(112);
+
+    minusBg.on("pointerover", () => minusBg.setFillStyle(0x2a2a4e));
+    minusBg.on("pointerout", () => minusBg.setFillStyle(0x1a1a2e));
+    minusBg.on("pointerdown", () => this.adjustZoom(-0.15));
+
+    plusBg.on("pointerover", () => plusBg.setFillStyle(0x2a2a4e));
+    plusBg.on("pointerout", () => plusBg.setFillStyle(0x1a1a2e));
+    plusBg.on("pointerdown", () => this.adjustZoom(0.15));
   }
 
   private updateUI() {
