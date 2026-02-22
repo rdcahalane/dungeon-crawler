@@ -1,4 +1,5 @@
 import { auth, signOut } from "@/auth";
+import Link from "next/link";
 import GameWrapper from "./GameWrapper";
 
 export default async function HomePage() {
@@ -31,12 +32,12 @@ export default async function HomePage() {
         ) : (
           <>
             <span className="text-gray-600">Sign in to save your progress</span>
-            <a
-              href="/api/auth/signin/github"
-              className="text-blue-400 hover:text-white underline transition-colors"
+            <Link
+              href="/login"
+              className="text-yellow-400 hover:text-white underline transition-colors font-mono"
             >
-              Sign in with GitHub
-            </a>
+              Sign in / Register
+            </Link>
           </>
         )}
       </div>
