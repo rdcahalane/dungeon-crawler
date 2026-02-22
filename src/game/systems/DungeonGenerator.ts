@@ -43,14 +43,28 @@ function overlaps(a: Room, b: Room, padding = 2): boolean {
   );
 }
 
-function carveH(tiles: TileValue[][], y: number, x1: number, x2: number) {
+// width is the number of tiles perpendicular to travel direction.
+// The corridor is centred on the spine (y or x), so odd widths are symmetric
+// and even widths lean one tile towards the positive axis.
+
+function carveH(tiles: TileValue[][], y: number, x1: number, x2: number, width = 1) {
   const [xa, xb] = x1 < x2 ? [x1, x2] : [x2, x1];
-  for (let x = xa; x <= xb; x++) tiles[y][x] = TILE.FLOOR;
+  const half = Math.floor(width / 2);
+  for (let dy = -half; dy < width - half; dy++) {
+    const row = y + dy;
+    if (row < 1 || row >= MAP_HEIGHT - 1) continue;
+    for (let x = xa; x <= xb; x++) tiles[row][x] = TILE.FLOOR;
+  }
 }
 
-function carveV(tiles: TileValue[][], x: number, y1: number, y2: number) {
+function carveV(tiles: TileValue[][], x: number, y1: number, y2: number, width = 1) {
   const [ya, yb] = y1 < y2 ? [y1, y2] : [y2, y1];
-  for (let y = ya; y <= yb; y++) tiles[y][x] = TILE.FLOOR;
+  const half = Math.floor(width / 2);
+  for (let dx = -half; dx < width - half; dx++) {
+    const col = x + dx;
+    if (col < 1 || col >= MAP_WIDTH - 1) continue;
+    for (let y = ya; y <= yb; y++) tiles[y][col] = TILE.FLOOR;
+  }
 }
 
 function dist(a: Room, b: Room): number {
@@ -79,7 +93,7 @@ export function generateDungeon(floor: number): DungeonData {
     const ry = rng(1, h - rh - 2);
     const room: Room = { x: rx, y: ry, w: rw, h: rh, cx: rx + Math.floor(rw / 2), cy: ry + Math.floor(rh / 2) };
 
-    if (!rooms.some((r) => overlaps(r, room))) {
+    if (!rooms.some((r) => overlaps(r, room, 3))) {
       rooms.push(room);
       // Carve floor
       for (let dy = 0; dy < rh; dy++)
@@ -108,13 +122,14 @@ export function generateDungeon(floor: number): DungeonData {
 
     const a = rooms[from];
     const b = rooms[to];
-    // L-shaped corridor
+    // Variable-width L-shaped corridor: 2–4 tiles wide
+    const cw = rng(2, 4);
     if (Math.random() < 0.5) {
-      carveH(tiles, a.cy, a.cx, b.cx);
-      carveV(tiles, b.cx, a.cy, b.cy);
+      carveH(tiles, a.cy, a.cx, b.cx, cw);
+      carveV(tiles, b.cx, a.cy, b.cy, cw);
     } else {
-      carveV(tiles, a.cx, a.cy, b.cy);
-      carveH(tiles, b.cy, a.cx, b.cx);
+      carveV(tiles, a.cx, a.cy, b.cy, cw);
+      carveH(tiles, b.cy, a.cx, b.cx, cw);
     }
   }
 
