@@ -1,17 +1,12 @@
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 
+// NextAuth v5 auto-reads AUTH_GITHUB_ID and AUTH_GITHUB_SECRET from env
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [
-    GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    }),
-  ],
+  providers: [GitHub],
   session: { strategy: "jwt" },
   callbacks: {
     jwt({ token, account, profile }) {
-      // Persist the GitHub user ID into the token on first sign-in
       if (account && profile) {
         token.id = String((profile as { id?: number }).id ?? token.sub);
         token.login = (profile as { login?: string }).login ?? "";
@@ -20,7 +15,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     session({ session, token }) {
       session.user.id = token.id as string;
-      session.user.name = (token.login as string) || session.user.name;
+      if (token.login) session.user.name = token.login as string;
       return session;
     },
   },
