@@ -68,6 +68,7 @@ export class GameScene extends Phaser.Scene {
     this.initFog();
     this.setupCamera();
     this.createUI();
+    this.repositionUI(1);
     this.updateUI();
   }
 
@@ -263,10 +264,16 @@ export class GameScene extends Phaser.Scene {
     const next = Phaser.Math.Clamp(this.cameras.main.zoom + delta, 0.4, 2.5);
     this.cameras.main.setZoom(next);
     if (this.zoomLabel) this.zoomLabel.setText(`${Math.round(next * 100)}%`);
+    this.repositionUI(next);
   }
 
   private zoomLabel!: Phaser.GameObjects.Text;
-  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
+  private zoomMinusBg!: Phaser.GameObjects.Rectangle;
+  private zoomPlusBg!: Phaser.GameObjects.Rectangle;
+  private zoomMinusBorder!: Phaser.GameObjects.Rectangle;
+  private zoomPlusBorder!: Phaser.GameObjects.Rectangle;
+  private zoomMinusText!: Phaser.GameObjects.Text;
+  private zoomPlusText!: Phaser.GameObjects.Text;
 
   // ── UI ────────────────────────────────────────────────────────────────────
 
@@ -276,134 +283,119 @@ export class GameScene extends Phaser.Scene {
     const BAR_W = 200;
     const BAR_H = 12;
     const PAD = 12;
+    const BTN = 26;
 
-    // UI camera — zoom locked at 1 so HUD never scales with player zoom.
-    // Ignore all game world objects (everything added before this call).
-    // UI elements created below will be visible to uiCamera only.
-    this.uiCamera = this.cameras.add(0, 0, W, H);
-    this.uiCamera.setZoom(1);
-    this.uiCamera.ignore(this.children.list.slice());
+    // All UI elements use setScrollFactor(0).
+    // adjustZoom() calls repositionUI() to counteract zoom on position and scale.
 
-    // Snapshot index: everything added from here is a UI element
-    const uiStart = this.children.list.length;
-
-    // HP bar background
     this.hpBar = this.add
       .rectangle(PAD + BAR_W / 2, H - PAD - BAR_H * 2.5, BAR_W, BAR_H, COLORS.HP_BAR_BG)
-      .setScrollFactor(0)
-      .setDepth(100);
+      .setScrollFactor(0).setDepth(100);
     this.hpBarFill = this.add
       .rectangle(PAD, H - PAD - BAR_H * 2.5, BAR_W, BAR_H, COLORS.HP_BAR)
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0)
-      .setDepth(101);
+      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
 
-    // XP bar
     this.xpBar = this.add
       .rectangle(PAD + BAR_W / 2, H - PAD - BAR_H * 0.5, BAR_W, BAR_H * 0.7, COLORS.HP_BAR_BG)
-      .setScrollFactor(0)
-      .setDepth(100);
+      .setScrollFactor(0).setDepth(100);
     this.xpBarFill = this.add
       .rectangle(PAD, H - PAD - BAR_H * 0.5, BAR_W, BAR_H * 0.7, COLORS.XP_BAR)
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0)
-      .setDepth(101);
+      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(101);
 
     this.hpText = this.add
-      .text(PAD + BAR_W + 8, H - PAD - BAR_H * 2.5, "", {
-        fontSize: "12px",
-        color: "#ffffff",
-        fontFamily: "monospace",
-      })
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0)
-      .setDepth(102);
+      .text(PAD + BAR_W + 8, H - PAD - BAR_H * 2.5, "", { fontSize: "12px", color: "#ffffff", fontFamily: "monospace" })
+      .setOrigin(0, 0.5).setScrollFactor(0).setDepth(102);
 
     this.levelText = this.add
-      .text(PAD, H - PAD - BAR_H * 4, "", {
-        fontSize: "12px",
-        color: "#aaaaaa",
-        fontFamily: "monospace",
-      })
-      .setScrollFactor(0)
-      .setDepth(102);
+      .text(PAD, H - PAD - BAR_H * 4, "", { fontSize: "12px", color: "#aaaaaa", fontFamily: "monospace" })
+      .setScrollFactor(0).setDepth(102);
 
     this.floorText = this.add
-      .text(W - PAD, PAD, "", {
-        fontSize: "14px",
-        color: "#ffd700",
-        fontFamily: "monospace",
-      })
-      .setOrigin(1, 0)
-      .setScrollFactor(0)
-      .setDepth(102);
+      .text(W - PAD, PAD, "", { fontSize: "14px", color: "#ffd700", fontFamily: "monospace" })
+      .setOrigin(1, 0).setScrollFactor(0).setDepth(102);
 
     this.killsText = this.add
-      .text(W - PAD, PAD + 22, "", {
-        fontSize: "12px",
-        color: "#aaaaaa",
-        fontFamily: "monospace",
-      })
-      .setOrigin(1, 0)
-      .setScrollFactor(0)
-      .setDepth(102);
+      .text(W - PAD, PAD + 22, "", { fontSize: "12px", color: "#aaaaaa", fontFamily: "monospace" })
+      .setOrigin(1, 0).setScrollFactor(0).setDepth(102);
 
     this.statusText = this.add
-      .text(W / 2, H * 0.15, "", {
-        fontSize: "14px",
-        color: "#cccccc",
-        fontFamily: "monospace",
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(102);
+      .text(W / 2, H * 0.15, "", { fontSize: "14px", color: "#cccccc", fontFamily: "monospace" })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(102);
 
-    // Tell main camera to ignore all UI elements (rendered by uiCamera only)
-    this.cameras.main.ignore(this.children.list.slice(uiStart));
+    // Zoom controls
+    this.zoomMinusBg = this.add.rectangle(W - PAD - BTN * 2.4, H - PAD - BTN / 2, BTN, BTN, 0x1a1a2e)
+      .setScrollFactor(0).setDepth(110).setInteractive();
+    this.zoomMinusBorder = this.add.rectangle(W - PAD - BTN * 2.4, H - PAD - BTN / 2, BTN, BTN)
+      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
+    this.zoomMinusText = this.add.text(W - PAD - BTN * 2.4, H - PAD - BTN / 2, "−", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
 
-    // Zoom controls — bottom right
+    this.zoomPlusBg = this.add.rectangle(W - PAD - BTN * 1.1, H - PAD - BTN / 2, BTN, BTN, 0x1a1a2e)
+      .setScrollFactor(0).setDepth(110).setInteractive();
+    this.zoomPlusBorder = this.add.rectangle(W - PAD - BTN * 1.1, H - PAD - BTN / 2, BTN, BTN)
+      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
+    this.zoomPlusText = this.add.text(W - PAD - BTN * 1.1, H - PAD - BTN / 2, "+", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
+
+    this.zoomLabel = this.add.text(W - PAD - BTN * 1.75, H - PAD - BTN * 1.6, "100%", { fontSize: "11px", color: "#666688", fontFamily: "monospace" })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
+
+    this.zoomMinusBg.on("pointerover", () => this.zoomMinusBg.setFillStyle(0x2a2a4e));
+    this.zoomMinusBg.on("pointerout", () => this.zoomMinusBg.setFillStyle(0x1a1a2e));
+    this.zoomMinusBg.on("pointerdown", () => this.adjustZoom(-0.15));
+    this.zoomPlusBg.on("pointerover", () => this.zoomPlusBg.setFillStyle(0x2a2a4e));
+    this.zoomPlusBg.on("pointerout", () => this.zoomPlusBg.setFillStyle(0x1a1a2e));
+    this.zoomPlusBg.on("pointerdown", () => this.adjustZoom(0.15));
+  }
+
+  // Reposition all HUD elements to stay at fixed screen position regardless of zoom.
+  // scrollFactor(0) elements appear at (worldX * zoom, worldY * zoom) on screen,
+  // so setting worldPos = desiredScreenPos / zoom keeps them fixed.
+  private repositionUI(zoom: number) {
+    if (!this.hpBar) return;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const BAR_W = 200;
+    const BAR_H = 12;
+    const PAD = 12;
     const BTN = 26;
-    const zx = W - PAD;
-    const zy = H - PAD;
+    const iz = 1 / zoom;
 
-    // "-" button
-    const minusBg = this.add.rectangle(zx - BTN * 2.4, zy - BTN / 2, BTN, BTN, 0x1a1a2e)
-      .setScrollFactor(0).setDepth(110).setInteractive();
-    this.add.rectangle(zx - BTN * 2.4, zy - BTN / 2, BTN, BTN)
-      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
-    this.add.text(zx - BTN * 2.4, zy - BTN / 2, "−", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
+    const s = (v: number) => v * iz; // screen coord → world coord at current zoom
 
-    // "+" button
-    const plusBg = this.add.rectangle(zx - BTN * 1.1, zy - BTN / 2, BTN, BTN, 0x1a1a2e)
-      .setScrollFactor(0).setDepth(110).setInteractive();
-    this.add.rectangle(zx - BTN * 1.1, zy - BTN / 2, BTN, BTN)
-      .setStrokeStyle(1, 0x444466).setScrollFactor(0).setDepth(111);
-    this.add.text(zx - BTN * 1.1, zy - BTN / 2, "+", { fontSize: "18px", color: "#aaaacc", fontFamily: "monospace" })
-      .setOrigin(0.5).setScrollFactor(0).setDepth(112);
+    this.hpBar.setPosition(s(PAD + BAR_W / 2), s(H - PAD - BAR_H * 2.5)).setScale(iz);
+    this.hpBarFill.setPosition(s(PAD), s(H - PAD - BAR_H * 2.5)).setScale(iz);
+    this.xpBar.setPosition(s(PAD + BAR_W / 2), s(H - PAD - BAR_H * 0.5)).setScale(iz);
+    this.xpBarFill.setPosition(s(PAD), s(H - PAD - BAR_H * 0.5)).setScale(iz);
+    this.hpText.setPosition(s(PAD + BAR_W + 8), s(H - PAD - BAR_H * 2.5)).setScale(iz);
+    this.levelText.setPosition(s(PAD), s(H - PAD - BAR_H * 4)).setScale(iz);
+    this.floorText.setPosition(s(W - PAD), s(PAD)).setScale(iz);
+    this.killsText.setPosition(s(W - PAD), s(PAD + 22)).setScale(iz);
+    this.statusText.setPosition(s(W / 2), s(H * 0.15)).setScale(iz);
+    this.zoomLabel.setPosition(s(W - PAD - BTN * 1.75), s(H - PAD - BTN * 1.6)).setScale(iz);
+    this.zoomMinusBg.setPosition(s(W - PAD - BTN * 2.4), s(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomMinusBorder.setPosition(s(W - PAD - BTN * 2.4), s(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomMinusText.setPosition(s(W - PAD - BTN * 2.4), s(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomPlusBg.setPosition(s(W - PAD - BTN * 1.1), s(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomPlusBorder.setPosition(s(W - PAD - BTN * 1.1), s(H - PAD - BTN / 2)).setScale(iz);
+    this.zoomPlusText.setPosition(s(W - PAD - BTN * 1.1), s(H - PAD - BTN / 2)).setScale(iz);
 
-    // Zoom label
-    this.zoomLabel = this.add.text(zx - BTN * 1.75, zy - BTN * 1.6, "100%", {
-      fontSize: "11px", color: "#666688", fontFamily: "monospace",
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(112);
-
-    minusBg.on("pointerover", () => minusBg.setFillStyle(0x2a2a4e));
-    minusBg.on("pointerout", () => minusBg.setFillStyle(0x1a1a2e));
-    minusBg.on("pointerdown", () => this.adjustZoom(-0.15));
-
-    plusBg.on("pointerover", () => plusBg.setFillStyle(0x2a2a4e));
-    plusBg.on("pointerout", () => plusBg.setFillStyle(0x1a1a2e));
-    plusBg.on("pointerdown", () => this.adjustZoom(0.15));
+    // HP bar fill width also needs to account for zoom (updateUI sets displaySize)
+    // Handled in updateUI() which always runs after repositionUI()
   }
 
   private updateUI() {
     if (!this.player) return;
     const { hp, maxHp, level, xp, xpToNext } = this.player.stats;
     const BAR_W = 200;
+    const zoom = this.cameras.main.zoom;
+    const iz = 1 / zoom;
 
     const hpPct = hp / maxHp;
+    // Width scales inversely with zoom since the fill rect also has setScale(iz)
     this.hpBarFill.setDisplaySize(BAR_W * hpPct, 12);
     this.hpBarFill.setFillStyle(hpPct > 0.5 ? COLORS.HP_BAR : hpPct > 0.25 ? 0xffa726 : COLORS.HP_BAR_LOW);
+    void iz; // repositionUI handles scale
 
     const xpPct = xp / xpToNext;
     this.xpBarFill.setDisplaySize(BAR_W * xpPct, 8);
