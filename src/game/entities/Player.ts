@@ -47,7 +47,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setDisplaySize(TILE_SIZE + 4, TILE_SIZE + 4);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setSize(TILE_SIZE - 12, TILE_SIZE - 12);
+    body.setSize(TILE_SIZE - 20, TILE_SIZE - 20); // 12px — comfortable in 32px corridors
     body.setCollideWorldBounds(true);
 
     this.stats = {

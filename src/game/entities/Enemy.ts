@@ -41,7 +41,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setTint(def.color);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setSize(size - 4, size - 4);
+    body.setSize(size - 12, size - 12); // smaller hitbox for easier corridor navigation
 
     this.setDepth(9);
 
