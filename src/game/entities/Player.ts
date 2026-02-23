@@ -66,6 +66,7 @@ export interface PlayerStats {
   manaPotions: number; // mana potions (M key in dungeon)
   // Save metadata
   saveSlot?: number;
+  savedDungeons?: Record<number, import("../systems/DungeonGenerator").SerializedFloor>;
 }
 
 export class Player extends Phaser.Physics.Arcade.Sprite {

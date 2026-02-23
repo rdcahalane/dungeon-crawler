@@ -71,8 +71,8 @@ export class MainMenuScene extends Phaser.Scene {
 
     // Controls
     this.add.text(width / 2, height * 0.96, [
-      "WASD — Move  |  Space/Click — Attack  |  E — Interact",
-      "Q/W/E/R — Spells  |  T — Turn Undead  |  F — Health Potion  |  M — Mana Potion",
+      "WASD — Move  |  Space/Click — Attack  |  E — Open chest  |  G — Search (traps & doors)",
+      "Q/W/E/R — Spells  |  T — Turn Undead  |  D — Disarm trap (Thief)  |  F/M — Potions",
     ].join("\n"), {
       fontSize: "10px", color: "#333355", fontFamily: "monospace", align: "center",
     }).setOrigin(0.5);

@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, TILE, TAVERN_W, TAVERN_H, COLORS, CHARACTER_CLASSES, abilityMod } from "../constants";
+import { TILE_SIZE, TILE, TAVERN_W, TAVERN_H, CHARACTER_CLASSES, abilityMod } from "../constants";
 import { Player, CharCreationData, PlayerStats } from "../entities/Player";
 
 // ── Tavern tilemap ────────────────────────────────────────────────────────────
@@ -110,7 +110,9 @@ export class TavernScene extends Phaser.Scene {
   private playerStats!: PlayerStats;
   private charData?: CharCreationData;
   private saveSlot = 1;
-  private _enteringDungeon = false; // debounce portal
+  private _enteringDungeon = false;
+  private _dungeonChoiceOpen = false;
+  private _dungeonChoiceDialog?: Phaser.GameObjects.Container;
 
   // UI elements
   private shopPanel?: Phaser.GameObjects.Container;
@@ -421,13 +423,19 @@ export class TavernScene extends Phaser.Scene {
     this.nearBoard = boardDist < range;
     this.nearEntrance = entranceDist < TILE_SIZE * 3;
 
+    // ESC closes dungeon choice dialog
+    if (this._esc && Phaser.Input.Keyboard.JustDown(this._esc) && this._dungeonChoiceOpen) {
+      this.closeDungeonChoice();
+      return;
+    }
+
     // Walk-on portal trigger (primary entry method)
-    if (!this._enteringDungeon && !this.shopPanel && !this.questPanel) {
+    if (!this._enteringDungeon && !this.shopPanel && !this.questPanel && !this._dungeonChoiceOpen) {
       const playerTx = Math.floor(px / TILE_SIZE);
       const playerTy = Math.floor(py / TILE_SIZE);
       if (playerTy >= 0 && playerTy < TAVERN_H && playerTx >= 0 && playerTx < TAVERN_W) {
         if (TAVERN_TILES[playerTy][playerTx] === TILE.STAIRS) {
-          this.enterDungeon();
+          this.onPortalStep();
         }
       }
     }
@@ -440,7 +448,7 @@ export class TavernScene extends Phaser.Scene {
     } else if (this.nearBoard) {
       this.showPrompt("E — Read Notice Board");
     } else if (this.nearEntrance) {
-      this.showPrompt("Walk onto the glowing portal to enter the dungeon");
+      this.showPrompt("Walk onto the glowing portal to enter the dungeon ▼");
     } else {
       this.hidePrompt();
     }
@@ -578,23 +586,114 @@ export class TavernScene extends Phaser.Scene {
     if (this.questPanel) { this.questPanel.destroy(); this.questPanel = undefined; }
   }
 
+  // ── Portal Step — Continue or New ─────────────────────────────────────────
+
+  private onPortalStep() {
+    const hasSavedDungeon = Object.keys(this.playerStats?.savedDungeons ?? {}).length > 0;
+
+    if (hasSavedDungeon) {
+      this.showDungeonChoiceDialog();
+    } else {
+      this.enterDungeon(false);
+    }
+  }
+
+  private showDungeonChoiceDialog() {
+    if (this._dungeonChoiceOpen) return;
+    this._dungeonChoiceOpen = true;
+
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const s = this.playerStats;
+    const deepestFloor = Math.max(...Object.keys(s.savedDungeons ?? {}).map(Number));
+
+    this._dungeonChoiceDialog = this.add.container(W / 2, H / 2).setDepth(200).setScrollFactor(0);
+
+    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.55);
+    this._dungeonChoiceDialog.add(overlay);
+
+    const bg = this.add.rectangle(0, 0, 480, 280, 0x0c0c1a, 0.97).setStrokeStyle(2, 0x6622aa);
+    this._dungeonChoiceDialog.add(bg);
+
+    this._dungeonChoiceDialog.add(this.add.text(0, -108, '⚔  DUNGEON ENTRANCE  ⚔', {
+      fontSize: '18px', color: '#cc88ff', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5));
+
+    this._dungeonChoiceDialog.add(this.add.text(0, -76, `Active expedition — Floor ${deepestFloor}`, {
+      fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
+    }).setOrigin(0.5));
+
+    // Continue button
+    const contBg = this.add.rectangle(-110, 10, 200, 120, 0x0a1a2a).setInteractive().setStrokeStyle(1, 0x3399ff);
+    this._dungeonChoiceDialog.add(contBg);
+    this._dungeonChoiceDialog.add(this.add.text(-110, -30, 'CONTINUE', {
+      fontSize: '16px', color: '#3399ff', fontFamily: 'monospace',
+    }).setOrigin(0.5));
+    this._dungeonChoiceDialog.add(this.add.text(-110, 4, [
+      `Resume Floor ${deepestFloor}`,
+      'All state preserved',
+      'Monsters/traps/chests',
+      'as you left them',
+    ].join('\n'), { fontSize: '10px', color: '#668899', fontFamily: 'monospace', align: 'center', lineSpacing: 3 }).setOrigin(0.5));
+    contBg.on('pointerover', () => contBg.setFillStyle(0x0a2a44));
+    contBg.on('pointerout', () => contBg.setFillStyle(0x0a1a2a));
+    contBg.on('pointerdown', () => { this.closeDungeonChoice(); this.enterDungeon(true); });
+
+    // New dungeon button
+    const newBg = this.add.rectangle(110, 10, 200, 120, 0x1a0a2a).setInteractive().setStrokeStyle(1, 0xcc44ff);
+    this._dungeonChoiceDialog.add(newBg);
+    this._dungeonChoiceDialog.add(this.add.text(110, -30, 'NEW DUNGEON', {
+      fontSize: '16px', color: '#cc44ff', fontFamily: 'monospace',
+    }).setOrigin(0.5));
+    this._dungeonChoiceDialog.add(this.add.text(110, 4, [
+      'Fresh from Floor 1',
+      'New random layout',
+      'All floors reset',
+      'Keep gear & levels',
+    ].join('\n'), { fontSize: '10px', color: '#886699', fontFamily: 'monospace', align: 'center', lineSpacing: 3 }).setOrigin(0.5));
+    newBg.on('pointerover', () => newBg.setFillStyle(0x2a0a44));
+    newBg.on('pointerout', () => newBg.setFillStyle(0x1a0a2a));
+    newBg.on('pointerdown', () => { this.closeDungeonChoice(); this.enterDungeon(false); });
+
+    // ESC hint
+    this._dungeonChoiceDialog.add(this.add.text(0, 110, 'ESC — close', {
+      fontSize: '10px', color: '#333355', fontFamily: 'monospace',
+    }).setOrigin(0.5));
+  }
+
+  private closeDungeonChoice() {
+    this._dungeonChoiceDialog?.destroy();
+    this._dungeonChoiceDialog = undefined;
+    this._dungeonChoiceOpen = false;
+  }
+
   // ── Enter Dungeon ─────────────────────────────────────────────────────────
 
-  private enterDungeon() {
+  /** @param continueSaved — true = resume saved dungeon, false = fresh generation */
+  private enterDungeon(continueSaved: boolean) {
     if (this._enteringDungeon) return;
     this._enteringDungeon = true;
 
     const persistedStats = this.player.getSerializable();
-    persistedStats.floor = 1;
     persistedStats.saveSlot = this.saveSlot;
 
-    // Auto-save when entering dungeon
+    if (!continueSaved) {
+      // Clear all saved dungeon floors — fresh generation
+      persistedStats.savedDungeons = {};
+      persistedStats.floor = 1;
+    } else {
+      // Resume deepest explored floor
+      const floors = Object.keys(persistedStats.savedDungeons ?? {}).map(Number);
+      persistedStats.floor = floors.length > 0 ? Math.max(...floors) : 1;
+    }
+
     this.autoSave(persistedStats).catch(() => {});
 
     this.cameras.main.fade(400, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
       if (t === 1) {
         this.scene.start("GameScene", {
-          floor: 1,
+          floor: persistedStats.floor,
           persistedStats,
           saveSlot: this.saveSlot,
         });

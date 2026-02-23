@@ -45,6 +45,20 @@ export interface DungeonData {
   chests: ChestSpawn[];
 }
 
+/**
+ * Persistent state for a single dungeon floor.
+ * dungeonData = the base (unmodified) layout generated at creation time.
+ * The other arrays track changes made during play sessions.
+ */
+export interface SerializedFloor {
+  dungeonData: DungeonData;          // original tiles — NEVER modified after creation
+  deadEnemyIndices: number[];        // which enemy spawns have been killed
+  triggeredTrapKeys: string[];       // "tx,ty" — traps already triggered
+  openedChestKeys: string[];         // "tx,ty" — chests opened
+  pickedItemKeys: string[];          // "tx,ty" — floor items picked up
+  revealedDoorKeys: string[];        // "tx,ty" — secret doors permanently revealed
+}
+
 function rng(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
