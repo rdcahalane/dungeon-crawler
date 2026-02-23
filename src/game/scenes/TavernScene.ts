@@ -45,8 +45,18 @@ function buildTavernTiles(): number[][] {
 
 const TAVERN_TILES = buildTavernTiles();
 
+// Track special wall tiles for distinct rendering
+const BAR_TILES = new Set<string>();
+for (let x = 2; x <= 8; x++) for (let y = 2; y <= 3; y++) BAR_TILES.add(`${x},${y}`);
+
+const TABLE_TILES = new Set<string>();
+for (const cx of [2, 6, 12, 17, 22]) {
+  TABLE_TILES.add(`${cx},6`); TABLE_TILES.add(`${cx + 1},6`);
+  TABLE_TILES.add(`${cx},7`); TABLE_TILES.add(`${cx + 1},7`);
+}
+
 // NPC positions
-const INNKEEPER_POS = { tx: 5, ty: 5 };     // in front of bar
+const INNKEEPER_POS = { tx: 5, ty: 1 };     // behind the bar counter
 const NOTICE_BOARD_POS = { tx: 23, ty: 5 };  // in front of notice board
 const ENTRANCE_LABEL_POS = { tx: 13, ty: 10 }; // above portal
 
@@ -156,6 +166,8 @@ export class TavernScene extends Phaser.Scene {
     this.buildTavern();
     this.spawnPlayer();
     this.spawnNPCs();
+    this.spawnPatrons();
+    this.spawnDecor();
     this.spawnEntranceLabel();
     this.spawnTorches();
     this.setupCamera(totalW, totalH);
@@ -184,7 +196,13 @@ export class TavernScene extends Phaser.Scene {
         const wy = ty * TILE_SIZE + TILE_SIZE / 2;
 
         if (t === TILE.WALL) {
-          this.add.image(wx, wy, "tavern_wall").setDepth(1);
+          const tileKey = `${tx},${ty}`;
+          const texture = BAR_TILES.has(tileKey) ? "tavern_bar"
+            : TABLE_TILES.has(tileKey) ? "tavern_table"
+            : "tavern_wall";
+          // Bar south row (ty=3) renders above innkeeper for "behind counter" effect
+          const tileDepth = BAR_TILES.has(tileKey) ? 6 : 1;
+          this.add.image(wx, wy, texture).setDepth(tileDepth);
           const rect = this.add.rectangle(wx, wy, TILE_SIZE, TILE_SIZE);
           this.physics.add.existing(rect, true);
           this.wallGroup.add(rect);
@@ -237,16 +255,16 @@ export class TavernScene extends Phaser.Scene {
   // ── NPCs ──────────────────────────────────────────────────────────────────
 
   private spawnNPCs() {
-    // Innkeeper
+    // Innkeeper — stands behind the bar counter
     const ix = INNKEEPER_POS.tx * TILE_SIZE + TILE_SIZE / 2;
     const iy = INNKEEPER_POS.ty * TILE_SIZE + TILE_SIZE / 2;
     this.innkeeperSprite = this.add.sprite(ix, iy, "npc").setDepth(5).setScale(1.3);
-    this.innkeeperSprite.setTint(0xffcc88); // warm skin tone
+    this.innkeeperSprite.setTint(0xffcc88);
 
     this.add.text(ix, iy - TILE_SIZE * 1.2, "Innkeeper", {
       fontSize: "9px", color: "#ffcc88", fontFamily: "monospace",
       backgroundColor: "#00000088", padding: { x: 2, y: 1 },
-    }).setOrigin(0.5).setDepth(6);
+    }).setOrigin(0.5).setDepth(7);
 
     // Notice board sprite
     const bx = NOTICE_BOARD_POS.tx * TILE_SIZE + TILE_SIZE / 2;
@@ -258,15 +276,88 @@ export class TavernScene extends Phaser.Scene {
       backgroundColor: "#00000088", padding: { x: 2, y: 1 },
     }).setOrigin(0.5).setDepth(6);
 
-    // Floating innkeeper dialog
+    // Innkeeper idle — gentle lateral sway behind bar
     this.tweens.add({
       targets: this.innkeeperSprite,
-      y: iy - 4,
+      x: ix + 3,
+      duration: 2000,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+  }
+
+  private spawnPatrons() {
+    const patrons = [
+      { tx: 3, ty: 5, tint: 0xccaa88, name: "Warrior" },
+      { tx: 7, ty: 8, tint: 0x88bb88, name: "Ranger" },
+      { tx: 13, ty: 8, tint: 0xddbb77, name: "Merchant" },
+      { tx: 17, ty: 5, tint: 0x8899bb, name: "Guard" },
+      { tx: 23, ty: 8, tint: 0xaa88bb, name: "Traveler" },
+    ];
+
+    for (const p of patrons) {
+      const px = p.tx * TILE_SIZE + TILE_SIZE / 2;
+      const py = p.ty * TILE_SIZE + TILE_SIZE / 2;
+      const sprite = this.add.sprite(px, py, "tavern_patron").setDepth(5).setTint(p.tint);
+
+      this.add.text(px, py - TILE_SIZE, p.name, {
+        fontSize: "8px", color: "#888899", fontFamily: "monospace",
+        backgroundColor: "#00000066", padding: { x: 2, y: 1 },
+      }).setOrigin(0.5).setDepth(6);
+
+      // Subtle idle breathing
+      this.tweens.add({
+        targets: sprite,
+        y: py - 2,
+        duration: 2000 + Math.random() * 1000,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+  }
+
+  private spawnDecor() {
+    // Barrels behind bar (row 1, flanking the innkeeper)
+    for (const btx of [2, 3, 7, 8]) {
+      const bx = btx * TILE_SIZE + TILE_SIZE / 2;
+      const by = 1 * TILE_SIZE + TILE_SIZE / 2;
+      this.add.image(bx, by, "tavern_barrel").setDepth(3);
+    }
+
+    // Warm glow behind the bar area
+    const barGlowX = 5 * TILE_SIZE + TILE_SIZE / 2;
+    const barGlowY = 1 * TILE_SIZE + TILE_SIZE / 2;
+    const barGlow = this.add.image(barGlowX, barGlowY, "torch_glow")
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(1.8).setAlpha(0.25).setDepth(47).setTint(0xff8844);
+    this.tweens.add({
+      targets: barGlow,
+      alpha: 0.35,
       duration: 1500,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
+
+    // Fireplace glow on east wall
+    const fpX = (TAVERN_W - 2) * TILE_SIZE + TILE_SIZE / 2;
+    const fpY = 9 * TILE_SIZE + TILE_SIZE / 2;
+    for (let i = 0; i < 2; i++) {
+      const glow = this.add.image(fpX, fpY, "torch_glow")
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setScale(2 + i).setAlpha(0.2).setDepth(47).setTint(0xff6622);
+      this.tweens.add({
+        targets: glow,
+        alpha: 0.32,
+        scaleX: glow.scaleX + 0.3,
+        scaleY: glow.scaleY + 0.3,
+        duration: 900 + i * 400,
+        yoyo: true,
+        repeat: -1,
+      });
+    }
   }
 
   private spawnEntranceLabel() {
@@ -419,7 +510,7 @@ export class TavernScene extends Phaser.Scene {
     const entranceCy = 12.5 * TILE_SIZE;
     const entranceDist = Phaser.Math.Distance.Between(px, py, entranceCx, entranceCy);
 
-    this.nearInnkeeper = innkeeperDist < range;
+    this.nearInnkeeper = innkeeperDist < TILE_SIZE * 4; // reach across bar counter
     this.nearBoard = boardDist < range;
     this.nearEntrance = entranceDist < TILE_SIZE * 3;
 

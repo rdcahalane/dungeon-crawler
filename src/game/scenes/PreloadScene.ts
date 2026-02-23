@@ -407,6 +407,64 @@ export class PreloadScene extends Phaser.Scene {
     portal.fillCircle(14, 12, 3);
     portal.generateTexture("dungeon_portal", S, S);
     portal.destroy();
+
+    // Bar counter — polished dark wood with front panel
+    const barTop = this.add.graphics();
+    barTop.fillStyle(0x3a2210);
+    barTop.fillRect(0, 0, S, S);
+    barTop.fillStyle(0x5c3a1e);
+    barTop.fillRoundedRect(0, 0, S, 16, 1);
+    barTop.fillStyle(0x7a5828, 0.3);
+    barTop.fillRect(0, 0, S, 4);
+    barTop.fillStyle(0x2a1808);
+    barTop.fillRect(0, 14, S, 2);
+    barTop.fillStyle(0x4e3218);
+    barTop.fillRect(0, 16, S, 16);
+    barTop.fillStyle(0x3a2410, 0.6);
+    barTop.fillRect(4, 18, S - 8, 12);
+    barTop.generateTexture("tavern_bar", S, S);
+    barTop.destroy();
+
+    // Table top — warm wood with grain
+    const tableTop = this.add.graphics();
+    tableTop.fillStyle(0x3e2410);
+    tableTop.fillRect(0, 0, S, S);
+    tableTop.fillStyle(0x5a3818);
+    tableTop.fillRoundedRect(1, 1, S - 2, S - 2, 2);
+    tableTop.fillStyle(0x4e2e12, 0.5);
+    for (let i = 0; i < 5; i++) {
+      tableTop.fillRect(3, 3 + i * 6, S - 6, 1);
+    }
+    tableTop.fillStyle(0x7a5028, 0.3);
+    tableTop.fillRoundedRect(2, 2, 14, 14, 2);
+    tableTop.generateTexture("tavern_table", S, S);
+    tableTop.destroy();
+
+    // Seated tavern patron (tinted per-patron)
+    const patron = this.add.graphics();
+    patron.fillStyle(0xffffff);
+    patron.fillCircle(16, 8, 6);
+    patron.fillRoundedRect(10, 15, 12, 14, 3);
+    patron.fillStyle(0xdddddd);
+    patron.fillRect(5, 17, 7, 6);
+    patron.fillRect(20, 17, 7, 6);
+    patron.fillStyle(0x000000);
+    patron.fillCircle(14, 7, 1.5);
+    patron.fillCircle(18, 7, 1.5);
+    patron.generateTexture("tavern_patron", S, S);
+    patron.destroy();
+
+    // Barrel / keg
+    const barrel = this.add.graphics();
+    barrel.fillStyle(0x6b4520);
+    barrel.fillRoundedRect(4, 4, 24, 24, 8);
+    barrel.fillStyle(0x3e2812);
+    barrel.fillRect(4, 9, 24, 3);
+    barrel.fillRect(4, 20, 24, 3);
+    barrel.fillStyle(0x8b6030, 0.4);
+    barrel.fillRect(6, 5, 10, 22);
+    barrel.generateTexture("tavern_barrel", S, S);
+    barrel.destroy();
   }
 
   // ── Class Avatars ─────────────────────────────────────────────────────────
