@@ -74,6 +74,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private attackCooldown = 0;
   private invincible = 0;
   private attackIndicator!: Phaser.GameObjects.Rectangle;
+  private playerShadow!: Phaser.GameObjects.Ellipse;  // floor shadow anchors character
+  private playerAura!: Phaser.GameObjects.Arc;         // class-coloured halo above torch
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: {
     up: Phaser.Input.Keyboard.Key;
@@ -121,9 +123,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.stats = this._buildStats({ classKey: 'fighter', str: 14, dex: 12, con: 14, int: 10, wis: 10, cha: 8 });
     }
 
-    // Attack direction indicator
-    this.attackIndicator = scene.add.rectangle(x, y, 8, 8, 0xffffff, 0.3);
-    this.attackIndicator.setDepth(5);
+    // Floor shadow — dark oval just below the player, depth below torch glow
+    // makes character look grounded and separates them from floor texture
+    this.playerShadow = scene.add.ellipse(x, y + 9, TILE_SIZE - 8, 7, 0x000000, 0.5);
+    this.playerShadow.setDepth(9);
+
+    // Class-coloured aura — rendered at depth 48.5 (above torch at 47/48, below player sprite at 49)
+    // ADD blend adds the class colour as a halo to the floor under the sprite's feet.
+    // Since it renders BEFORE the player sprite (lower depth), it doesn't tint the sprite.
+    const classColor = CHARACTER_CLASSES[this.stats.classKey].color;
+    this.playerAura = scene.add.arc(x, y, TILE_SIZE * 0.65, 0, 360, false, classColor, 0.28);
+    this.playerAura.setBlendMode(Phaser.BlendModes.ADD).setDepth(48.5);
+
+    // Attack direction indicator — just above player sprite, below fog
+    this.attackIndicator = scene.add.rectangle(x, y, 8, 8, 0xffffff, 0.35);
+    this.attackIndicator.setDepth(49.5);
 
     // Input
     this.cursors = scene.input.keyboard!.createCursorKeys();
@@ -150,7 +164,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
     void hotkeyMap; // suppress unused warning — spell hotkeys handled in GameScene
 
-    this.setDepth(10);
+    // Depth 49 = player sprite.
+    // Torch glow: 47/48 (ADD blend washes out everything below it)
+    // Player sprite: 49 — renders AFTER torch, so torch ADD blend doesn't affect it.
+    //   The player sprite appears clean with true colours.
+    // Fog RenderTexture: 50 (erased around player, so player is visible in explored areas
+    //   and hidden by opaque fog in unexplored areas — correct roguelike fog behaviour).
+    this.setDepth(49);
     // No tint — avatars are drawn with real class colours
   }
 
@@ -354,6 +374,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.y + this.stats.facing.y * dist
     );
     this.attackIndicator.setAlpha(this.attackCooldown > 0 ? 0.1 : 0.4);
+
+    // Keep shadow and aura centred on player
+    this.playerShadow.setPosition(this.x, this.y + 9);
+    this.playerAura.setPosition(this.x, this.y);
   }
 
   canAttack(): boolean {
@@ -487,6 +511,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   destroy(fromScene?: boolean) {
     this.attackIndicator?.destroy();
+    this.playerShadow?.destroy();
+    this.playerAura?.destroy();
     super.destroy(fromScene);
   }
 }

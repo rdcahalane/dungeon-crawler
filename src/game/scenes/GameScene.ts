@@ -83,7 +83,7 @@ export class GameScene extends Phaser.Scene {
 
   // ── Rest dialog ────────────────────────────────────────────────────────────
   private _restDialogOpen = false;
-  private _restDialog?: Phaser.GameObjects.Container;
+  private _restDialogElements: Phaser.GameObjects.GameObject[] = [];
 
   // ── Extra keys ─────────────────────────────────────────────────────────────
   private _eKey?: Phaser.Input.Keyboard.Key;
@@ -111,7 +111,8 @@ export class GameScene extends Phaser.Scene {
     this._trapOverlays.clear();
     this.enemyProjectiles = [];
     this._restDialogOpen = false;
-    this._restDialog = undefined;
+    this._restDialogElements.forEach(e => e.destroy());
+    this._restDialogElements = [];
 
     // Load per-floor persistent state if available
     const sf = data?.persistedStats?.savedDungeons?.[this.currentFloor];
@@ -1112,33 +1113,36 @@ export class GameScene extends Phaser.Scene {
 
     const W = this.scale.width;
     const H = this.scale.height;
+    const cx = W / 2;
+    const cy = H / 2;
     const s = this.player.stats;
+    const D = 200; // depth for all dialog elements
 
     // Half-lost HP/mana for short rest preview
     const shortHpGain = Math.floor((s.maxHp - s.hp) / 2);
     const shortMpGain = Math.floor((s.maxMana - s.mana) / 2);
-    const longHpGain = s.maxHp - s.hp;
-    const longMpGain = s.maxMana - s.mana;
 
-    this._restDialog = this.add.container(W / 2, H / 2).setDepth(200).setScrollFactor(0);
+    const els = this._restDialogElements;
 
-    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.6);
-    this._restDialog.add(overlay);
+    const overlay = this.add.rectangle(cx, cy, W, H, 0x000000, 0.6)
+      .setScrollFactor(0).setDepth(D);
+    els.push(overlay);
 
-    const bg = this.add.rectangle(0, 0, 560, 280, 0x0c0c18, 0.97).setStrokeStyle(2, 0x4466aa);
-    this._restDialog.add(bg);
+    const bg = this.add.rectangle(cx, cy, 560, 280, 0x0c0c18, 0.97)
+      .setStrokeStyle(2, 0x4466aa).setScrollFactor(0).setDepth(D);
+    els.push(bg);
 
-    this._restDialog.add(this.add.text(0, -110, 'Return to the Tavern', {
+    els.push(this.add.text(cx, cy - 110, 'Return to the Tavern', {
       fontSize: '20px', color: '#ffd700', fontFamily: 'monospace',
       stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5));
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
 
-    this._restDialog.add(this.add.text(0, -76, 'Choose how you rest before leaving:', {
+    els.push(this.add.text(cx, cy - 76, 'Choose how you rest before leaving:', {
       fontSize: '12px', color: '#888899', fontFamily: 'monospace',
-    }).setOrigin(0.5));
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
 
     // Short Rest card
-    this.addRestCard(-135, 20, '⚕ SHORT REST', [
+    this.addRestCard(cx - 135, cy + 20, '⚕ SHORT REST', [
       `+${shortHpGain} HP  +${shortMpGain} MP`,
       'Dead enemies stay dead',
       'Traps stay cleared',
@@ -1147,7 +1151,7 @@ export class GameScene extends Phaser.Scene {
     ], 0x1a2a3a, 0x3399ff, () => this.doRest('short'));
 
     // Long Rest card
-    this.addRestCard(135, 20, '🛌 LONG REST', [
+    this.addRestCard(cx + 135, cy + 20, '🛌 LONG REST', [
       `Full HP  Full MP`,
       'Enemies respawn',
       'Traps reset',
@@ -1160,32 +1164,34 @@ export class GameScene extends Phaser.Scene {
     x: number, y: number, title: string, lines: string[],
     bgColor: number, accentColor: number, onClick: () => void,
   ) {
-    const W = 240;
-    const H = 200;
-    const container = this._restDialog!;
+    const CW = 240;
+    const CH = 200;
+    const D = 200;
+    const els = this._restDialogElements;
 
     const hex = `#${accentColor.toString(16).padStart(6, '0')}`;
-    const cardBg = this.add.rectangle(x, y, W, H, bgColor).setInteractive().setStrokeStyle(1, accentColor);
-    container.add(cardBg);
+    const cardBg = this.add.rectangle(x, y, CW, CH, bgColor)
+      .setInteractive().setStrokeStyle(1, accentColor).setScrollFactor(0).setDepth(D);
+    els.push(cardBg);
 
-    container.add(this.add.text(x, y - H / 2 + 18, title, {
+    els.push(this.add.text(x, y - CH / 2 + 18, title, {
       fontSize: '14px', color: hex, fontFamily: 'monospace',
-    }).setOrigin(0.5));
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
 
     lines.forEach((line, i) => {
-      container.add(this.add.text(x - W / 2 + 14, y - H / 2 + 44 + i * 22, line, {
+      els.push(this.add.text(x - CW / 2 + 14, y - CH / 2 + 44 + i * 22, line, {
         fontSize: '11px', color: '#aaaacc', fontFamily: 'monospace',
-      }).setOrigin(0, 0));
+      }).setOrigin(0, 0).setScrollFactor(0).setDepth(D));
     });
 
     // Button
-    const btn = this.add.rectangle(x, y + H / 2 - 22, W - 20, 30, accentColor, 0.15)
-      .setInteractive().setStrokeStyle(1, accentColor);
-    const btnTxt = this.add.text(x, y + H / 2 - 22, 'SELECT', {
+    const btn = this.add.rectangle(x, y + CH / 2 - 22, CW - 20, 30, accentColor, 0.15)
+      .setInteractive().setStrokeStyle(1, accentColor).setScrollFactor(0).setDepth(D);
+    const btnTxt = this.add.text(x, y + CH / 2 - 22, 'SELECT', {
       fontSize: '13px', color: hex, fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    container.add(btn);
-    container.add(btnTxt);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D);
+    els.push(btn);
+    els.push(btnTxt);
 
     cardBg.on('pointerover', () => cardBg.setFillStyle(accentColor, 0.08));
     cardBg.on('pointerout', () => cardBg.setFillStyle(bgColor));
@@ -1219,8 +1225,8 @@ export class GameScene extends Phaser.Scene {
       this.saveCurrentFloor(); // saves the reset state
     }
 
-    this._restDialog?.destroy();
-    this._restDialog = undefined;
+    this._restDialogElements.forEach(e => e.destroy());
+    this._restDialogElements = [];
     this._restDialogOpen = false;
 
     this.cameras.main.fade(400, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
