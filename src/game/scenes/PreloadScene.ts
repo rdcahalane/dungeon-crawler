@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, COLORS, FOG_RADIUS } from "../constants";
+import { TILE_SIZE, COLORS, FOG_RADIUS, FLOOR_THEMES, FloorTheme } from "../constants";
 
 function lerpColor(c1: number, c2: number, t: number): number {
   const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
@@ -24,10 +24,14 @@ export class PreloadScene extends Phaser.Scene {
   private createTextures() {
     this.createFloorTexture();
     this.createWallTexture();
+    this.createThemedTiles();
+    this.createTavernTextures();
     this.createSecretDoorTexture();
     this.createTrapTexture();
     this.createStairsTexture();
+    this.createStairsUpTexture();
     this.createPlayerTexture();
+    this.createClassAvatars();
     this.createEnemyTexture();
     this.createNewEnemyTextures();
     this.createItemTextures();
@@ -216,7 +220,327 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // ── Player ────────────────────────────────────────────────────────────────
+  // ── Stairs Up ─────────────────────────────────────────────────────────────
+
+  private createStairsUpTexture() {
+    const S = TILE_SIZE;
+    const g = this.add.graphics();
+
+    g.fillStyle(0x1e1e28);
+    g.fillRect(0, 0, S, S);
+
+    // Ascending steps (reverse order, top-lit in blue)
+    const steps = [
+      { x: 4, y: 4, w: 24, h: 4 },
+      { x: 7, y: 9, w: 18, h: 4 },
+      { x: 10, y: 14, w: 12, h: 4 },
+      { x: 13, y: 19, w: 6, h: 4 },
+    ];
+
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      const t = i / (steps.length - 1);
+      const stepColor = lerpColor(0x80b8ff, 0xaaddff, t);
+      g.fillStyle(stepColor);
+      g.fillRect(s.x, s.y, s.w, s.h);
+      g.fillStyle(0xcceeff, 0.6);
+      g.fillRect(s.x, s.y, s.w, 1);
+      g.fillStyle(0x2244aa, 0.5);
+      g.fillRect(s.x, s.y + s.h - 1, s.w, 1);
+    }
+    g.fillStyle(0xaaddff, 0.2);
+    g.fillRect(2, 2, 28, 4);
+
+    g.generateTexture("stairs_up", S, S);
+    g.destroy();
+  }
+
+  // ── Themed Floor & Wall Tiles (4 themes) ─────────────────────────────────
+
+  private createThemedTiles() {
+    FLOOR_THEMES.forEach((theme, idx) => {
+      this.createThemedFloor(idx, theme);
+      this.createThemedWall(idx, theme);
+    });
+  }
+
+  private createThemedFloor(idx: number, t: FloorTheme) {
+    const S = TILE_SIZE;
+    const g = this.add.graphics();
+    g.fillStyle(t.floorBase);
+    g.fillRect(0, 0, S, S);
+    const stones = [
+      { x: 2, y: 2, w: 13, h: 12, c: t.floorStones[0] },
+      { x: 17, y: 2, w: 13, h: 12, c: t.floorStones[1] },
+      { x: 2, y: 17, w: 13, h: 12, c: t.floorStones[2] },
+      { x: 17, y: 17, w: 12, h: 12, c: t.floorStones[3] },
+    ];
+    for (const s of stones) {
+      g.fillStyle(t.floorGrout);
+      g.fillRoundedRect(s.x + 1, s.y + 1, s.w, s.h, 2);
+      g.fillStyle(s.c);
+      g.fillRoundedRect(s.x, s.y, s.w, s.h, 2);
+      g.fillStyle(lerpColor(s.c, 0xffffff, 0.12), 0.5);
+      g.fillRoundedRect(s.x, s.y, Math.floor(s.w * 0.55), Math.floor(s.h * 0.45), 2);
+    }
+    g.generateTexture(`floor_${idx}`, S, S);
+    g.destroy();
+  }
+
+  private createThemedWall(idx: number, t: FloorTheme) {
+    const S = TILE_SIZE;
+    const g = this.add.graphics();
+    g.fillStyle(t.wallBase);
+    g.fillRect(0, 0, S, S);
+    const chunks = [
+      { x: 0, y: 0, w: 17, h: 14 },
+      { x: 19, y: 0, w: 13, h: 15 },
+      { x: 0, y: 16, w: 15, h: 16 },
+      { x: 17, y: 17, w: 15, h: 15 },
+    ];
+    for (const c of chunks) {
+      g.fillStyle(t.wallBase);
+      g.fillRect(c.x + 2, c.y + 2, c.w, c.h);
+      g.fillStyle(t.wallFace);
+      g.fillRect(c.x, c.y, c.w, c.h);
+      g.fillStyle(t.wallHi, 0.75);
+      g.fillRect(c.x, c.y, c.w, 2);
+      g.fillRect(c.x, c.y, 2, c.h);
+      g.fillStyle(t.wallLo, 0.85);
+      g.fillRect(c.x, c.y + c.h - 2, c.w, 2);
+      g.fillRect(c.x + c.w - 2, c.y, 2, c.h);
+      g.fillStyle(t.wallHi, 0.2);
+      g.fillRect(c.x + 2, c.y + 2, Math.floor(c.w * 0.45), Math.floor(c.h * 0.35));
+    }
+    g.fillStyle(t.wallBase);
+    g.fillRect(17, 0, 2, 17);
+    g.fillRect(0, 15, 17, 2);
+    g.fillRect(17, 16, S - 17, 2);
+    g.generateTexture(`wall_${idx}`, S, S);
+    g.destroy();
+  }
+
+  // ── Tavern Textures ────────────────────────────────────────────────────────
+
+  private createTavernTextures() {
+    const S = TILE_SIZE;
+
+    // Warm wooden plank floor
+    const tf = this.add.graphics();
+    tf.fillStyle(0x2c1e0c);
+    tf.fillRect(0, 0, S, S);
+    const plankColors = [0x5c3a18, 0x4e3210, 0x6b4520, 0x543c16];
+    for (let i = 0; i < 4; i++) {
+      const y = i * 8;
+      tf.fillStyle(plankColors[i]);
+      tf.fillRect(0, y, S, 7);
+      tf.fillStyle(lerpColor(plankColors[i], 0x000000, 0.3), 0.4);
+      tf.fillRect(2, y + 2, 10, 1);
+      tf.fillRect(18, y + 4, 8, 1);
+    }
+    tf.generateTexture("tavern_floor", S, S);
+    tf.destroy();
+
+    // Stone-and-timber wall
+    const tw = this.add.graphics();
+    tw.fillStyle(0x1e1208);
+    tw.fillRect(0, 0, S, S);
+    tw.fillStyle(0x5a4030);
+    tw.fillRect(0, 0, 15, 14);
+    tw.fillStyle(0x4e3828);
+    tw.fillRect(17, 0, S - 17, 15);
+    tw.fillStyle(0x563c28);
+    tw.fillRect(0, 16, 14, S - 16);
+    tw.fillStyle(0x503822);
+    tw.fillRect(16, 17, S - 16, S - 17);
+    tw.fillStyle(0x8b5e2a, 0.5);
+    tw.fillRect(0, 14, S, 2);
+    tw.fillRect(14, 0, 2, S);
+    tw.fillStyle(0x7a6050, 0.4);
+    tw.fillRect(0, 0, 8, 3);
+    tw.generateTexture("tavern_wall", S, S);
+    tw.destroy();
+
+    // NPC base sprite (white, will be tinted per-NPC)
+    const npc = this.add.graphics();
+    npc.fillStyle(0xffffff);
+    npc.fillCircle(16, 8, 6);
+    npc.fillRoundedRect(10, 15, 12, 14, 3);
+    npc.fillStyle(0xdddddd);
+    npc.fillRect(6, 16, 5, 10);
+    npc.fillRect(21, 16, 5, 10);
+    npc.fillStyle(0x000000);
+    npc.fillCircle(14, 7, 1.5);
+    npc.fillCircle(18, 7, 1.5);
+    npc.generateTexture("npc", S, S);
+    npc.destroy();
+
+    // Notice board
+    const board = this.add.graphics();
+    board.fillStyle(0x8b5e2a);
+    board.fillRoundedRect(2, 2, S - 4, S - 4, 3);
+    board.fillStyle(0xffe082);
+    board.fillRoundedRect(4, 4, S - 8, S - 8, 2);
+    board.fillStyle(0x4e3210, 0.8);
+    board.fillRect(6, 8, S - 14, 2);
+    board.fillRect(6, 13, S - 14, 2);
+    board.fillRect(6, 18, S - 14, 2);
+    board.fillRect(6, 23, 10, 2);
+    board.fillStyle(0xf44336);
+    board.fillCircle(16, 6, 2);
+    board.generateTexture("notice_board", S, S);
+    board.destroy();
+
+    // Dungeon entrance portal
+    const portal = this.add.graphics();
+    portal.fillStyle(0x080812);
+    portal.fillRoundedRect(2, 0, S - 4, S - 2, 3);
+    for (let i = 0; i < 4; i++) {
+      portal.fillStyle(0x6600cc, (4 - i) * 0.12);
+      portal.fillRoundedRect(2 + i, i, S - 4 - i * 2, S - 2 - i, 3);
+    }
+    portal.fillStyle(0x1a0040);
+    portal.fillRoundedRect(5, 3, S - 10, S - 6, 2);
+    portal.fillStyle(0x9955ff, 0.35);
+    portal.fillCircle(16, 15, 9);
+    portal.fillStyle(0xffffff, 0.15);
+    portal.fillCircle(14, 12, 3);
+    portal.generateTexture("dungeon_portal", S, S);
+    portal.destroy();
+  }
+
+  // ── Class Avatars ─────────────────────────────────────────────────────────
+
+  private createClassAvatars() {
+    this.createFighterAvatar();
+    this.createThiefAvatar();
+    this.createWizardAvatar();
+    this.createClericAvatar();
+  }
+
+  private createFighterAvatar() {
+    const S = TILE_SIZE;
+    const g = this.add.graphics();
+    // Broad helmet
+    g.fillStyle(0xffffff);
+    g.fillCircle(16, 7, 8);
+    g.fillStyle(0x000000);
+    g.fillRect(10, 5, 12, 3);  // visor slit
+    // Wide shoulder pauldrons
+    g.fillStyle(0xffffff);
+    g.fillRect(3, 12, 6, 8);
+    g.fillRect(23, 12, 6, 8);
+    // Armoured chest
+    g.fillRoundedRect(7, 14, 18, 14, 2);
+    g.fillStyle(0xdddddd, 0.5);
+    g.fillRect(8, 17, 16, 2);
+    g.fillRect(8, 21, 16, 2);
+    // Sword on right
+    g.fillStyle(0xffffff);
+    g.fillRect(26, 8, 3, 16);
+    g.fillStyle(0xbbbbbb, 0.7);
+    g.fillRect(23, 14, 8, 2);
+    g.generateTexture("player_fighter", S, S);
+    g.destroy();
+  }
+
+  private createThiefAvatar() {
+    const S = TILE_SIZE;
+    const g = this.add.graphics();
+    // Pointed hood
+    g.fillStyle(0xffffff);
+    g.fillTriangle(16, 0, 9, 11, 23, 11);
+    g.fillCircle(16, 11, 6);
+    // Shadow (hood brim shadow on face)
+    g.fillStyle(0x000000, 0.45);
+    g.fillRect(10, 9, 12, 4);
+    // Slim cloaked body
+    g.fillStyle(0xffffff);
+    g.fillRoundedRect(11, 17, 10, 14, 2);
+    // Cloak sides
+    g.fillTriangle(7, 17, 11, 17, 7, 30);
+    g.fillTriangle(25, 17, 21, 17, 25, 30);
+    // Dagger
+    g.fillStyle(0xffffff);
+    g.fillRect(4, 20, 2, 9);
+    g.fillStyle(0xbbbbbb, 0.6);
+    g.fillRect(2, 22, 6, 2);
+    // Eye gleam
+    g.fillStyle(0xffffff, 0.8);
+    g.fillCircle(16, 11, 1.5);
+    g.generateTexture("player_thief", S, S);
+    g.destroy();
+  }
+
+  private createWizardAvatar() {
+    const S = TILE_SIZE;
+    const g = this.add.graphics();
+    // Tall pointed hat
+    g.fillStyle(0xffffff);
+    g.fillTriangle(16, 0, 9, 12, 23, 12);
+    g.fillRect(7, 11, 18, 3);
+    // Head (narrow)
+    g.fillCircle(16, 16, 5);
+    // Long robes
+    g.fillTriangle(9, 19, 23, 19, 5, 32);
+    g.fillTriangle(23, 19, 9, 19, 27, 32);
+    g.fillRoundedRect(11, 18, 10, 13, 1);
+    // Star on robe
+    g.fillStyle(0xffffff, 0.45);
+    g.fillRect(15, 20, 2, 6);
+    g.fillRect(12, 23, 8, 1);
+    // Staff
+    g.fillStyle(0xffffff);
+    g.fillRect(26, 6, 2, 24);
+    g.fillCircle(27, 5, 3);
+    // Eyes
+    g.fillStyle(0x000000);
+    g.fillCircle(14, 15, 1.5);
+    g.fillCircle(18, 15, 1.5);
+    g.fillStyle(0xffffff, 0.7);
+    g.fillCircle(14, 15, 1);
+    g.fillCircle(18, 15, 1);
+    g.generateTexture("player_wizard", S, S);
+    g.destroy();
+  }
+
+  private createClericAvatar() {
+    const S = TILE_SIZE;
+    const g = this.add.graphics();
+    // Rounded cowl
+    g.fillStyle(0xffffff);
+    g.fillCircle(16, 8, 8);
+    g.fillRect(8, 8, 16, 5);
+    // Holy cross on forehead
+    g.fillStyle(0x000000);
+    g.fillRect(15, 2, 2, 7);
+    g.fillRect(11, 5, 10, 2);
+    g.fillStyle(0xffffff, 0.8);
+    g.fillRect(15, 3, 2, 5);
+    g.fillRect(12, 6, 8, 1);
+    // Tabard / robes
+    g.fillStyle(0xffffff);
+    g.fillRoundedRect(9, 15, 14, 16, 2);
+    // Wide shoulders
+    g.fillRect(5, 15, 5, 8);
+    g.fillRect(22, 15, 5, 8);
+    // Cross symbol on chest
+    g.fillStyle(0xffffff, 0.35);
+    g.fillRect(15, 16, 2, 8);
+    g.fillRect(12, 19, 8, 2);
+    // Mace right side
+    g.fillStyle(0xffffff);
+    g.fillRect(25, 12, 3, 14);
+    g.fillRoundedRect(22, 9, 9, 6, 2);
+    // Eyes
+    g.fillStyle(0x000000);
+    g.fillCircle(13, 8, 1.5);
+    g.fillCircle(19, 8, 1.5);
+    g.generateTexture("player_cleric", S, S);
+    g.destroy();
+  }
+
+  // ── Player (armoured hero) ────────────────────────────────────────────────
 
   private createPlayerTexture() {
     const S = TILE_SIZE;

@@ -20,6 +20,9 @@ export interface HUDData {
   spellKeys: SpellKey[];
   spellCooldowns: number[];
   spellManaCosts: number[];
+  potions?: number;
+  manaPotions?: number;
+  gold?: number;
 }
 
 const CLASS_ICONS: Record<string, string> = {
@@ -153,17 +156,19 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private attachToGameScene() {
-    const game = this.scene.get("GameScene") as GameScene;
-    if (!game) return;
+    // Attach to GameScene or TavernScene (whichever is/becomes active)
+    const attachTo = (scene: Phaser.Scene | null) => {
+      if (!scene) return;
+      scene.events.on("hud:update", this.onUpdate, this);
+      scene.events.on("hud:status", this.onStatus, this);
+      scene.events.on("hud:zoom", (zoom: number) => {
+        this.zoomLabel.setText(`${Math.round(zoom * 100)}%`);
+      });
+      scene.events.once("shutdown", () => this.scene.restart());
+    };
 
-    game.events.on("hud:update", this.onUpdate, this);
-    game.events.on("hud:status", this.onStatus, this);
-    game.events.on("hud:zoom", (zoom: number) => {
-      this.zoomLabel.setText(`${Math.round(zoom * 100)}%`);
-    });
-    game.events.once("shutdown", () => {
-      this.scene.restart();
-    });
+    attachTo(this.scene.get("GameScene"));
+    attachTo(this.scene.get("TavernScene"));
   }
 
   private onUpdate(data: HUDData) {
@@ -200,9 +205,13 @@ export class HUDScene extends Phaser.Scene {
       this.classIcon.setText(icon).setColor(color);
     }
 
+    if (data.gold !== undefined) this._goldValue = data.gold;
+
     // Text
-    this.levelText.setText(`LV ${data.level}  ATK ${data.attack}  AC ${data.defense}  Gold ${this.getGold()}`);
-    this.floorText.setText(`Floor ${data.floor}`);
+    const potStr = data.potions !== undefined ? `  🧪${data.potions}` : '';
+    const mpStr = data.manaPotions !== undefined && data.manaPotions > 0 ? `  💧${data.manaPotions}` : '';
+    this.levelText.setText(`LV ${data.level}  ATK ${data.attack}  AC ${data.defense}${potStr}${mpStr}`);
+    this.floorText.setText(data.floor === 0 ? `The Tavern` : `Floor ${data.floor}`);
     this.killsText.setText(`Kills: ${data.kills}`);
 
     // Status effects

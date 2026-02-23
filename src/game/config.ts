@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import { PreloadScene } from "./scenes/PreloadScene";
 import { MainMenuScene } from "./scenes/MainMenuScene";
 import { CharacterSelectScene } from "./scenes/CharacterSelectScene";
+import { TavernScene } from "./scenes/TavernScene";
 import { GameScene } from "./scenes/GameScene";
 import { GameOverScene } from "./scenes/GameOverScene";
 import { HUDScene } from "./scenes/HUDScene";
@@ -18,5 +19,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [PreloadScene, MainMenuScene, CharacterSelectScene, GameScene, HUDScene, GameOverScene],
+  scene: [PreloadScene, MainMenuScene, CharacterSelectScene, TavernScene, GameScene, HUDScene, GameOverScene],
 };

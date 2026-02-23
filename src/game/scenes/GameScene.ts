@@ -4,7 +4,7 @@ import {
   CHARACTER_CLASSES, SpellKey, SPELLS,
   TRAP_TYPES, TrapTypeKey,
   ENEMY_TYPES, EnemyTypeKey,
-  abilityMod,
+  abilityMod, getFloorThemeIdx,
 } from "../constants";
 import { generateDungeon, DungeonData } from "../systems/DungeonGenerator";
 import { Player, CharCreationData, PlayerStats } from "../entities/Player";
@@ -101,10 +101,18 @@ export class GameScene extends Phaser.Scene {
     this.emitHUD();
   }
 
+  private get themeIdx(): number {
+    return getFloorThemeIdx(this.currentFloor);
+  }
+
   // ── Tilemap ───────────────────────────────────────────────────────────────
 
   private buildTilemap() {
     const { tiles } = this.dungeon;
+    const ti = this.themeIdx;
+    const floorKey = `floor_${ti}`;
+    const wallKey = `wall_${ti}`;
+
     this.wallGroup = this.physics.add.staticGroup();
 
     for (let ty = 0; ty < MAP_HEIGHT; ty++) {
@@ -114,12 +122,11 @@ export class GameScene extends Phaser.Scene {
         const wy = ty * TILE_SIZE + TILE_SIZE / 2;
 
         if (t === TILE.WALL) {
-          this.add.image(wx, wy, "wall").setDepth(1);
+          this.add.image(wx, wy, wallKey).setDepth(1);
           const rect = this.add.rectangle(wx, wy, TILE_SIZE, TILE_SIZE);
           this.physics.add.existing(rect, true);
           this.wallGroup.add(rect);
         } else if (t === TILE.SECRET_DOOR) {
-          // Render as wall (with faint crack), add physics body
           const img = this.add.image(wx, wy, "secret_door").setDepth(1);
           this.secretDoorSprites.set(`${tx},${ty}`, img);
           this.secretDoorSet.add(`${tx},${ty}`);
@@ -127,13 +134,15 @@ export class GameScene extends Phaser.Scene {
           this.physics.add.existing(rect, true);
           this.wallGroup.add(rect);
         } else if (t === TILE.STAIRS) {
-          this.add.image(wx, wy, "floor").setDepth(1);
+          this.add.image(wx, wy, floorKey).setDepth(1);
           this.add.image(wx, wy, "stairs").setDepth(2);
+        } else if (t === TILE.STAIRS_UP) {
+          this.add.image(wx, wy, floorKey).setDepth(1);
+          this.add.image(wx, wy, "stairs_up").setDepth(2);
         } else if (t === TILE.TRAP) {
-          this.add.image(wx, wy, "floor").setDepth(1);
-          // Trap overlay will be toggled when detected
+          this.add.image(wx, wy, floorKey).setDepth(1);
         } else {
-          this.add.image(wx, wy, "floor").setDepth(1);
+          this.add.image(wx, wy, floorKey).setDepth(1);
         }
       }
     }
@@ -376,6 +385,9 @@ export class GameScene extends Phaser.Scene {
       spellKeys: this.spellHotkeyMap,
       spellCooldowns: this.spellHotkeyMap.map(k => this.spellSystem?.getRemainingCooldown(k) ?? 0),
       spellManaCosts: this.spellHotkeyMap.map(k => SPELLS[k]?.manaCost ?? 0),
+      potions: s.potions,
+      manaPotions: s.manaPotions,
+      gold: s.gold,
     });
   }
 
@@ -449,8 +461,12 @@ export class GameScene extends Phaser.Scene {
     // Item pickup
     this.checkItemPickup();
 
-    // Stairs check
+    // Potion keys
+    this.checkPotionInput();
+
+    // Stairs check (down and up)
     this.checkStairs();
+    this.checkStairsUp();
 
     // Floating texts
     this.updateFloatingTexts(delta);
@@ -978,17 +994,77 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private checkStairsUp() {
+    const { tx, ty } = this.dungeon.stairsUpPos;
+    const sx = tx * TILE_SIZE + TILE_SIZE / 2;
+    const sy = ty * TILE_SIZE + TILE_SIZE / 2;
+    const dx = this.player.x - sx;
+    const dy = this.player.y - sy;
+    if (Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.9) {
+      this.prevFloor();
+    }
+  }
+
   private nextFloor() {
     this.cameras.main.fade(300, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
       if (t === 1) {
         const persistedStats = this.player.getSerializable();
         persistedStats.floor = this.currentFloor + 1;
-        this.scene.restart({
-          floor: this.currentFloor + 1,
-          persistedStats,
-        });
+        this.scene.restart({ floor: this.currentFloor + 1, persistedStats });
       }
     });
+  }
+
+  private prevFloor() {
+    const persistedStats = this.player.getSerializable();
+    persistedStats.floor = this.currentFloor - 1;
+
+    this.cameras.main.fade(300, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
+      if (t === 1) {
+        if (this.currentFloor <= 1) {
+          // Return to tavern
+          this.scene.start("TavernScene", { persistedStats });
+        } else {
+          this.scene.restart({ floor: this.currentFloor - 1, persistedStats });
+        }
+      }
+    });
+  }
+
+  // ── Potions ────────────────────────────────────────────────────────────────
+
+  private _fKey?: Phaser.Input.Keyboard.Key;
+  private _mKey?: Phaser.Input.Keyboard.Key;
+
+  private checkPotionInput() {
+    if (!this._fKey) this._fKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    if (!this._mKey) this._mKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.M);
+
+    if (Phaser.Input.Keyboard.JustDown(this._fKey)) {
+      if (this.player.stats.potions > 0) {
+        this.player.stats.potions--;
+        this.player.heal(50);
+        this.spawnFloatingText(this.player.x, this.player.y - 30, 'Potion! +50 HP', COLORS.HEAL_TEXT, 12);
+        this.events.emit("hud:status", `Used Health Potion (${this.player.stats.potions} left)`);
+        this.emitHUD();
+      } else {
+        this.events.emit("hud:status", "No potions left!");
+      }
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this._mKey)) {
+      if (this.player.stats.manaPotions > 0 && this.player.stats.maxMana > 0) {
+        this.player.stats.manaPotions--;
+        this.player.restoreMana(40);
+        this.spawnFloatingText(this.player.x, this.player.y - 30, '+40 Mana', COLORS.MANA_BAR, 12);
+        this.events.emit("hud:status", `Used Mana Potion (${this.player.stats.manaPotions} left)`);
+        this.emitHUD();
+      } else if (this.player.stats.maxMana === 0) {
+        this.events.emit("hud:status", "Your class doesn't use mana!");
+      } else {
+        this.events.emit("hud:status", "No mana potions left!");
+      }
+    }
   }
 
   // ── Death ─────────────────────────────────────────────────────────────────

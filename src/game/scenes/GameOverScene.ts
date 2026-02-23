@@ -55,7 +55,7 @@ export class GameOverScene extends Phaser.Scene {
     bg.on("pointerover", () => { bg.setFillStyle(0x2a0a0a); txt.setColor("#ffffff"); });
     bg.on("pointerout", () => { bg.setFillStyle(0x1a1a2e); txt.setColor("#f44336"); });
     bg.on("pointerdown", () => {
-      this.scene.start("GameScene", { floor: 1 });
+      this.scene.start("CharacterSelectScene");
     });
 
     // Menu button

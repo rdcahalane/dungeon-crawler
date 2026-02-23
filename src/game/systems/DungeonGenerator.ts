@@ -36,7 +36,8 @@ export interface DungeonData {
   tiles: TileValue[][];
   rooms: Room[];
   playerStart: { tx: number; ty: number };
-  stairsPos: { tx: number; ty: number };
+  stairsPos: { tx: number; ty: number };     // stairs DOWN
+  stairsUpPos: { tx: number; ty: number };   // stairs UP (back to surface / prev floor)
   enemies: EnemySpawn[];
   items: ItemSpawn[];
   secretDoors: SecretDoor[];
@@ -200,10 +201,16 @@ export function generateDungeon(floor: number): DungeonData {
     }
   }
 
-  // ── Player & Stairs ───────────────────────────────────────────────────────
+  // ── Player, Stairs Up & Stairs Down ──────────────────────────────────────
   const startRoom = rooms[0];
+  // Stairs UP: placed at the top-left of room[0], player spawns at center
+  const stairsUpPos = { tx: startRoom.x + 1, ty: startRoom.y + 1 };
+  tiles[stairsUpPos.ty][stairsUpPos.tx] = TILE.STAIRS_UP;
+
+  // Player spawns in the center of room[0], near the stairs up
   const playerStart = { tx: startRoom.cx, ty: startRoom.cy };
 
+  // Stairs DOWN: last room center
   const lastRoom = rooms[rooms.length - 1];
   const stairsPos = { tx: lastRoom.cx, ty: lastRoom.cy };
   tiles[stairsPos.ty][stairsPos.tx] = TILE.STAIRS;
@@ -296,5 +303,5 @@ export function generateDungeon(floor: number): DungeonData {
     }
   }
 
-  return { tiles, rooms, playerStart, stairsPos, enemies, items, secretDoors, traps, chests };
+  return { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests };
 }

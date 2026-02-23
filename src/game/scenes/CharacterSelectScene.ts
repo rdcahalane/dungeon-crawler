@@ -563,7 +563,8 @@ export class CharacterSelectScene extends Phaser.Scene {
       ...scores,
     };
 
-    this.scene.start('GameScene', { floor: 1, charData });
+    // Go to tavern first (hub before dungeon)
+    this.scene.start('TavernScene', { charData });
   }
 
   private _makeButton(x: number, y: number, label: string, w: number, h: number) {

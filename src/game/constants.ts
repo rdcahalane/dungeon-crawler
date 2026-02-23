@@ -6,9 +6,10 @@ export const FOG_RADIUS = 5; // tiles
 export const TILE = {
   WALL: 0,
   FLOOR: 1,
-  STAIRS: 2,
+  STAIRS: 2,      // stairs DOWN (next floor)
   SECRET_DOOR: 3, // renders as wall, passable when found
   TRAP: 4,        // renders as floor, triggers on step
+  STAIRS_UP: 5,   // stairs UP (previous floor / tavern)
 } as const;
 
 export type TileValue = (typeof TILE)[keyof typeof TILE];
@@ -454,6 +455,72 @@ export interface TrapSpawn {
   type: TrapTypeKey;
   triggered: boolean;
 }
+
+// ── Floor Themes ─────────────────────────────────────────────────────────────
+
+export interface FloorTheme {
+  name: string;
+  desc: string;   // atmospheric flavour text
+  floorBase: number;
+  floorGrout: number;
+  floorStones: [number, number, number, number];
+  wallBase: number;
+  wallFace: number;
+  wallHi: number;
+  wallLo: number;
+  fogColor: number;  // tint applied to torch glow
+}
+
+export const FLOOR_THEMES: FloorTheme[] = [
+  // Theme 0: Wet Cave (floors 1-3)
+  {
+    name: 'Wet Cave',
+    desc: 'Water drips echo through slick stone passages.',
+    floorBase: 0x111820, floorGrout: 0x0b1018,
+    floorStones: [0x1e2a3a, 0x192434, 0x1b2838, 0x1f2d3f],
+    wallBase: 0x0b1018, wallFace: 0x26374e, wallHi: 0x344e6a, wallLo: 0x121e2c,
+    fogColor: 0x2244aa,
+  },
+  // Theme 1: Dry Cave (floors 4-6)
+  {
+    name: 'Dry Cave',
+    desc: 'Ancient dust and stale heat fill the air.',
+    floorBase: 0x1c1510, floorGrout: 0x120e08,
+    floorStones: [0x2e2820, 0x28221a, 0x2a241c, 0x2c2618],
+    wallBase: 0x110d08, wallFace: 0x4e3f30, wallHi: 0x6a5642, wallLo: 0x2e2216,
+    fogColor: 0xff8c00,
+  },
+  // Theme 2: Dungeon (floors 7-9)
+  {
+    name: 'Dungeon',
+    desc: 'Manmade walls of cold dressed stone surround you.',
+    floorBase: 0x131320, floorGrout: 0x0c0c16,
+    floorStones: [0x28283e, 0x23233a, 0x25253e, 0x27273c],
+    wallBase: 0x0a0a16, wallFace: 0x35354e, wallHi: 0x48486e, wallLo: 0x1c1c2e,
+    fogColor: 0xcc4400,
+  },
+  // Theme 3: Deep Dungeon (floors 10+)
+  {
+    name: 'Deep Dungeon',
+    desc: 'Ancient magic crackles through the abyssal dark.',
+    floorBase: 0x0e0a16, floorGrout: 0x07050c,
+    floorStones: [0x1e1428, 0x1a1222, 0x1c1426, 0x201628],
+    wallBase: 0x080510, wallFace: 0x2a1a40, wallHi: 0x3e2858, wallLo: 0x160e24,
+    fogColor: 0x9900cc,
+  },
+];
+
+export function getFloorThemeIdx(floor: number): number {
+  if (floor <= 3) return 0;
+  if (floor <= 6) return 1;
+  if (floor <= 9) return 2;
+  return 3;
+}
+
+// ── Tavern ────────────────────────────────────────────────────────────────────
+
+export const TAVERN_W = 30;  // tiles
+export const TAVERN_H = 18;
 
 // ── Ability Score Helpers ─────────────────────────────────────────────────────
 

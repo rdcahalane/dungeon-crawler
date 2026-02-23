@@ -62,6 +62,9 @@ export interface PlayerStats {
   arcaneRecoveryTimer: number; // Wizard: ms since last hit
   smiteBonus: number;          // Cleric: bonus damage on next attack
   sneakBonusDice: number;      // Thief: number of d6 for sneak attack
+  // Consumables
+  potions: number;     // health potions (F key in dungeon)
+  manaPotions: number; // mana potions (M key in dungeon)
 }
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -89,7 +92,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private onTurnUndead?: () => void;
 
   constructor(scene: Phaser.Scene, x: number, y: number, charData?: CharCreationData, persistedStats?: PlayerStats) {
-    super(scene, x, y, "player");
+    // Use class-specific texture key if available, fallback to 'player'
+    const textureKey = charData
+      ? `player_${charData.classKey}`
+      : persistedStats
+        ? `player_${persistedStats.classKey}`
+        : 'player';
+    super(scene, x, y, textureKey);
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
@@ -190,6 +199,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       arcaneRecoveryTimer: 0,
       smiteBonus: 0,
       sneakBonusDice: Math.floor(1 / 2),
+      potions: 1,      // start with 1 health potion
+      manaPotions: 0,
     };
   }
 
