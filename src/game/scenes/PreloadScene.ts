@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, COLORS, TILE, FOG_RADIUS } from "../constants";
+import { TILE_SIZE, COLORS, FOG_RADIUS } from "../constants";
 
 function lerpColor(c1: number, c2: number, t: number): number {
   const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
@@ -24,12 +24,17 @@ export class PreloadScene extends Phaser.Scene {
   private createTextures() {
     this.createFloorTexture();
     this.createWallTexture();
+    this.createSecretDoorTexture();
+    this.createTrapTexture();
     this.createStairsTexture();
     this.createPlayerTexture();
     this.createEnemyTexture();
+    this.createNewEnemyTextures();
     this.createItemTextures();
+    this.createChestTextures();
     this.createFogBrush();
     this.createTorchGlow();
+    this.createSpellGlows();
   }
 
   // ── Cobblestone floor ──────────────────────────────────────────────────────
@@ -38,11 +43,9 @@ export class PreloadScene extends Phaser.Scene {
     const S = TILE_SIZE;
     const g = this.add.graphics();
 
-    // Grout base
     g.fillStyle(0x18181f);
     g.fillRect(0, 0, S, S);
 
-    // Four cobblestones in a 2×2 grid
     const stones = [
       { x: 2, y: 2, w: 13, h: 12, c: 0x2e2e3a },
       { x: 17, y: 2, w: 13, h: 12, c: 0x28282e },
@@ -51,16 +54,12 @@ export class PreloadScene extends Phaser.Scene {
     ];
 
     for (const s of stones) {
-      // Drop shadow
       g.fillStyle(0x0f0f14);
       g.fillRoundedRect(s.x + 1, s.y + 1, s.w, s.h, 2);
-      // Stone body
       g.fillStyle(s.c);
       g.fillRoundedRect(s.x, s.y, s.w, s.h, 2);
-      // Top-left highlight
       g.fillStyle(0x3c3c4a, 0.5);
       g.fillRoundedRect(s.x, s.y, Math.floor(s.w * 0.55), Math.floor(s.h * 0.45), 2);
-      // Micro noise
       g.fillStyle(0x222230, 0.7);
       g.fillRect(s.x + 4, s.y + 6, 1, 1);
       g.fillRect(s.x + 9, s.y + 3, 1, 1);
@@ -70,18 +69,15 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // ── Rocky cave wall ───────────────────────────────────────────────────────
-  // Warm earthy brown-grays — clearly distinct from the cool blue-gray floor
+  // ── Rocky cave wall ────────────────────────────────────────────────────────
 
   private createWallTexture() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
 
-    // Deep crevice base — very dark warm brown
     g.fillStyle(0x110d08);
     g.fillRect(0, 0, S, S);
 
-    // Four irregular rock chunks, each a different warm earth tone
     const chunks = [
       { x: 0,  y: 0,  w: 17, h: 14, face: 0x4e3f30, hi: 0x6a5642, lo: 0x2e2216 },
       { x: 19, y: 0,  w: 13, h: 15, face: 0x463828, hi: 0x5e4c38, lo: 0x2a1e12 },
@@ -90,37 +86,98 @@ export class PreloadScene extends Phaser.Scene {
     ];
 
     for (const c of chunks) {
-      // Drop-shadow for depth
       g.fillStyle(0x080604);
       g.fillRect(c.x + 2, c.y + 2, c.w, c.h);
-      // Rock face
       g.fillStyle(c.face);
       g.fillRect(c.x, c.y, c.w, c.h);
-      // Top & left highlights (light hitting the upper face)
       g.fillStyle(c.hi, 0.75);
-      g.fillRect(c.x,     c.y, c.w, 2);
-      g.fillRect(c.x,     c.y, 2,   c.h);
-      // Bottom & right shadow
+      g.fillRect(c.x, c.y, c.w, 2);
+      g.fillRect(c.x, c.y, 2, c.h);
       g.fillStyle(c.lo, 0.85);
-      g.fillRect(c.x,          c.y + c.h - 2, c.w, 2);
-      g.fillRect(c.x + c.w - 2, c.y,           2,   c.h);
-      // Inner facet — upper-left lighter patch simulates a flat struck surface
+      g.fillRect(c.x, c.y + c.h - 2, c.w, 2);
+      g.fillRect(c.x + c.w - 2, c.y, 2, c.h);
       g.fillStyle(c.hi, 0.25);
       g.fillRect(c.x + 2, c.y + 2, Math.floor(c.w * 0.45), Math.floor(c.h * 0.35));
-      // Pitting / crack dots
       g.fillStyle(0x0a0806, 0.9);
-      g.fillRect(c.x + 5,      c.y + 4,      1, 1);
+      g.fillRect(c.x + 5, c.y + 4, 1, 1);
       g.fillRect(c.x + c.w - 5, c.y + c.h - 4, 1, 1);
-      g.fillRect(c.x + 3,      c.y + c.h - 5, 1, 1);
+      g.fillRect(c.x + 3, c.y + c.h - 5, 1, 1);
     }
 
-    // Crack lines between chunks — dark hairline gaps
     g.fillStyle(0x080604);
-    g.fillRect(17, 0,  2, 17); // vertical crack
-    g.fillRect(0,  15, 17, 2); // horizontal crack left
-    g.fillRect(17, 16, S - 17, 2); // horizontal crack right
+    g.fillRect(17, 0, 2, 17);
+    g.fillRect(0, 15, 17, 2);
+    g.fillRect(17, 16, S - 17, 2);
 
     g.generateTexture("wall", S, S);
+    g.destroy();
+  }
+
+  // ── Secret door: wall with faint crack ────────────────────────────────────
+
+  private createSecretDoorTexture() {
+    const S = TILE_SIZE;
+
+    // Reuse wall as base — draw a subtle vertical crack in blue
+    const g = this.add.graphics();
+    g.fillStyle(0x110d08);
+    g.fillRect(0, 0, S, S);
+
+    const chunks = [
+      { x: 0, y: 0, w: 17, h: 14, face: 0x4e3f30 },
+      { x: 19, y: 0, w: 13, h: 15, face: 0x463828 },
+      { x: 0, y: 16, w: 15, h: 16, face: 0x52412e },
+      { x: 17, y: 17, w: 15, h: 15, face: 0x483a28 },
+    ];
+    for (const c of chunks) {
+      g.fillStyle(c.face);
+      g.fillRect(c.x, c.y, c.w, c.h);
+    }
+
+    // Faint crack hint
+    g.fillStyle(0x334455, 0.6);
+    g.fillRect(15, 2, 2, S - 4);
+    g.fillRect(12, 8, 1, 4);
+    g.fillRect(17, 14, 1, 4);
+
+    g.generateTexture("secret_door", S, S);
+    g.destroy();
+
+    // Open secret door — dark opening
+    const g2 = this.add.graphics();
+    g2.fillStyle(0x060608);
+    g2.fillRect(0, 0, S, S);
+    g2.fillStyle(0x1a1a28, 0.6);
+    g2.fillRect(4, 4, S - 8, S - 8);
+    g2.generateTexture("secret_door_open", S, S);
+    g2.destroy();
+  }
+
+  // ── Trap tile ─────────────────────────────────────────────────────────────
+
+  private createTrapTexture() {
+    const S = TILE_SIZE;
+
+    // Hidden trap = floor (same as floor tile, no indicator)
+    // We just reuse "floor" for hidden traps.
+    // Detected trap = floor + red X
+    const g = this.add.graphics();
+    // Base floor
+    g.fillStyle(0x18181f);
+    g.fillRect(0, 0, S, S);
+    g.fillStyle(0x2e2e3a);
+    g.fillRoundedRect(2, 2, 13, 12, 2);
+    g.fillRoundedRect(17, 2, 13, 12, 2);
+    g.fillRoundedRect(2, 17, 13, 12, 2);
+    g.fillRoundedRect(17, 17, 12, 12, 2);
+
+    // Red X indicator
+    g.lineStyle(2, 0xff1744, 0.9);
+    g.strokeRect(6, 6, S - 12, S - 12);
+    g.lineBetween(6, 6, S - 6, S - 6);
+    g.lineBetween(S - 6, 6, 6, S - 6);
+
+    g.generateTexture("trap_detected", S, S);
     g.destroy();
   }
 
@@ -130,11 +187,9 @@ export class PreloadScene extends Phaser.Scene {
     const S = TILE_SIZE;
     const g = this.add.graphics();
 
-    // Floor base
     g.fillStyle(0x1e1e28);
     g.fillRect(0, 0, S, S);
 
-    // Staircase steps (descending)
     const steps = [
       { x: 4, y: 24, w: 24, h: 4 },
       { x: 7, y: 19, w: 18, h: 4 },
@@ -146,18 +201,14 @@ export class PreloadScene extends Phaser.Scene {
       const s = steps[i];
       const t = i / (steps.length - 1);
       const stepColor = lerpColor(0xaa8800, 0xffd700, t);
-      // Step face
       g.fillStyle(stepColor);
       g.fillRect(s.x, s.y, s.w, s.h);
-      // Top edge highlight
       g.fillStyle(0xffee88, 0.6);
       g.fillRect(s.x, s.y, s.w, 1);
-      // Bottom shadow
       g.fillStyle(0x664400, 0.5);
       g.fillRect(s.x, s.y + s.h - 1, s.w, 1);
     }
 
-    // Glow hint at bottom step
     g.fillStyle(0xffd700, 0.15);
     g.fillRect(2, 26, 28, 6);
 
@@ -165,30 +216,24 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // ── Player (armoured hero) ────────────────────────────────────────────────
+  // ── Player ────────────────────────────────────────────────────────────────
 
   private createPlayerTexture() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
 
-    // Body armour
-    g.fillStyle(0x1a4a6b);
+    g.fillStyle(0xffffff); // Will be tinted by class color
     g.fillRoundedRect(7, 10, 18, 18, 4);
-    // Armour chest highlight
-    g.fillStyle(0x4fc3f7, 0.4);
+    g.fillStyle(0xdddddd, 0.4);
     g.fillRoundedRect(7, 10, 10, 8, 4);
-    // Shoulder pads
-    g.fillStyle(0x246090);
+    g.fillStyle(0xcccccc);
     g.fillRect(5, 11, 4, 6);
     g.fillRect(23, 11, 4, 6);
-    // Helmet
-    g.fillStyle(0x2060a0);
+    g.fillStyle(0xeeeeee);
     g.fillCircle(16, 8, 7);
-    // Visor
-    g.fillStyle(0x00e5ff, 0.85);
+    g.fillStyle(0xffffff, 0.85);
     g.fillRoundedRect(10, 5, 12, 4, 1);
-    // Eyes
-    g.fillStyle(0xffffff);
+    g.fillStyle(0x000000);
     g.fillCircle(13, 7, 1.5);
     g.fillCircle(19, 7, 1.5);
 
@@ -196,30 +241,24 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // ── Enemy (menacing silhouette) ───────────────────────────────────────────
+  // ── Generic enemy silhouette ──────────────────────────────────────────────
 
   private createEnemyTexture() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
 
-    // Body
     g.fillStyle(0xffffff);
     g.fillRoundedRect(4, 6, 24, 22, 4);
-    // Head bumps (horns)
     g.fillTriangle(8, 7, 13, 7, 10, 1);
     g.fillTriangle(19, 7, 24, 7, 22, 1);
-    // Eye sockets
     g.fillStyle(0x000000);
     g.fillCircle(11, 14, 5);
     g.fillCircle(21, 14, 5);
-    // Pupils (white — tint will colour these)
     g.fillStyle(0xffffff);
     g.fillCircle(11, 14, 3);
     g.fillCircle(21, 14, 3);
-    // Mouth
     g.fillStyle(0x000000);
     g.fillRect(9, 22, 14, 3);
-    // Teeth
     g.fillStyle(0xffffff);
     g.fillRect(10, 22, 2, 2);
     g.fillRect(14, 22, 2, 2);
@@ -229,12 +268,137 @@ export class PreloadScene extends Phaser.Scene {
     g.destroy();
   }
 
+  // ── New enemy silhouettes ─────────────────────────────────────────────────
+
+  private createNewEnemyTextures() {
+    const S = TILE_SIZE;
+
+    // Skeleton — bone white, ribcage, hollow eyes
+    const sk = this.add.graphics();
+    sk.fillStyle(0xffffff);
+    sk.fillRoundedRect(8, 4, 16, 12, 3);   // skull
+    sk.fillStyle(0x000000);
+    sk.fillCircle(12, 9, 3);              // eye sockets
+    sk.fillCircle(20, 9, 3);
+    sk.fillStyle(0xffffff);
+    sk.fillRect(10, 18, 12, 2);           // ribcage bars
+    sk.fillRect(10, 22, 12, 2);
+    sk.fillRect(10, 26, 12, 2);
+    sk.fillRect(14, 16, 4, 14);           // spine
+    sk.generateTexture("enemy_skeleton", S, S);
+    sk.destroy();
+
+    // Zombie — blocky, hunched
+    const zm = this.add.graphics();
+    zm.fillStyle(0xffffff);
+    zm.fillRoundedRect(6, 8, 20, 20, 3);  // body
+    zm.fillCircle(16, 6, 7);             // head
+    zm.fillStyle(0x000000);
+    zm.fillCircle(13, 6, 2);
+    zm.fillCircle(19, 6, 2);
+    zm.fillRect(12, 10, 8, 2);           // mouth (groaning)
+    zm.fillStyle(0x558b2f, 0.4);
+    zm.fillRoundedRect(7, 9, 8, 6, 2);   // rot patch
+    zm.generateTexture("enemy_zombie", S, S);
+    zm.destroy();
+
+    // Giant Rat — round body, thin tail
+    const rat = this.add.graphics();
+    rat.fillStyle(0xffffff);
+    rat.fillCircle(16, 16, 9);            // body
+    rat.fillCircle(22, 11, 5);            // head
+    rat.fillStyle(0x000000);
+    rat.fillCircle(24, 9, 2);             // eye
+    rat.fillStyle(0xffffff);
+    rat.lineBetween(26, 10, 32, 8);       // whisker1
+    rat.lineBetween(26, 11, 32, 13);      // whisker2
+    rat.fillTriangle(6, 16, 2, 22, 5, 22); // tail
+    rat.generateTexture("enemy_giant_rat", S, S);
+    rat.destroy();
+
+    // Giant Spider — round body, 8 legs
+    const sp = this.add.graphics();
+    sp.fillStyle(0xffffff);
+    sp.fillCircle(16, 18, 8);             // abdomen
+    sp.fillCircle(16, 10, 5);             // cephalothorax
+    sp.fillStyle(0x000000);
+    sp.fillCircle(14, 9, 1.5);
+    sp.fillCircle(18, 9, 1.5);
+    sp.fillCircle(12, 8, 1);
+    sp.fillCircle(20, 8, 1);
+    sp.lineStyle(2, 0xffffff, 1);
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI / 3) - Math.PI / 6;
+      sp.lineBetween(16 - 6, 18, 16 - 6 - Math.cos(angle) * 10, 18 + Math.sin(angle) * 8);
+      sp.lineBetween(16 + 6, 18, 16 + 6 + Math.cos(angle) * 10, 18 + Math.sin(angle) * 8);
+    }
+    sp.generateTexture("enemy_giant_spider", S, S);
+    sp.destroy();
+
+    // Troll — big, blocky, mossy
+    const tr = this.add.graphics();
+    tr.fillStyle(0xffffff);
+    tr.fillRoundedRect(4, 6, 24, 24, 4); // body (wide)
+    tr.fillCircle(16, 5, 8);              // big head
+    tr.fillStyle(0x000000);
+    tr.fillCircle(12, 5, 3);
+    tr.fillCircle(20, 5, 3);
+    tr.fillStyle(0xffffff, 0.3);
+    tr.fillRoundedRect(5, 7, 8, 6, 2);   // moss patches
+    tr.fillRoundedRect(19, 16, 7, 5, 2);
+    tr.generateTexture("enemy_troll", S, S);
+    tr.destroy();
+
+    // Dark Elf — slim, hooded
+    const de = this.add.graphics();
+    de.fillStyle(0xffffff);
+    de.fillRoundedRect(9, 10, 14, 20, 3); // slim body
+    de.fillCircle(16, 7, 6);              // head
+    de.fillStyle(0x333333);
+    de.fillCircle(16, 4, 9); // dark hood
+    de.fillStyle(0x000000);
+    de.fillRect(12, 7, 8, 2);            // narrow glowing eyes slit
+    de.fillStyle(0xffffff, 0.8);
+    de.fillCircle(13, 8, 1);
+    de.fillCircle(19, 8, 1);
+    de.generateTexture("enemy_dark_elf", S, S);
+    de.destroy();
+
+    // Ghost — translucent, wispy bottom
+    const gh = this.add.graphics();
+    gh.fillStyle(0xffffff, 0.8);
+    gh.fillCircle(16, 12, 10);            // upper form
+    gh.fillStyle(0xffffff, 0.5);
+    gh.fillTriangle(6, 18, 26, 18, 11, 30); // wispy bottom-left
+    gh.fillTriangle(16, 18, 30, 18, 25, 30); // wispy bottom-right
+    gh.fillStyle(0x000000);
+    gh.fillCircle(12, 11, 3);
+    gh.fillCircle(20, 11, 3);
+    gh.generateTexture("enemy_ghost", S, S);
+    gh.destroy();
+
+    // Mimic — looks like a chest
+    const mi = this.add.graphics();
+    mi.fillStyle(0xffd700);
+    mi.fillRoundedRect(4, 10, 24, 18, 3); // chest body
+    mi.fillStyle(0xccaa00);
+    mi.fillRoundedRect(4, 10, 24, 6, 3);  // lid
+    mi.fillStyle(0x8b6914);
+    mi.fillRect(14, 14, 4, 6);            // lock
+    // Add eyes peeking out
+    mi.fillStyle(0xff3300);
+    mi.fillCircle(10, 18, 2);
+    mi.fillCircle(22, 18, 2);
+    mi.generateTexture("enemy_mimic", S, S);
+    mi.destroy();
+  }
+
   // ── Items ─────────────────────────────────────────────────────────────────
 
   private createItemTextures() {
     const S = TILE_SIZE;
 
-    // Health potion — red bottle
+    // Health potion
     const hp = this.add.graphics();
     hp.fillStyle(0x4a1010);
     hp.fillRoundedRect(10, 8, 12, 18, 4);
@@ -251,13 +415,13 @@ export class PreloadScene extends Phaser.Scene {
     // Weapon — sword
     const wp = this.add.graphics();
     wp.fillStyle(0xaaaaaa);
-    wp.fillRect(15, 4, 2, 20);         // blade
+    wp.fillRect(15, 4, 2, 20);
     wp.fillStyle(0xffd700);
-    wp.fillRect(10, 18, 12, 3);        // crossguard
+    wp.fillRect(10, 18, 12, 3);
     wp.fillStyle(0x8b4513);
-    wp.fillRect(14, 21, 4, 8);         // grip
+    wp.fillRect(14, 21, 4, 8);
     wp.fillStyle(0xffffff, 0.5);
-    wp.fillRect(15, 4, 1, 14);         // blade edge glint
+    wp.fillRect(15, 4, 1, 14);
     wp.generateTexture("item_weapon", S, S);
     wp.destroy();
 
@@ -268,14 +432,14 @@ export class PreloadScene extends Phaser.Scene {
     ar.fillStyle(0x6666aa);
     ar.fillRoundedRect(9, 6, 14, 16, 3);
     ar.fillStyle(0xaaaaff, 0.4);
-    ar.fillRoundedRect(10, 7, 6, 8, 2); // highlight
+    ar.fillRoundedRect(10, 7, 6, 8, 2);
     ar.fillStyle(0xffd700);
-    ar.fillRect(15, 10, 2, 10);          // cross
+    ar.fillRect(15, 10, 2, 10);
     ar.fillRect(11, 14, 10, 2);
     ar.generateTexture("item_armor", S, S);
     ar.destroy();
 
-    // XP orb — glowing sphere
+    // XP orb
     const xp = this.add.graphics();
     for (let i = 8; i >= 1; i--) {
       const t = i / 8;
@@ -284,29 +448,108 @@ export class PreloadScene extends Phaser.Scene {
       xp.fillCircle(16, 16, i + 2);
     }
     xp.fillStyle(0xffffff, 0.8);
-    xp.fillCircle(13, 13, 2);          // specular
+    xp.fillCircle(13, 13, 2);
     xp.generateTexture("item_xp_orb", S, S);
     xp.destroy();
+
+    // Gold coin
+    const gold = this.add.graphics();
+    gold.fillStyle(0xffd700);
+    gold.fillCircle(16, 16, 10);
+    gold.fillStyle(0xffee44);
+    gold.fillCircle(14, 14, 4);
+    gold.fillStyle(0xaa8800);
+    gold.strokeCircle(16, 16, 10);
+    gold.generateTexture("item_gold", S, S);
+    gold.destroy();
+
+    // Scroll
+    const scroll = this.add.graphics();
+    scroll.fillStyle(0xffe082);
+    scroll.fillRoundedRect(8, 4, 16, 24, 4);
+    scroll.fillStyle(0x8b6914);
+    scroll.fillRect(8, 4, 16, 4);
+    scroll.fillRect(8, 24, 16, 4);
+    scroll.fillStyle(0x8b6914, 0.5);
+    scroll.fillRect(11, 10, 10, 1);
+    scroll.fillRect(11, 14, 10, 1);
+    scroll.fillRect(11, 18, 6, 1);
+    scroll.generateTexture("item_scroll", S, S);
+    scroll.destroy();
+
+    // Stat tome
+    const tome = this.add.graphics();
+    tome.fillStyle(0xf48fb1);
+    tome.fillRoundedRect(6, 4, 20, 26, 3);
+    tome.fillStyle(0xffffff, 0.5);
+    tome.fillRoundedRect(8, 6, 14, 10, 2);
+    tome.fillStyle(0x880044);
+    tome.fillRect(10, 8, 8, 2);
+    tome.fillRect(10, 12, 6, 2);
+    tome.generateTexture("item_stat_tome", S, S);
+    tome.destroy();
   }
 
-  // ── Fog of war brush (soft radial erase) ─────────────────────────────────
+  // ── Chest textures ────────────────────────────────────────────────────────
+
+  private createChestTextures() {
+    const S = TILE_SIZE;
+
+    const makeChest = (color: number, lockColor: number, key: string) => {
+      const g = this.add.graphics();
+      // Body
+      g.fillStyle(color);
+      g.fillRoundedRect(2, 8, 28, 20, 3);
+      // Lid
+      g.fillStyle(lerpColor(color, 0xffffff, 0.2));
+      g.fillRoundedRect(2, 8, 28, 8, 3);
+      // Bands
+      g.fillStyle(lerpColor(color, 0x000000, 0.3));
+      g.fillRect(2, 15, 28, 2);
+      g.fillRect(14, 8, 2, 20);
+      // Lock
+      g.fillStyle(lockColor);
+      g.fillCircle(16, 20, 3);
+      g.generateTexture(key, S, S);
+      g.destroy();
+    };
+
+    makeChest(0x5d4037, 0xffa726, "chest_wooden");
+    makeChest(0x546e7a, 0xeceff1, "chest_iron");
+    makeChest(0xf9a825, 0xffffff, "chest_golden");
+
+    // Open chest
+    const open = this.add.graphics();
+    open.fillStyle(0x3e2723);
+    open.fillRoundedRect(2, 14, 28, 14, 3);
+    open.fillStyle(0x3e2723);
+    open.fillRoundedRect(2, 4, 28, 12, 3);
+    // Open lid (tilted up)
+    open.fillStyle(0x5d4037);
+    open.fillRoundedRect(3, 4, 26, 10, 3);
+    // Dark interior
+    open.fillStyle(0x111111);
+    open.fillRect(4, 16, 24, 10);
+    open.generateTexture("chest_open", S, S);
+    open.destroy();
+  }
+
+  // ── Fog of war ────────────────────────────────────────────────────────────
 
   private createFogBrush() {
-    const r = FOG_RADIUS * TILE_SIZE; // 160px
-    const size = r * 2;               // 320px
+    const r = FOG_RADIUS * TILE_SIZE;
+    const size = r * 2;
     const g = this.add.graphics();
 
-    // Draw concentric rings from outside-in — builds a soft radial gradient
     for (let i = r; i >= 0; i--) {
-      const alpha = 1.0 - i / r; // 0 at edge → 1 at center
-      g.fillStyle(0xffffff, alpha * alpha); // quadratic falloff = softer edge
+      const alpha = 1.0 - i / r;
+      g.fillStyle(0xffffff, alpha * alpha);
       g.fillCircle(r, r, i);
     }
 
     g.generateTexture("fog_brush", size, size);
     g.destroy();
 
-    // Solid tile square for "re-darkening" explored areas
     const sq = this.add.graphics();
     sq.fillStyle(0x000000, 1);
     sq.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
@@ -314,16 +557,16 @@ export class PreloadScene extends Phaser.Scene {
     sq.destroy();
   }
 
-  // ── Torch glow (warm additive overlay) ───────────────────────────────────
+  // ── Torch glow ────────────────────────────────────────────────────────────
 
   private createTorchGlow() {
-    const r = 128; // px
+    const r = 128;
     const size = r * 2;
     const g = this.add.graphics();
 
     for (let i = r; i >= 0; i--) {
-      const t = 1.0 - i / r;              // 0=edge, 1=center
-      const alpha = t * t * 0.18;         // quadratic, max 18% per ring
+      const t = 1.0 - i / r;
+      const alpha = t * t * 0.18;
       const color =
         t < 0.4
           ? lerpColor(0x1a0800, 0xcc4400, t / 0.4)
@@ -334,5 +577,62 @@ export class PreloadScene extends Phaser.Scene {
 
     g.generateTexture("torch_glow", size, size);
     g.destroy();
+  }
+
+  // ── Spell glow textures ────────────────────────────────────────────────────
+
+  private createSpellGlows() {
+    const size = 16;
+    const r = 7;
+
+    // White orb (magic missile)
+    const mm = this.add.graphics();
+    for (let i = r; i >= 0; i--) {
+      const t = 1 - i / r;
+      mm.fillStyle(lerpColor(0xffffff, 0xaaddff, t), 0.9 - t * 0.4);
+      mm.fillCircle(r, r, i);
+    }
+    mm.generateTexture("spell_missile", size, size);
+    mm.destroy();
+
+    // Orange circle (fireball)
+    const fb = this.add.graphics();
+    for (let i = r; i >= 0; i--) {
+      const t = 1 - i / r;
+      fb.fillStyle(lerpColor(0xffcc00, 0xff2200, t), 0.9 - t * 0.4);
+      fb.fillCircle(r, r, i);
+    }
+    fb.generateTexture("spell_fireball", size, size);
+    fb.destroy();
+
+    // Blue bolt (frost)
+    const fros = this.add.graphics();
+    for (let i = r; i >= 0; i--) {
+      const t = 1 - i / r;
+      fros.fillStyle(lerpColor(0xffffff, 0x0044ff, t), 0.9 - t * 0.4);
+      fros.fillCircle(r, r, i);
+    }
+    fros.generateTexture("spell_frost", size, size);
+    fros.destroy();
+
+    // Purple (blink / divine)
+    const blink = this.add.graphics();
+    for (let i = r; i >= 0; i--) {
+      const t = 1 - i / r;
+      blink.fillStyle(lerpColor(0xffffff, 0x9900ff, t), 0.9 - t * 0.4);
+      blink.fillCircle(r, r, i);
+    }
+    blink.generateTexture("spell_blink", size, size);
+    blink.destroy();
+
+    // Yellow/gold (bless/heal)
+    const heal = this.add.graphics();
+    for (let i = r; i >= 0; i--) {
+      const t = 1 - i / r;
+      heal.fillStyle(lerpColor(0xffffff, 0xffd700, t), 0.9 - t * 0.4);
+      heal.fillCircle(r, r, i);
+    }
+    heal.generateTexture("spell_heal", size, size);
+    heal.destroy();
   }
 }
