@@ -27,6 +27,7 @@ export class CharacterSelectScene extends Phaser.Scene {
   private step: 1 | 2 | 3 = 1;
   private selectedClass: ClassKey = 'fighter';
   private scoreMethod: ScoreMethod = 'standard';
+  private saveSlot = 1; // which slot to save to
 
   // Ability assignment
   private scores: number[] = [...STANDARD_ARRAY];
@@ -37,6 +38,16 @@ export class CharacterSelectScene extends Phaser.Scene {
   private rollResults: number[][] = []; // raw 4d6-drop-lowest rolls
 
   private container!: Phaser.GameObjects.Container;
+
+  init(data: { saveSlot?: number }) {
+    this.saveSlot = data?.saveSlot ?? 1;
+    // Reset state on re-entry
+    this.step = 1;
+    this.selectedClass = 'fighter';
+    this.scoreMethod = 'standard';
+    this._scoreToAbilityMap = new Map();
+    this.assigned = [null, null, null, null, null, null];
+  }
 
   constructor() {
     super({ key: 'CharacterSelectScene' });
@@ -564,7 +575,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     };
 
     // Go to tavern first (hub before dungeon)
-    this.scene.start('TavernScene', { charData });
+    this.scene.start('TavernScene', { charData, saveSlot: this.saveSlot });
   }
 
   private _makeButton(x: number, y: number, label: string, w: number, h: number) {

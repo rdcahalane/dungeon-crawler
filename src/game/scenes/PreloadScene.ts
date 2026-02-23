@@ -418,124 +418,308 @@ export class PreloadScene extends Phaser.Scene {
     this.createClericAvatar();
   }
 
+  // ── FIGHTER — Steel armour, red tunic, sword ──────────────────────────────
   private createFighterAvatar() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
-    // Broad helmet
-    g.fillStyle(0xffffff);
+
+    // Sword blade (behind body)
+    g.fillStyle(0xd0d8e0); // silver
+    g.fillRect(24, 4, 4, 20);
+    g.fillStyle(0xffd700); // gold crossguard
+    g.fillRect(21, 16, 10, 3);
+    g.fillStyle(0x6b3a1e); // leather grip
+    g.fillRect(25, 19, 2, 6);
+
+    // Pauldrons (shoulder armour)
+    g.fillStyle(0x7080a0); // steel shadow
+    g.fillRect(2, 11, 7, 9);
+    g.fillRect(21, 11, 7, 9);
+    g.fillStyle(0x90a8c0); // steel highlight
+    g.fillRect(2, 11, 7, 4);
+    g.fillRect(21, 11, 7, 4);
+
+    // Chest plate
+    g.fillStyle(0x7888a0); // steel base
+    g.fillRoundedRect(7, 14, 18, 15, 2);
+    g.fillStyle(0xcc2200); // red tunic showing at bottom
+    g.fillRect(8, 24, 16, 5);
+    // Chest highlight
+    g.fillStyle(0xa0b4cc);
+    g.fillRect(8, 15, 16, 4);
+    // Chest rivets
+    g.fillStyle(0xd0d8e0);
+    g.fillRect(10, 20, 2, 2);
+    g.fillRect(20, 20, 2, 2);
+    // Belt
+    g.fillStyle(0x4a3010);
+    g.fillRect(7, 23, 18, 3);
+    g.fillStyle(0xffd700);
+    g.fillRect(14, 23, 4, 3); // buckle
+
+    // Neck
+    g.fillStyle(0xffddbb); // skin
+    g.fillRect(13, 12, 6, 4);
+
+    // Helmet — full steel with face guard
+    g.fillStyle(0x7080a0);
     g.fillCircle(16, 7, 8);
-    g.fillStyle(0x000000);
-    g.fillRect(10, 5, 12, 3);  // visor slit
-    // Wide shoulder pauldrons
-    g.fillStyle(0xffffff);
-    g.fillRect(3, 12, 6, 8);
-    g.fillRect(23, 12, 6, 8);
-    // Armoured chest
-    g.fillRoundedRect(7, 14, 18, 14, 2);
-    g.fillStyle(0xdddddd, 0.5);
-    g.fillRect(8, 17, 16, 2);
-    g.fillRect(8, 21, 16, 2);
-    // Sword on right
-    g.fillStyle(0xffffff);
-    g.fillRect(26, 8, 3, 16);
-    g.fillStyle(0xbbbbbb, 0.7);
-    g.fillRect(23, 14, 8, 2);
+    g.fillRect(8, 7, 16, 6);
+    // Helmet highlight
+    g.fillStyle(0xa0b4cc);
+    g.fillRect(10, 3, 8, 4);
+    // Cheek guards
+    g.fillStyle(0x5868806);
+    g.fillRect(8, 7, 5, 6);
+    g.fillRect(19, 7, 5, 6);
+    // Visor slit
+    g.fillStyle(0x1a2030);
+    g.fillRect(11, 7, 10, 3);
+    // Eye gleam through visor
+    g.fillStyle(0x80c8ff, 0.7);
+    g.fillRect(12, 8, 4, 1);
+    g.fillRect(17, 8, 4, 1);
+    // Helmet ridge
+    g.fillStyle(0xd0d8e0);
+    g.fillRect(15, 1, 2, 7);
+
     g.generateTexture("player_fighter", S, S);
     g.destroy();
   }
 
+  // ── THIEF — Dark leather, green cloak, gleaming eyes ──────────────────────
   private createThiefAvatar() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
-    // Pointed hood
+
+    // Cloak (dark forest green, behind body)
+    g.fillStyle(0x1e3a12); // deep green
+    g.fillTriangle(4, 16, 12, 16, 4, 31);   // left wing
+    g.fillTriangle(28, 16, 20, 16, 28, 31); // right wing
+    g.fillStyle(0x152a0c); // cloak shadow
+    g.fillTriangle(5, 18, 12, 18, 5, 31);
+    g.fillTriangle(27, 18, 20, 18, 27, 31);
+
+    // Dagger on left hip
+    g.fillStyle(0xc8d0d8); // blade
+    g.fillRect(3, 20, 2, 9);
+    g.fillStyle(0xffd700);
+    g.fillRect(1, 22, 6, 2); // guard
+    g.fillStyle(0x3a2010);
+    g.fillRect(3, 24, 2, 4); // grip
+
+    // Slim leather body
+    g.fillStyle(0x3a2810); // dark brown leather
+    g.fillRoundedRect(10, 15, 12, 15, 2);
+    // Leather highlight
+    g.fillStyle(0x5a4020);
+    g.fillRect(11, 16, 5, 6);
+    // Belt
+    g.fillStyle(0x2a1a08);
+    g.fillRect(10, 22, 12, 3);
+    g.fillStyle(0xc8a060);
+    g.fillRect(14, 22, 4, 3); // buckle
+
+    // Hood — dark charcoal
+    g.fillStyle(0x1a1a1a); // very dark
+    g.fillTriangle(16, 0, 8, 11, 24, 11); // pointed hood
+    g.fillCircle(16, 11, 7); // head in hood
+    // Hood shadow/depth
+    g.fillStyle(0x111111);
+    g.fillTriangle(16, 1, 9, 10, 16, 10);
+
+    // Face in shadow — only partial skin visible
+    g.fillStyle(0xd4a070); // warm skin in shadow
+    g.fillRect(12, 9, 8, 5);
+    // Lower face shadow
+    g.fillStyle(0x1a1a1a, 0.6);
+    g.fillRect(11, 11, 10, 3);
+
+    // Glowing eyes — the signature thief look
+    g.fillStyle(0x00ffcc); // teal glow
+    g.fillCircle(13, 10, 2);
+    g.fillCircle(19, 10, 2);
     g.fillStyle(0xffffff);
-    g.fillTriangle(16, 0, 9, 11, 23, 11);
-    g.fillCircle(16, 11, 6);
-    // Shadow (hood brim shadow on face)
-    g.fillStyle(0x000000, 0.45);
-    g.fillRect(10, 9, 12, 4);
-    // Slim cloaked body
-    g.fillStyle(0xffffff);
-    g.fillRoundedRect(11, 17, 10, 14, 2);
-    // Cloak sides
-    g.fillTriangle(7, 17, 11, 17, 7, 30);
-    g.fillTriangle(25, 17, 21, 17, 25, 30);
-    // Dagger
-    g.fillStyle(0xffffff);
-    g.fillRect(4, 20, 2, 9);
-    g.fillStyle(0xbbbbbb, 0.6);
-    g.fillRect(2, 22, 6, 2);
-    // Eye gleam
-    g.fillStyle(0xffffff, 0.8);
-    g.fillCircle(16, 11, 1.5);
+    g.fillCircle(13, 10, 1);
+    g.fillCircle(19, 10, 1);
+
     g.generateTexture("player_thief", S, S);
     g.destroy();
   }
 
+  // ── WIZARD — Deep blue robes, purple hat, glowing staff ───────────────────
   private createWizardAvatar() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
-    // Tall pointed hat
+
+    // Staff (behind body)
+    g.fillStyle(0x6b4c2a); // dark wood
+    g.fillRect(24, 3, 3, 26);
+    g.fillStyle(0x8b6c3a); // wood highlight
+    g.fillRect(24, 3, 1, 26);
+    // Staff orb — glowing cyan
+    for (let i = 5; i >= 1; i--) {
+      const alpha = (6 - i) * 0.15;
+      g.fillStyle(0x00e8ff, alpha);
+      g.fillCircle(25, 3, i + 1);
+    }
+    g.fillStyle(0x00e8ff);
+    g.fillCircle(25, 3, 4);
     g.fillStyle(0xffffff);
-    g.fillTriangle(16, 0, 9, 12, 23, 12);
-    g.fillRect(7, 11, 18, 3);
-    // Head (narrow)
-    g.fillCircle(16, 16, 5);
-    // Long robes
-    g.fillTriangle(9, 19, 23, 19, 5, 32);
-    g.fillTriangle(23, 19, 9, 19, 27, 32);
-    g.fillRoundedRect(11, 18, 10, 13, 1);
-    // Star on robe
-    g.fillStyle(0xffffff, 0.45);
-    g.fillRect(15, 20, 2, 6);
-    g.fillRect(12, 23, 8, 1);
-    // Staff
-    g.fillStyle(0xffffff);
-    g.fillRect(26, 6, 2, 24);
-    g.fillCircle(27, 5, 3);
+    g.fillCircle(24, 2, 1.5); // specular
+
+    // Wide robe base
+    g.fillStyle(0x1a0880); // deep navy blue
+    g.fillTriangle(8, 18, 24, 18, 4, 32);  // left robe
+    g.fillTriangle(24, 18, 8, 18, 28, 32); // right robe
+    g.fillRoundedRect(10, 16, 12, 14, 1);  // torso
+
+    // Robe highlights
+    g.fillStyle(0x2a14a0);
+    g.fillRect(11, 17, 5, 10); // left panel lighter
+    // Belt/sash
+    g.fillStyle(0xffd700);
+    g.fillRect(10, 23, 12, 2);
+    // Robe trim
+    g.fillStyle(0x8844cc);
+    g.fillRect(10, 16, 12, 2);
+
+    // Star rune on chest
+    g.fillStyle(0xffd700, 0.8);
+    g.fillRect(15, 19, 2, 6);
+    g.fillRect(12, 22, 8, 2);
+    g.fillCircle(16, 22, 1.5);
+
+    // Neck
+    g.fillStyle(0xeeddcc); // pale skin
+    g.fillRect(13, 12, 6, 5);
+
+    // Wizard hat — deep purple with gold band
+    g.fillStyle(0x5500aa); // purple
+    g.fillTriangle(16, 0, 8, 13, 24, 13); // cone
+    g.fillStyle(0x6600cc); // lighter purple side
+    g.fillTriangle(16, 0, 16, 13, 24, 13);
+    g.fillStyle(0x3300664); // shadow side
+    g.fillTriangle(16, 0, 8, 13, 16, 13);
+    // Hat brim
+    g.fillStyle(0x4400884);
+    g.fillRect(6, 12, 20, 4);
+    // Gold hat band
+    g.fillStyle(0xffd700);
+    g.fillRect(7, 14, 18, 2);
+    // Star on hat
+    g.fillStyle(0xffe066, 0.9);
+    g.fillCircle(16, 7, 2);
+    g.fillRect(15, 4, 2, 6);
+    g.fillRect(12, 7, 8, 2);
+
+    // Face — narrow, pale, wise
+    g.fillStyle(0xeeddcc);
+    g.fillCircle(16, 17, 5);
     // Eyes
-    g.fillStyle(0x000000);
-    g.fillCircle(14, 15, 1.5);
-    g.fillCircle(18, 15, 1.5);
-    g.fillStyle(0xffffff, 0.7);
-    g.fillCircle(14, 15, 1);
-    g.fillCircle(18, 15, 1);
+    g.fillStyle(0x2244aa); // blue eyes
+    g.fillCircle(14, 16, 1.5);
+    g.fillCircle(18, 16, 1.5);
+    g.fillStyle(0xffffff);
+    g.fillCircle(14, 16, 0.8);
+    g.fillCircle(18, 16, 0.8);
+    // Eyebrows
+    g.fillStyle(0x888888);
+    g.fillRect(12, 14, 4, 1);
+    g.fillRect(16, 14, 4, 1);
+    // Short beard hint
+    g.fillStyle(0xcccccc, 0.6);
+    g.fillRect(13, 19, 6, 2);
+
     g.generateTexture("player_wizard", S, S);
     g.destroy();
   }
 
+  // ── CLERIC — Ivory robes, golden cross, holy mace ─────────────────────────
   private createClericAvatar() {
     const S = TILE_SIZE;
     const g = this.add.graphics();
-    // Rounded cowl
-    g.fillStyle(0xffffff);
+
+    // Mace (behind body)
+    g.fillStyle(0x6b4c2a); // wood handle
+    g.fillRect(23, 10, 3, 18);
+    g.fillStyle(0x8b6c3a);
+    g.fillRect(23, 10, 1, 18); // highlight
+    // Mace head — gold flanged
+    g.fillStyle(0xcc9900);
+    g.fillRoundedRect(20, 6, 9, 8, 2);
+    g.fillStyle(0xffd700); // bright top
+    g.fillRect(21, 6, 7, 3);
+    // Flanges
+    g.fillStyle(0xddaa00);
+    g.fillRect(19, 7, 3, 5);
+    g.fillRect(28, 7, 3, 5);
+
+    // Wide shoulder cowl
+    g.fillStyle(0xd0c8a8); // warm ivory
+    g.fillRect(4, 13, 8, 9);   // left shoulder
+    g.fillRect(20, 13, 8, 9);  // right shoulder
+    g.fillStyle(0xe0d8b8); // highlight
+    g.fillRect(4, 13, 8, 3);
+    g.fillRect(20, 13, 8, 3);
+
+    // Robe body
+    g.fillStyle(0xe8e0cc); // ivory
+    g.fillRoundedRect(8, 14, 16, 17, 2);
+    // Robe shadow/fold
+    g.fillStyle(0xd0c8b0);
+    g.fillRect(18, 15, 5, 14); // right fold shadow
+    // Gold trim on robe bottom
+    g.fillStyle(0xffd700);
+    g.fillRect(8, 28, 16, 2);
+    g.fillRect(8, 14, 16, 2); // collar gold
+    // Robe highlight
+    g.fillStyle(0xf8f0dc);
+    g.fillRect(9, 16, 6, 10);
+
+    // Big golden cross on chest
+    g.fillStyle(0xffd700);
+    g.fillRect(15, 15, 3, 12); // vertical
+    g.fillRect(10, 19, 12, 3); // horizontal
+    // Cross highlight
+    g.fillStyle(0xffee88);
+    g.fillRect(15, 15, 1, 12);
+    g.fillRect(10, 19, 12, 1);
+
+    // Neck
+    g.fillStyle(0xffddbb);
+    g.fillRect(13, 11, 6, 5);
+
+    // Cleric hood/cowl — cream with gold trim
+    g.fillStyle(0xd8d0b0); // warm hood
     g.fillCircle(16, 8, 8);
-    g.fillRect(8, 8, 16, 5);
-    // Holy cross on forehead
-    g.fillStyle(0x000000);
-    g.fillRect(15, 2, 2, 7);
-    g.fillRect(11, 5, 10, 2);
-    g.fillStyle(0xffffff, 0.8);
-    g.fillRect(15, 3, 2, 5);
-    g.fillRect(12, 6, 8, 1);
-    // Tabard / robes
+    g.fillRect(8, 8, 16, 6);
+    // Hood gold trim
+    g.fillStyle(0xffd700);
+    g.fillRect(8, 13, 16, 2);
+    // Hood shadow (depth)
+    g.fillStyle(0xb8b098);
+    g.fillRect(8, 9, 4, 5);
+    g.fillRect(20, 9, 4, 5);
+
+    // Face — warm skin, noble expression
+    g.fillStyle(0xffddbb);
+    g.fillCircle(16, 9, 5);
+    // Eyes — warm brown
+    g.fillStyle(0x663300);
+    g.fillCircle(14, 8, 1.5);
+    g.fillCircle(18, 8, 1.5);
     g.fillStyle(0xffffff);
-    g.fillRoundedRect(9, 15, 14, 16, 2);
-    // Wide shoulders
-    g.fillRect(5, 15, 5, 8);
-    g.fillRect(22, 15, 5, 8);
-    // Cross symbol on chest
-    g.fillStyle(0xffffff, 0.35);
-    g.fillRect(15, 16, 2, 8);
-    g.fillRect(12, 19, 8, 2);
-    // Mace right side
-    g.fillStyle(0xffffff);
-    g.fillRect(25, 12, 3, 14);
-    g.fillRoundedRect(22, 9, 9, 6, 2);
-    // Eyes
-    g.fillStyle(0x000000);
-    g.fillCircle(13, 8, 1.5);
-    g.fillCircle(19, 8, 1.5);
+    g.fillCircle(14, 8, 0.7);
+    g.fillCircle(18, 8, 0.7);
+    // Brow line
+    g.fillStyle(0x8b6030);
+    g.fillRect(12, 6, 4, 1);
+    g.fillRect(16, 6, 4, 1);
+    // Serene smile
+    g.fillStyle(0xdd9966);
+    g.fillRect(14, 11, 4, 1);
+
     g.generateTexture("player_cleric", S, S);
     g.destroy();
   }

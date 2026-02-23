@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import type { PlayerStats } from "../entities/Player";
 import {
   TILE_SIZE, TILE, COLORS, MAP_WIDTH, MAP_HEIGHT, FOG_RADIUS,
   CHARACTER_CLASSES, SpellKey, SPELLS,
@@ -7,7 +8,7 @@ import {
   abilityMod, getFloorThemeIdx,
 } from "../constants";
 import { generateDungeon, DungeonData } from "../systems/DungeonGenerator";
-import { Player, CharCreationData, PlayerStats } from "../entities/Player";
+import { Player, CharCreationData } from "../entities/Player";
 import { Enemy } from "../entities/Enemy";
 import { TreasureChest } from "../entities/TreasureChest";
 import { SpellSystem } from "../systems/SpellSystem";
@@ -27,6 +28,7 @@ export class GameScene extends Phaser.Scene {
   private chests: TreasureChest[] = [];
   private wallGroup!: Phaser.Physics.Arcade.StaticGroup;
   private currentFloor = 1;
+  private saveSlot = 1;
   private floatingTexts: FloatingText[] = [];
   private spellSystem!: SpellSystem;
 
@@ -70,8 +72,9 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
-  init(data: { floor?: number; charData?: CharCreationData; persistedStats?: PlayerStats }) {
+  init(data: { floor?: number; charData?: CharCreationData; persistedStats?: PlayerStats; saveSlot?: number }) {
     this.currentFloor = data?.floor ?? 1;
+    this.saveSlot = data?.saveSlot ?? data?.persistedStats?.saveSlot ?? 1;
     this.kills = 0;
     this.initData = data ?? {};
     this.secretDoorSet.clear();
@@ -1010,25 +1013,47 @@ export class GameScene extends Phaser.Scene {
       if (t === 1) {
         const persistedStats = this.player.getSerializable();
         persistedStats.floor = this.currentFloor + 1;
-        this.scene.restart({ floor: this.currentFloor + 1, persistedStats });
+        persistedStats.saveSlot = this.saveSlot;
+        this.autoSave(persistedStats).catch(() => {});
+        this.scene.restart({ floor: this.currentFloor + 1, persistedStats, saveSlot: this.saveSlot });
       }
     });
   }
 
   private prevFloor() {
-    const persistedStats = this.player.getSerializable();
-    persistedStats.floor = this.currentFloor - 1;
-
     this.cameras.main.fade(300, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
       if (t === 1) {
+        const persistedStats = this.player.getSerializable();
+        persistedStats.floor = Math.max(0, this.currentFloor - 1);
+        persistedStats.saveSlot = this.saveSlot;
+        this.autoSave(persistedStats).catch(() => {});
         if (this.currentFloor <= 1) {
-          // Return to tavern
-          this.scene.start("TavernScene", { persistedStats });
+          this.scene.start("TavernScene", { persistedStats, saveSlot: this.saveSlot });
         } else {
-          this.scene.restart({ floor: this.currentFloor - 1, persistedStats });
+          this.scene.restart({ floor: this.currentFloor - 1, persistedStats, saveSlot: this.saveSlot });
         }
       }
     });
+  }
+
+  private async autoSave(stats: PlayerStats) {
+    try {
+      const cls = CHARACTER_CLASSES[stats.classKey];
+      await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slot: this.saveSlot,
+          name: `${cls.name} Lv ${stats.level}`,
+          data: stats,
+          level: stats.level,
+          floor: stats.floor,
+          playtime: 0,
+        }),
+      });
+    } catch {
+      // Offline — silently skip
+    }
   }
 
   // ── Potions ────────────────────────────────────────────────────────────────

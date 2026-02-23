@@ -1,7 +1,6 @@
 import * as Phaser from "phaser";
 import {
   TILE_SIZE,
-  COLORS,
   PLAYER_STATS,
   ClassKey,
   CHARACTER_CLASSES,
@@ -65,6 +64,8 @@ export interface PlayerStats {
   // Consumables
   potions: number;     // health potions (F key in dungeon)
   manaPotions: number; // mana potions (M key in dungeon)
+  // Save metadata
+  saveSlot?: number;
 }
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -149,8 +150,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     void hotkeyMap; // suppress unused warning — spell hotkeys handled in GameScene
 
     this.setDepth(10);
-    // Tint player by class color
-    this.setTint(CHARACTER_CLASSES[this.stats.classKey].color);
+    // No tint — avatars are drawn with real class colours
   }
 
   private _buildStats(data: CharCreationData): PlayerStats {
@@ -367,9 +367,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     ) return false;
 
     this.attackCooldown = PLAYER_STATS.ATTACK_COOLDOWN;
-    this.setTint(COLORS.PLAYER_ATTACK);
+    this.setTint(0xffffff); // brief white flash
     this.scene.time.delayedCall(80, () => {
-      if (this.active) this.setTint(CHARACTER_CLASSES[this.stats.classKey].color);
+      if (this.active) this.clearTint();
     });
     return true;
   }
@@ -427,7 +427,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.setTint(0xff4444);
     this.scene.time.delayedCall(150, () => {
-      if (this.active) this.setTint(CHARACTER_CLASSES[this.stats.classKey].color);
+      if (this.active) this.clearTint();
     });
 
     this.onDamage?.(dmg);

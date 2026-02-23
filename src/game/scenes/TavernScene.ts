@@ -109,6 +109,8 @@ export class TavernScene extends Phaser.Scene {
   private wallGroup!: Phaser.Physics.Arcade.StaticGroup;
   private playerStats!: PlayerStats;
   private charData?: CharCreationData;
+  private saveSlot = 1;
+  private _enteringDungeon = false; // debounce portal
 
   // UI elements
   private shopPanel?: Phaser.GameObjects.Container;
@@ -132,8 +134,10 @@ export class TavernScene extends Phaser.Scene {
     super({ key: "TavernScene" });
   }
 
-  init(data: { charData?: CharCreationData; persistedStats?: PlayerStats }) {
+  init(data: { charData?: CharCreationData; persistedStats?: PlayerStats; saveSlot?: number }) {
     this.charData = data?.charData;
+    this.saveSlot = data?.saveSlot ?? data?.persistedStats?.saveSlot ?? 1;
+    this._enteringDungeon = false;
     if (data?.persistedStats) {
       this.playerStats = data.persistedStats;
     } else {
@@ -264,26 +268,43 @@ export class TavernScene extends Phaser.Scene {
   }
 
   private spawnEntranceLabel() {
-    const ex = ENTRANCE_LABEL_POS.tx * TILE_SIZE + TILE_SIZE / 2;
-    const ey = ENTRANCE_LABEL_POS.ty * TILE_SIZE + TILE_SIZE / 2;
+    // Portal centre (rows 12-13, cols 12-15 → centre ≈ col 13.5, row 12.5)
+    const portalCx = 13.5 * TILE_SIZE;
+    const portalCy = 12.5 * TILE_SIZE;
 
-    this.add.text(ex + TILE_SIZE / 2, ey, "▼  DUNGEON", {
-      fontSize: "12px", color: "#cc88ff", fontFamily: "monospace",
-      stroke: "#000", strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(6);
+    // Large pulsing glow under portal
+    for (let i = 0; i < 3; i++) {
+      const glow = this.add.image(portalCx, portalCy, "torch_glow")
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setScale(1.8 + i * 0.5).setAlpha(0.18).setDepth(47).setTint(0x9900cc);
+      this.tweens.add({
+        targets: glow,
+        alpha: 0.32, scaleX: glow.scaleX + 0.4, scaleY: glow.scaleY + 0.4,
+        duration: 1200 + i * 300, yoyo: true, repeat: -1,
+      });
+    }
 
-    // Pulsing glow
-    const glow = this.add.image(ex + TILE_SIZE / 2, ey + TILE_SIZE * 1.5, "torch_glow")
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setScale(1.2).setAlpha(0.25).setDepth(48).setTint(0x9955ff);
+    // Big visible label above the portal
+    const label = this.add.text(portalCx, portalCy - TILE_SIZE * 2.2, "▼ ENTER DUNGEON ▼", {
+      fontSize: "14px", color: "#cc88ff", fontFamily: "monospace",
+      stroke: "#000000", strokeThickness: 3,
+      backgroundColor: "#0a0014",
+      padding: { x: 8, y: 4 },
+    }).setOrigin(0.5).setDepth(10);
+
     this.tweens.add({
-      targets: glow,
-      alpha: 0.45,
-      scaleX: 1.5, scaleY: 1.5,
-      duration: 1200,
+      targets: label,
+      alpha: 0.5,
+      duration: 800,
       yoyo: true,
       repeat: -1,
+      ease: "Sine.easeInOut",
     });
+
+    // Walk-on hint
+    this.add.text(portalCx, portalCy - TILE_SIZE * 1.2, "walk onto portal", {
+      fontSize: "9px", color: "#664488", fontFamily: "monospace",
+    }).setOrigin(0.5).setDepth(10);
   }
 
   private spawnTorches() {
@@ -400,6 +421,17 @@ export class TavernScene extends Phaser.Scene {
     this.nearBoard = boardDist < range;
     this.nearEntrance = entranceDist < TILE_SIZE * 3;
 
+    // Walk-on portal trigger (primary entry method)
+    if (!this._enteringDungeon && !this.shopPanel && !this.questPanel) {
+      const playerTx = Math.floor(px / TILE_SIZE);
+      const playerTy = Math.floor(py / TILE_SIZE);
+      if (playerTy >= 0 && playerTy < TAVERN_H && playerTx >= 0 && playerTx < TAVERN_W) {
+        if (TAVERN_TILES[playerTy][playerTx] === TILE.STAIRS) {
+          this.enterDungeon();
+        }
+      }
+    }
+
     // Prompt
     if (this.shopPanel || this.questPanel) {
       this.showPrompt("ESC — Close");
@@ -408,7 +440,7 @@ export class TavernScene extends Phaser.Scene {
     } else if (this.nearBoard) {
       this.showPrompt("E — Read Notice Board");
     } else if (this.nearEntrance) {
-      this.showPrompt("E — Enter the Dungeon  ▼");
+      this.showPrompt("Walk onto the glowing portal to enter the dungeon");
     } else {
       this.hidePrompt();
     }
@@ -425,9 +457,8 @@ export class TavernScene extends Phaser.Scene {
         this.openShop();
       } else if (this.nearBoard) {
         this.openQuestBoard();
-      } else if (this.nearEntrance) {
-        this.enterDungeon();
       }
+      // Portal entry is walk-on only (no E key needed)
     }
 
     this.emitHUD();
@@ -550,17 +581,45 @@ export class TavernScene extends Phaser.Scene {
   // ── Enter Dungeon ─────────────────────────────────────────────────────────
 
   private enterDungeon() {
+    if (this._enteringDungeon) return;
+    this._enteringDungeon = true;
+
     const persistedStats = this.player.getSerializable();
     persistedStats.floor = 1;
+    persistedStats.saveSlot = this.saveSlot;
+
+    // Auto-save when entering dungeon
+    this.autoSave(persistedStats).catch(() => {});
 
     this.cameras.main.fade(400, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
       if (t === 1) {
         this.scene.start("GameScene", {
           floor: 1,
           persistedStats,
+          saveSlot: this.saveSlot,
         });
       }
     });
+  }
+
+  private async autoSave(stats: PlayerStats) {
+    const cls = CHARACTER_CLASSES[stats.classKey];
+    try {
+      await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slot: this.saveSlot,
+          name: `${cls.name} Lv ${stats.level}`,
+          data: stats,
+          level: stats.level,
+          floor: stats.floor,
+          playtime: 0,
+        }),
+      });
+    } catch {
+      // Offline — silently skip save
+    }
   }
 
   // ── HUD Events ────────────────────────────────────────────────────────────
