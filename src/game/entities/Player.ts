@@ -351,10 +351,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (s.effects.some(e => e.key === 'POISONED')) return;
 
     this._idleTimer += delta;
-    if (this._idleTimer < 2000) return; // 2s before regen starts
+    if (this._idleTimer < 3000) return; // 3s before regen starts
 
     const conMod = abilityMod(s.con);
-    const regenPerSec = Math.max(1, 2 + conMod);
+    const regenPerSec = Math.max(0.25, 0.5 + conMod * 0.25);
     const healed = regenPerSec * delta / 1000;
     const prev = s.hp;
     s.hp = Math.min(s.maxHp, s.hp + healed);
