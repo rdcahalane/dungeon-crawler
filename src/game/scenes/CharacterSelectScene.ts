@@ -24,7 +24,7 @@ const POINT_BUY_COSTS: Record<number, number> = {
 };
 
 export class CharacterSelectScene extends Phaser.Scene {
-  private step: 1 | 2 | 3 = 1;
+  private step: 1 | 2 | 3 | 4 = 1;
   private selectedClass: ClassKey = 'fighter';
   private scoreMethod: ScoreMethod = 'standard';
   private saveSlot = 1; // which slot to save to
@@ -37,6 +37,13 @@ export class CharacterSelectScene extends Phaser.Scene {
   private pointsRemaining = 27;
   private rollResults: number[][] = []; // raw 4d6-drop-lowest rolls
 
+  // Name input (Step 4)
+  private characterName = '';
+  private _nameInputActive = false;
+  private _cursorVisible = true;
+  private _cursorTimer?: Phaser.Time.TimerEvent;
+  private _nameKeydownHandler?: (e: KeyboardEvent) => void;
+
   private container!: Phaser.GameObjects.Container;
 
   init(data: { saveSlot?: number }) {
@@ -47,6 +54,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.scoreMethod = 'standard';
     this._scoreToAbilityMap = new Map();
     this.assigned = [null, null, null, null, null, null];
+    this.characterName = '';
   }
 
   constructor() {
@@ -75,11 +83,13 @@ export class CharacterSelectScene extends Phaser.Scene {
   // ── Step 1: Class Picker ───────────────────────────────────────────────────
 
   private renderStep() {
+    this._cleanupNameInput();
     this.clearContainer();
     switch (this.step) {
       case 1: this.renderClassPicker(); break;
       case 2: this.renderScoreMethod(); break;
       case 3: this.renderAssignScores(); break;
+      case 4: this.renderNameInput(); break;
     }
   }
 
@@ -92,7 +102,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.container.add(title);
 
-    const step = this.add.text(width / 2, 90, 'Step 1 of 3', {
+    const step = this.add.text(width / 2, 90, 'Step 1 of 4', {
       fontSize: '12px', color: '#666666', fontFamily: 'monospace',
     }).setOrigin(0.5);
     this.container.add(step);
@@ -187,7 +197,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.container.add(title);
 
-    const step = this.add.text(width / 2, 90, 'Step 2 of 3 — Choose how to generate ability scores', {
+    const step = this.add.text(width / 2, 90, 'Step 2 of 4 — Choose how to generate ability scores', {
       fontSize: '12px', color: '#666666', fontFamily: 'monospace',
     }).setOrigin(0.5);
     this.container.add(step);
@@ -278,7 +288,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.container.add(title);
 
-    const step = this.add.text(width / 2, 82, 'Step 3 of 3 — Assign each score to an ability', {
+    const step = this.add.text(width / 2, 82, 'Step 3 of 4 — Assign each score to an ability', {
       fontSize: '11px', color: '#666666', fontFamily: 'monospace',
     }).setOrigin(0.5);
     this.container.add(step);
@@ -302,14 +312,14 @@ export class CharacterSelectScene extends Phaser.Scene {
       ? true
       : this.assigned.every(v => v !== null);
 
-    const beginBtn = this._makeButton(width / 2 + 130, height - 50, 'BEGIN!', 160, 38);
-    beginBtn.bg.setFillStyle(allAssigned ? 0x0a2a0a : 0x1a1a2e);
-    beginBtn.text.setColor(allAssigned ? '#69f0ae' : '#555566');
+    const nextBtn3 = this._makeButton(width / 2 + 130, height - 50, 'NEXT →', 160, 38);
+    nextBtn3.bg.setFillStyle(allAssigned ? 0x0a2a0a : 0x1a1a2e);
+    nextBtn3.text.setColor(allAssigned ? '#69f0ae' : '#555566');
     if (allAssigned) {
-      beginBtn.bg.setInteractive();
-      beginBtn.bg.on('pointerdown', () => this._startGame());
+      nextBtn3.bg.setInteractive();
+      nextBtn3.bg.on('pointerdown', () => { this.step = 4; this.renderStep(); });
     }
-    this.container.add([beginBtn.bg, beginBtn.border, beginBtn.text]);
+    this.container.add([nextBtn3.bg, nextBtn3.border, nextBtn3.text]);
   }
 
   private _renderDragAssign() {
@@ -565,12 +575,136 @@ export class CharacterSelectScene extends Phaser.Scene {
     return null;
   }
 
+  private renderNameInput() {
+    const { width, height } = this.scale;
+    const cls = CHARACTER_CLASSES[this.selectedClass];
+
+    const title = this.add.text(width / 2, 55, 'NAME YOUR CHARACTER', {
+      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5);
+    this.container.add(title);
+
+    const step = this.add.text(width / 2, 90, 'Step 4 of 4 — Enter a name (or leave blank for default)', {
+      fontSize: '11px', color: '#666666', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    this.container.add(step);
+
+    // Class avatar preview
+    const avatarKey = `player_${this.selectedClass}`;
+    const avatar = this.add.image(width / 2, height / 2 - 80, avatarKey).setScale(3);
+    this.container.add(avatar);
+
+    const className = this.add.text(width / 2, height / 2 - 36, cls.name, {
+      fontSize: '16px', color: `#${cls.color.toString(16).padStart(6, '0')}`,
+      fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    this.container.add(className);
+
+    // Input field background
+    const inputW = 320;
+    const inputH = 40;
+    const inputY = height / 2 + 20;
+    const inputBg = this.add.rectangle(width / 2, inputY, inputW, inputH, 0x0e0e1e)
+      .setStrokeStyle(2, 0x4fc3f7);
+    this.container.add(inputBg);
+
+    // Name display with blinking cursor
+    const cursorChar = this._cursorVisible ? '|' : '';
+    const displayText = this.characterName + cursorChar;
+    const nameText = this.add.text(width / 2, inputY, displayText || cursorChar, {
+      fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    this.container.add(nameText);
+
+    // Hint text
+    const hint = this.add.text(width / 2, inputY + 34, 'Max 16 characters. Press ENTER to confirm.', {
+      fontSize: '10px', color: '#555577', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    this.container.add(hint);
+
+    const defaultHint = this.add.text(width / 2, inputY + 52, `Default: "${cls.name}"`, {
+      fontSize: '10px', color: '#444466', fontFamily: 'monospace',
+    }).setOrigin(0.5);
+    this.container.add(defaultHint);
+
+    // Set up keyboard listener for name input
+    this._nameInputActive = true;
+    this._nameKeydownHandler = (e: KeyboardEvent) => this._onNameKeydown(e);
+    this.input.keyboard!.manager.target.addEventListener('keydown', this._nameKeydownHandler);
+
+    // Blinking cursor timer
+    this._cursorTimer = this.time.addEvent({
+      delay: 500,
+      loop: true,
+      callback: () => {
+        this._cursorVisible = !this._cursorVisible;
+        const cursor = this._cursorVisible ? '|' : '';
+        nameText.setText(this.characterName + cursor || cursor);
+      },
+    });
+
+    // Back button
+    const backBtn = this._makeButton(width / 2 - 130, height - 50, '← BACK', 160, 38);
+    backBtn.bg.on('pointerdown', () => { this.step = 3; this.renderStep(); });
+    this.container.add([backBtn.bg, backBtn.border, backBtn.text]);
+
+    // Begin button
+    const beginBtn = this._makeButton(width / 2 + 130, height - 50, 'BEGIN!', 160, 38);
+    beginBtn.bg.setFillStyle(0x0a2a0a);
+    beginBtn.text.setColor('#69f0ae');
+    beginBtn.bg.setInteractive();
+    beginBtn.bg.on('pointerdown', () => this._startGame());
+    this.container.add([beginBtn.bg, beginBtn.border, beginBtn.text]);
+  }
+
+  private _onNameKeydown(e: KeyboardEvent) {
+    if (!this._nameInputActive) return;
+
+    if (e.key === 'Enter') {
+      this._startGame();
+      return;
+    }
+    if (e.key === 'Escape') {
+      this.step = 3;
+      this.renderStep();
+      return;
+    }
+    if (e.key === 'Backspace') {
+      this.characterName = this.characterName.slice(0, -1);
+      this.renderStep();
+      return;
+    }
+    // Allow letters, numbers, spaces, hyphens, apostrophes
+    if (e.key.length === 1 && /[a-zA-Z0-9 '\-]/.test(e.key) && this.characterName.length < 16) {
+      this.characterName += e.key;
+      this.renderStep();
+    }
+  }
+
+  private _cleanupNameInput() {
+    this._nameInputActive = false;
+    if (this._nameKeydownHandler) {
+      this.input.keyboard!.manager.target.removeEventListener('keydown', this._nameKeydownHandler);
+      this._nameKeydownHandler = undefined;
+    }
+    if (this._cursorTimer) {
+      this._cursorTimer.destroy();
+      this._cursorTimer = undefined;
+    }
+  }
+
   private _startGame() {
+    this._cleanupNameInput();
     const scores = this._getEffectiveScores();
     if (!scores) return;
 
+    const cls = CHARACTER_CLASSES[this.selectedClass];
+    const finalName = this.characterName.trim() || cls.name;
+
     const charData: CharCreationData = {
       classKey: this.selectedClass,
+      name: finalName,
       ...scores,
     };
 

@@ -35,12 +35,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   onRangedAttack?: (enemyX: number, enemyY: number, targetX: number, targetY: number) => void;
 
   constructor(scene: Phaser.Scene, x: number, y: number, typeKey: EnemyTypeKey) {
-    super(scene, x, y, "enemy");
+    const def = ENEMY_TYPES[typeKey];
+    super(scene, x, y, def.textureKey || "enemy");
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
     this.typeKey = typeKey;
-    const def = ENEMY_TYPES[typeKey];
 
     this.hp = def.hp;
     this.maxHp = def.hp;

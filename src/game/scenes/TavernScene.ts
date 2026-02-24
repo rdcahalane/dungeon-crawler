@@ -288,18 +288,19 @@ export class TavernScene extends Phaser.Scene {
   }
 
   private spawnPatrons() {
-    const patrons = [
-      { tx: 3, ty: 5, tint: 0xccaa88, name: "Warrior" },
-      { tx: 7, ty: 8, tint: 0x88bb88, name: "Ranger" },
-      { tx: 13, ty: 8, tint: 0xddbb77, name: "Merchant" },
-      { tx: 17, ty: 5, tint: 0x8899bb, name: "Guard" },
-      { tx: 23, ty: 8, tint: 0xaa88bb, name: "Traveler" },
+    const patrons: { tx: number; ty: number; texture: string; name: string; tint?: number }[] = [
+      { tx: 3, ty: 5, texture: "player_fighter", name: "Grizzled Knight" },
+      { tx: 7, ty: 8, texture: "player_thief", name: "Shadowy Rogue" },
+      { tx: 13, ty: 8, texture: "player_wizard", name: "Old Sage" },
+      { tx: 17, ty: 5, texture: "player_cleric", name: "Wandering Priest" },
+      { tx: 23, ty: 8, texture: "npc", name: "Weary Traveler", tint: 0xaa88bb },
     ];
 
     for (const p of patrons) {
       const px = p.tx * TILE_SIZE + TILE_SIZE / 2;
       const py = p.ty * TILE_SIZE + TILE_SIZE / 2;
-      const sprite = this.add.sprite(px, py, "tavern_patron").setDepth(5).setTint(p.tint);
+      const sprite = this.add.sprite(px, py, p.texture).setDepth(5);
+      if (p.tint) sprite.setTint(p.tint);
 
       this.add.text(px, py - TILE_SIZE, p.name, {
         fontSize: "8px", color: "#888899", fontFamily: "monospace",
@@ -800,7 +801,7 @@ export class TavernScene extends Phaser.Scene {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           slot: this.saveSlot,
-          name: `${cls.name} Lv ${stats.level}`,
+          name: stats.name || `${cls.name} Lv ${stats.level}`,
           data: stats,
           level: stats.level,
           floor: stats.floor,
@@ -824,6 +825,7 @@ export class TavernScene extends Phaser.Scene {
       floor: 0, kills: 0,
       mana: s.mana, maxMana: s.maxMana,
       classKey: s.classKey,
+      name: s.name,
       effects: s.effects,
       spellKeys: [],
       spellCooldowns: [],

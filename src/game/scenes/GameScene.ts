@@ -469,6 +469,7 @@ export class GameScene extends Phaser.Scene {
       floor: this.currentFloor, kills: this.kills,
       mana: s.mana, maxMana: s.maxMana,
       classKey: s.classKey,
+      name: s.name,
       effects: s.effects,
       spellKeys: this.spellHotkeyMap,
       spellCooldowns: this.spellHotkeyMap.map(k => this.spellSystem?.getRemainingCooldown(k) ?? 0),
@@ -1286,7 +1287,7 @@ export class GameScene extends Phaser.Scene {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           slot: this.saveSlot,
-          name: `${cls.name} Lv ${stats.level}`,
+          name: stats.name || `${cls.name} Lv ${stats.level}`,
           data: stats,
           level: stats.level,
           floor: stats.floor,

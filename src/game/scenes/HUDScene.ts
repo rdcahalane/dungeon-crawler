@@ -16,6 +16,7 @@ export interface HUDData {
   mana: number;
   maxMana: number;
   classKey: string;
+  name?: string;
   effects: StatusEffect[];
   spellKeys: SpellKey[];
   spellCooldowns: number[];
@@ -53,6 +54,7 @@ export class HUDScene extends Phaser.Scene {
   private killsText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private classIcon!: Phaser.GameObjects.Text;
+  private nameText!: Phaser.GameObjects.Text;
   private zoomLabel!: Phaser.GameObjects.Text;
 
   // Status effect icons
@@ -90,6 +92,11 @@ export class HUDScene extends Phaser.Scene {
       fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
       backgroundColor: '#1a1a2e',
       padding: { x: 6, y: 4 },
+    }).setDepth(3);
+
+    // Character name (above class icon)
+    this.nameText = this.add.text(PAD + 40, H - PAD - BAR_H * 8 + 4, '', {
+      fontSize: '12px', color: '#ccccdd', fontFamily: 'monospace',
     }).setDepth(3);
 
     // HP bar
@@ -203,6 +210,11 @@ export class HUDScene extends Phaser.Scene {
       const icon = CLASS_ICONS[data.classKey] ?? '?';
       const color = CLASS_COLORS[data.classKey] ?? '#ffffff';
       this.classIcon.setText(icon).setColor(color);
+    }
+
+    // Character name
+    if (data.name) {
+      this.nameText.setText(data.name);
     }
 
     if (data.gold !== undefined) this._goldValue = data.gold;

@@ -957,6 +957,111 @@ export class PreloadScene extends Phaser.Scene {
     mi.fillCircle(22, 18, 2);
     mi.generateTexture("enemy_mimic", S, S);
     mi.destroy();
+
+    // Goblin (BASIC) — pointy ears, wide toothy grin, hunched
+    const gob = this.add.graphics();
+    gob.fillStyle(0xffffff);
+    gob.fillCircle(16, 10, 7);              // head
+    // Pointy ears
+    gob.fillTriangle(6, 8, 10, 6, 8, 14);  // left ear
+    gob.fillTriangle(26, 8, 22, 6, 24, 14); // right ear
+    // Hunched body (wider at shoulders, leaning forward)
+    gob.fillRoundedRect(8, 16, 18, 14, 3);
+    gob.fillStyle(0xffffff, 0.6);
+    gob.fillRect(6, 17, 6, 8);              // left arm (forward)
+    gob.fillRect(22, 19, 6, 6);             // right arm (back)
+    // Face details (black)
+    gob.fillStyle(0x000000);
+    gob.fillCircle(13, 9, 2.5);             // left eye (big)
+    gob.fillCircle(19, 9, 2.5);             // right eye (big)
+    gob.fillStyle(0xffffff);
+    gob.fillCircle(13, 9, 1);               // pupil highlight
+    gob.fillCircle(19, 9, 1);
+    // Wide toothy grin
+    gob.fillStyle(0x000000);
+    gob.fillRect(10, 13, 12, 3);            // mouth opening
+    gob.fillStyle(0xffffff);
+    gob.fillRect(11, 13, 2, 2);             // teeth
+    gob.fillRect(15, 13, 2, 2);
+    gob.fillRect(19, 13, 2, 2);
+    // Pointy nose
+    gob.fillStyle(0x000000);
+    gob.fillTriangle(16, 10, 14, 12, 18, 12);
+    gob.generateTexture("enemy_basic", S, S);
+    gob.destroy();
+
+    // Imp (FAST) — small, bat wings, horns, tail
+    const imp = this.add.graphics();
+    // Bat wings (behind body)
+    imp.fillStyle(0xffffff, 0.6);
+    imp.fillTriangle(4, 14, 0, 6, 12, 14);   // left wing
+    imp.fillTriangle(28, 14, 32, 6, 20, 14);  // right wing
+    imp.fillStyle(0xffffff, 0.3);
+    imp.fillTriangle(3, 12, 1, 8, 10, 14);    // wing membrane
+    imp.fillTriangle(29, 12, 31, 8, 22, 14);
+    // Compact body
+    imp.fillStyle(0xffffff);
+    imp.fillRoundedRect(10, 14, 12, 12, 3);
+    // Head
+    imp.fillCircle(16, 10, 6);
+    // Horns
+    imp.fillTriangle(11, 6, 13, 6, 10, 0);    // left horn
+    imp.fillTriangle(19, 6, 21, 6, 22, 0);     // right horn
+    // Evil eyes
+    imp.fillStyle(0x000000);
+    imp.fillCircle(13, 10, 2);
+    imp.fillCircle(19, 10, 2);
+    imp.fillStyle(0xffffff);
+    imp.fillCircle(14, 9, 0.8);
+    imp.fillCircle(20, 9, 0.8);
+    // Mischievous grin
+    imp.fillStyle(0x000000);
+    imp.fillRect(12, 13, 8, 2);
+    // Pointed tail
+    imp.fillStyle(0xffffff);
+    imp.lineBetween(16, 26, 8, 30);
+    imp.fillTriangle(6, 29, 10, 29, 8, 32);   // tail tip
+    imp.generateTexture("enemy_fast", S, S);
+    imp.destroy();
+
+    // Ogre (TANK) — massive, blocky, brow ridge, underbite, club
+    const ogre = this.add.graphics();
+    // Club (behind body)
+    ogre.fillStyle(0xffffff, 0.7);
+    ogre.fillRect(25, 6, 4, 22);              // club handle
+    ogre.fillRoundedRect(23, 2, 8, 8, 2);     // club head
+    ogre.fillStyle(0x000000, 0.3);
+    ogre.fillRect(24, 3, 2, 2);               // club studs
+    ogre.fillRect(28, 5, 2, 2);
+    // Massive blocky body
+    ogre.fillStyle(0xffffff);
+    ogre.fillRoundedRect(4, 12, 22, 18, 3);
+    // Thick arms
+    ogre.fillRect(1, 14, 5, 12);              // left arm
+    ogre.fillRect(24, 14, 5, 12);             // right arm
+    // Large head with heavy brow
+    ogre.fillCircle(15, 8, 8);
+    // Heavy brow ridge
+    ogre.fillStyle(0xffffff, 0.4);
+    ogre.fillRect(7, 4, 16, 4);
+    // Small angry eyes under brow
+    ogre.fillStyle(0x000000);
+    ogre.fillRect(10, 7, 4, 3);               // left eye socket
+    ogre.fillRect(16, 7, 4, 3);               // right eye socket
+    ogre.fillStyle(0xffffff);
+    ogre.fillRect(11, 8, 2, 1);               // eye glint
+    ogre.fillRect(17, 8, 2, 1);
+    // Underbite jaw
+    ogre.fillStyle(0xffffff);
+    ogre.fillRect(8, 13, 14, 4);              // protruding jaw
+    ogre.fillStyle(0x000000);
+    ogre.fillRect(9, 13, 12, 2);              // mouth
+    // Underbite tusks
+    ogre.fillStyle(0xffffff);
+    ogre.fillRect(10, 11, 2, 3);              // left tusk
+    ogre.fillRect(18, 11, 2, 3);              // right tusk
+    ogre.generateTexture("enemy_tank", S, S);
+    ogre.destroy();
   }
 
   // ── Items ─────────────────────────────────────────────────────────────────

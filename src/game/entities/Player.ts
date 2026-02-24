@@ -14,6 +14,7 @@ import {
 
 export interface CharCreationData {
   classKey: ClassKey;
+  name?: string;
   str: number;
   dex: number;
   con: number;
@@ -24,6 +25,7 @@ export interface CharCreationData {
 
 export interface PlayerStats {
   classKey: ClassKey;
+  name?: string;
   level: number;
   xp: number;
   xpToNext: number;
@@ -192,6 +194,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     return {
       classKey: data.classKey,
+      name: data.name,
       level: 1,
       xp: 0,
       xpToNext: PLAYER_STATS.XP_PER_LEVEL,
