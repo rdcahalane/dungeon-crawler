@@ -75,6 +75,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   public stats!: PlayerStats;
   private attackCooldown = 0;
   private invincible = 0;
+  private _idleTimer = 0; // ms standing still
   private attackIndicator!: Phaser.GameObjects.Rectangle;
   private playerShadow!: Phaser.GameObjects.Ellipse;  // floor shadow anchors character
   private playerAura!: Phaser.GameObjects.Arc;         // class-coloured halo above torch
@@ -299,6 +300,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.tickEffects(delta);
     this.handleMovement();
+    this.tickIdleRegen(delta);
     this.updateAttackIndicator();
   }
 
@@ -343,6 +345,24 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  private tickIdleRegen(delta: number) {
+    const s = this.stats;
+    if (s.hp >= s.maxHp || s.hp <= 0) return;
+    if (s.effects.some(e => e.key === 'POISONED')) return;
+
+    this._idleTimer += delta;
+    if (this._idleTimer < 2000) return; // 2s before regen starts
+
+    const conMod = abilityMod(s.con);
+    const regenPerSec = Math.max(1, 2 + conMod);
+    const healed = regenPerSec * delta / 1000;
+    const prev = s.hp;
+    s.hp = Math.min(s.maxHp, s.hp + healed);
+    if (Math.floor(s.hp) > Math.floor(prev)) {
+      this.onHeal?.(Math.floor(s.hp) - Math.floor(prev));
+    }
+  }
+
   private handleMovement() {
     const body = this.body as Phaser.Physics.Arcade.Body;
     let vx = 0;
@@ -359,6 +379,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       vx = (vx / len) * spd;
       vy = (vy / len) * spd;
       this.stats.facing = { x: vx > 0 ? 1 : vx < 0 ? -1 : 0, y: vy > 0 ? 1 : vy < 0 ? -1 : 0 };
+      this._idleTimer = 0;
     }
 
     body.setVelocity(vx, vy);
@@ -449,6 +470,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.stats.hp = Math.max(0, this.stats.hp - dmg);
     this.invincible = 600;
+    this._idleTimer = 0;
 
     // Arcane recovery timer reset
     this.stats.arcaneRecoveryTimer = 0;
