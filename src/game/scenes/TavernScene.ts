@@ -1,6 +1,10 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, TILE, TAVERN_W, TAVERN_H, CHARACTER_CLASSES, abilityMod } from "../constants";
 import { Player, CharCreationData, PlayerStats } from "../entities/Player";
+import {
+  Quest, generateQuestBoard, applyQuestReward, getActiveSpecialRoomTags,
+  RARITY_COLORS, RARITY_LABELS,
+} from "../systems/QuestSystem";
 
 // ── Tavern tilemap ────────────────────────────────────────────────────────────
 // W=wall  F=floor  S=stairs-down (dungeon portal)
@@ -106,13 +110,8 @@ const SHOP_ITEMS: ShopItem[] = [
   },
 ];
 
-const QUEST_TEXTS = [
-  '⚔  WANTED: Skeleton King\n    Deep in the catacombs.\n    Reward: 200 gold.',
-  '💀  RUMOUR: A golden chest\n    lies behind a secret door\n    on the 4th level.',
-  '⚠  WARNING: Trolls regenerate!\n    Strike fast — fire\n    and cold slow them.',
-  '🧙  NOTICE: Scrolls found in\n    chests can be used by\n    any class.',
-  '🗡  BOUNTY: Giant spiders on\n    floor 3. Bring antivenom\n    — their bite is deadly.',
-];
+// Quest board state (rendered dynamically from QuestSystem)
+let _boardQuests: Quest[] = [];
 
 export class TavernScene extends Phaser.Scene {
   private player!: Player;
@@ -181,6 +180,60 @@ export class TavernScene extends Phaser.Scene {
     if (!this.scene.isActive("HUDScene")) {
       this.scene.launch("HUDScene");
     }
+    this.emitHUD();
+
+    // Claim rewards for completed quests
+    this.claimCompletedQuests();
+  }
+
+  private claimCompletedQuests() {
+    const s = this.playerStats;
+    if (!s.activeQuests) return;
+    const completed = s.activeQuests.filter(q => q.status === 'completed');
+    if (completed.length === 0) return;
+
+    if (!s.completedQuests) s.completedQuests = [];
+
+    for (const q of completed) {
+      applyQuestReward(q, s, (xp) => this.player.gainXP(xp));
+      s.completedQuests.push(q);
+    }
+
+    // Cap completed quests at 50
+    if (s.completedQuests.length > 50) {
+      s.completedQuests = s.completedQuests.slice(-50);
+    }
+
+    // Remove completed from active
+    s.activeQuests = s.activeQuests.filter(q => q.status !== 'completed');
+
+    // Show reward popup
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const popup = this.add.container(W / 2, H / 2 - 80).setDepth(300).setScrollFactor(0);
+    const totalGold = completed.reduce((sum, q) => sum + q.rewardGold, 0);
+    const totalXP = completed.reduce((sum, q) => sum + q.rewardXP, 0);
+
+    const popBg = this.add.rectangle(0, 0, 300, 80, 0x0a2a0a, 0.95)
+      .setStrokeStyle(2, 0x66bb6a);
+    popup.add(popBg);
+    popup.add(this.add.text(0, -20, `${completed.length} Quest${completed.length > 1 ? 's' : ''} Complete!`, {
+      fontSize: "14px", color: "#66bb6a", fontFamily: "monospace",
+    }).setOrigin(0.5));
+    popup.add(this.add.text(0, 6, `+${totalGold} gold  +${totalXP} XP`, {
+      fontSize: "12px", color: "#ffd700", fontFamily: "monospace",
+    }).setOrigin(0.5));
+
+    this.tweens.add({
+      targets: popup,
+      alpha: 0,
+      y: H / 2 - 140,
+      delay: 2500,
+      duration: 800,
+      onComplete: () => popup.destroy(),
+    });
+
+    this.updateStatsPanel();
     this.emitHUD();
   }
 
@@ -640,30 +693,96 @@ export class TavernScene extends Phaser.Scene {
     this.closeAllPanels();
     const W = this.scale.width;
     const H = this.scale.height;
-    const panelW = 400;
-    const panelH = 300;
+    const s = this.playerStats;
+
+    // Initialize quest arrays if needed
+    if (!s.activeQuests) s.activeQuests = [];
+    if (!s.completedQuests) s.completedQuests = [];
+
+    // Generate board quests
+    const board = generateQuestBoard(
+      s.level, s.floor,
+      s.activeQuests,
+      s.questBoardSeed,
+      s.questBoardGeneratedAt,
+    );
+    s.questBoardSeed = board.seed;
+    s.questBoardGeneratedAt = board.generatedAt;
+    _boardQuests = board.quests;
+
+    const panelW = 460;
+    const cardH = 82;
+    const panelH = 60 + _boardQuests.length * (cardH + 6) + 20;
 
     this.questPanel = this.add.container(W / 2, H / 2).setDepth(200).setScrollFactor(0);
 
-    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0e0c04, 0.95)
+    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0e0c04, 0.96)
       .setStrokeStyle(2, 0x8b5e2a);
     this.questPanel.add(bg);
 
-    this.questPanel.add(this.add.text(0, -panelH / 2 + 18, "📋  NOTICE BOARD", {
+    this.questPanel.add(this.add.text(0, -panelH / 2 + 18, "📋  QUEST BOARD", {
       fontSize: "15px", color: "#ffe082", fontFamily: "monospace",
     }).setOrigin(0.5));
 
-    // Show 3 random quests
-    const quests = [...QUEST_TEXTS].sort(() => Math.random() - 0.5).slice(0, 3);
-    quests.forEach((q, i) => {
-      const qy = -panelH / 2 + 60 + i * 76;
-      this.questPanel!.add(this.add.rectangle(0, qy, panelW - 28, 66, 0x18160a)
-        .setStrokeStyle(1, 0x554422));
-      this.questPanel!.add(this.add.text(-panelW / 2 + 20, qy - 20, q, {
-        fontSize: "10px", color: "#ccbb88", fontFamily: "monospace", lineSpacing: 3,
+    _boardQuests.forEach((q, i) => {
+      const qy = -panelH / 2 + 55 + i * (cardH + 6);
+      const rarityColor = RARITY_COLORS[q.rarity];
+      const rarityHex = `#${rarityColor.toString(16).padStart(6, '0')}`;
+
+      // Card background
+      this.questPanel!.add(this.add.rectangle(0, qy, panelW - 20, cardH, 0x18160a)
+        .setStrokeStyle(1, rarityColor));
+
+      // Rarity badge
+      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 8, RARITY_LABELS[q.rarity], {
+        fontSize: "8px", color: rarityHex, fontFamily: "monospace",
+        backgroundColor: "#000000aa", padding: { x: 3, y: 1 },
       }).setOrigin(0, 0));
+
+      // Title
+      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 22, q.title, {
+        fontSize: "11px", color: rarityHex, fontFamily: "monospace",
+      }).setOrigin(0, 0));
+
+      // Description
+      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 38, q.description, {
+        fontSize: "9px", color: "#887766", fontFamily: "monospace",
+        wordWrap: { width: panelW - 140 },
+      }).setOrigin(0, 0));
+
+      // Rewards
+      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy + cardH / 2 - 14,
+        `${q.rewardGold}g  +${q.rewardXP}xp`, {
+        fontSize: "9px", color: "#ffd700", fontFamily: "monospace",
+      }).setOrigin(0, 0));
+
+      // Check if already active
+      const isActive = s.activeQuests!.some(aq => aq.id === q.id);
+
+      if (isActive) {
+        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "ACTIVE", {
+          fontSize: "10px", color: "#66bb6a", fontFamily: "monospace",
+          backgroundColor: "#1a2a1a", padding: { x: 6, y: 3 },
+        }).setOrigin(1, 0.5));
+      } else {
+        const btn = this.add.rectangle(panelW / 2 - 50, qy, 60, 24, 0x1a2a1a)
+          .setInteractive().setStrokeStyle(1, 0x66bb6a);
+        this.questPanel!.add(btn);
+        const btnTxt = this.add.text(panelW / 2 - 50, qy, "ACCEPT", {
+          fontSize: "10px", color: "#66bb6a", fontFamily: "monospace",
+        }).setOrigin(0.5);
+        this.questPanel!.add(btnTxt);
+
+        btn.on("pointerover", () => btn.setFillStyle(0x2a4a2a));
+        btn.on("pointerout", () => btn.setFillStyle(0x1a2a1a));
+        btn.on("pointerdown", () => {
+          this.acceptQuest(q);
+          this.openQuestBoard(); // refresh panel
+        });
+      }
     });
 
+    // Close button
     const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 18, 30, 22, 0x2a0a0a)
       .setInteractive().setStrokeStyle(1, 0x884444);
     this.questPanel.add(closeBtn);
@@ -671,6 +790,15 @@ export class TavernScene extends Phaser.Scene {
       fontSize: "13px", color: "#ff6666", fontFamily: "monospace",
     }).setOrigin(0.5));
     closeBtn.on("pointerdown", () => this.closeAllPanels());
+  }
+
+  private acceptQuest(quest: Quest) {
+    const s = this.playerStats;
+    if (!s.activeQuests) s.activeQuests = [];
+    if (s.activeQuests.some(q => q.id === quest.id)) return;
+    quest.status = 'active';
+    quest.acceptedAt = Date.now();
+    s.activeQuests.push(quest);
   }
 
   private closeAllPanels() {
@@ -782,12 +910,16 @@ export class TavernScene extends Phaser.Scene {
 
     this.autoSave(persistedStats).catch(() => {});
 
+    // Gather special room tags from active quests
+    const specialRoomTags = getActiveSpecialRoomTags(persistedStats.activeQuests ?? []);
+
     this.cameras.main.fade(400, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
       if (t === 1) {
         this.scene.start("GameScene", {
           floor: persistedStats.floor,
           persistedStats,
           saveSlot: this.saveSlot,
+          specialRoomTags,
         });
       }
     });
@@ -833,6 +965,11 @@ export class TavernScene extends Phaser.Scene {
       potions: s.potions,
       manaPotions: s.manaPotions,
       gold: s.gold,
+      activeQuests: s.activeQuests,
+      completedQuests: s.completedQuests,
+      inventory: s.inventory,
+      equippedWeaponLabel: s.equippedWeaponLabel,
+      equippedArmorLabel: s.equippedArmorLabel,
     });
     this.updateStatsPanel();
 

@@ -8,6 +8,7 @@ import {
   abilityMod, getFloorThemeIdx,
 } from "../constants";
 import { generateDungeon, DungeonData, SerializedFloor } from "../systems/DungeonGenerator";
+import { onEnemyKilled, onChestOpened, onFloorReached, onSpecialRoomEntered, InventoryItem } from "../systems/QuestSystem";
 import { Player, CharCreationData } from "../entities/Player";
 import { Enemy } from "../entities/Enemy";
 import { TreasureChest } from "../entities/TreasureChest";
@@ -69,11 +70,13 @@ export class GameScene extends Phaser.Scene {
 
   // ── Misc ───────────────────────────────────────────────────────────────────
   private kills = 0;
+  private _enteredQuestRooms = new Set<string>();
   private initData: {
     floor?: number;
     charData?: CharCreationData;
     persistedStats?: PlayerStats;
     saveSlot?: number;
+    specialRoomTags?: string[];
   } = {};
 
   private enemyProjectiles: {
@@ -96,10 +99,11 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
-  init(data: { floor?: number; charData?: CharCreationData; persistedStats?: PlayerStats; saveSlot?: number }) {
+  init(data: { floor?: number; charData?: CharCreationData; persistedStats?: PlayerStats; saveSlot?: number; specialRoomTags?: string[] }) {
     this.currentFloor = data?.floor ?? 1;
     this.saveSlot = data?.saveSlot ?? data?.persistedStats?.saveSlot ?? 1;
     this.kills = 0;
+    this._enteredQuestRooms.clear();
     this.initData = data ?? {};
 
     // Clear session state
@@ -155,7 +159,7 @@ export class GameScene extends Phaser.Scene {
       }
     } else {
       // Generate a fresh dungeon for this floor
-      this.dungeon = generateDungeon(this.currentFloor);
+      this.dungeon = generateDungeon(this.currentFloor, this.initData.specialRoomTags);
       // Store the original as base BEFORE any runtime modifications
       this._baseDungeon = JSON.parse(JSON.stringify(this.dungeon)) as DungeonData;
     }
@@ -477,6 +481,11 @@ export class GameScene extends Phaser.Scene {
       potions: s.potions,
       manaPotions: s.manaPotions,
       gold: s.gold,
+      activeQuests: s.activeQuests,
+      completedQuests: s.completedQuests,
+      inventory: s.inventory,
+      equippedWeaponLabel: s.equippedWeaponLabel,
+      equippedArmorLabel: s.equippedArmorLabel,
     });
   }
 
@@ -547,6 +556,7 @@ export class GameScene extends Phaser.Scene {
     this.checkChestInteraction();
     this.checkItemPickup();
     this.checkPotionInput();
+    this.checkSpecialRoomEntry();
     this.checkStairs();
     this.checkStairsUp();
     this.updateFloatingTexts(delta);
@@ -867,6 +877,12 @@ export class GameScene extends Phaser.Scene {
       if (enemy.hp <= 0) {
         this.player.gainXP(enemy.xp);
         this.kills++;
+
+        // Quest progress: enemy kill
+        if (this.player.stats.activeQuests) {
+          onEnemyKilled(this.player.stats.activeQuests, enemy.typeKey);
+        }
+
         this.emitHUD();
 
         // Record death for persistence
@@ -896,6 +912,9 @@ export class GameScene extends Phaser.Scene {
         if (target.hp <= 0) {
           this.player.gainXP(target.xp);
           this.kills++;
+          if (this.player.stats.activeQuests) {
+            onEnemyKilled(this.player.stats.activeQuests, target.typeKey);
+          }
           const idx = (target as Enemy & { _spawnIdx?: number })._spawnIdx;
           if (typeof idx === 'number') this.deadEnemyIndices.add(idx);
           this.spawnDeathEffect(target.x, target.y, target.typeKey);
@@ -981,6 +1000,11 @@ export class GameScene extends Phaser.Scene {
           const cty = Math.round((chest.y - TILE_SIZE / 2) / TILE_SIZE);
           this.openedChestKeys.add(`${ctx},${cty}`);
 
+          // Quest progress: chest opened
+          if (this.player.stats.activeQuests) {
+            onChestOpened(this.player.stats.activeQuests);
+          }
+
           const { gold, items } = result.loot;
           if (gold > 0) {
             s.gold += gold;
@@ -998,8 +1022,18 @@ export class GameScene extends Phaser.Scene {
     switch (item.type) {
       case 'HEALTH_POTION': this.player.heal(item.value ?? 30); this.events.emit("hud:status", `Found: ${item.label}`); break;
       case 'XP_ORB': this.player.gainXP(item.value ?? 40); this.events.emit("hud:status", `Found: ${item.label}`); break;
-      case 'WEAPON': s.weaponBonus += item.bonus ?? 1; s.attack += item.bonus ?? 1; this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} ATK)`); break;
-      case 'ARMOR': s.armorBonus += item.bonus ?? 1; s.defense += item.bonus ?? 1; this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} DEF)`); break;
+      case 'WEAPON':
+        s.weaponBonus += item.bonus ?? 1; s.attack += item.bonus ?? 1;
+        s.equippedWeaponLabel = item.label;
+        this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} ATK)`);
+        this.trackInventory(item, true);
+        break;
+      case 'ARMOR':
+        s.armorBonus += item.bonus ?? 1; s.defense += item.bonus ?? 1;
+        s.equippedArmorLabel = item.label;
+        this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} DEF)`);
+        this.trackInventory(item, true);
+        break;
       case 'STAT_TOME':
         if (item.statKey) {
           const k = item.statKey as keyof typeof s;
@@ -1009,10 +1043,40 @@ export class GameScene extends Phaser.Scene {
             this.events.emit("hud:status", `Read: ${item.label} (+1 ${item.statKey.toUpperCase()})`);
           }
         }
+        this.trackInventory(item, false);
         break;
-      case 'SCROLL': this.events.emit("hud:status", `Found scroll: ${item.label}`); break;
+      case 'SCROLL':
+        this.events.emit("hud:status", `Found scroll: ${item.label}`);
+        this.trackInventory(item, false);
+        break;
     }
     this.spawnFloatingText(this.player.x, this.player.y - 20, item.label, COLORS.GOLD_TEXT, 11);
+  }
+
+  private trackInventory(item: { type: string; label: string; bonus?: number }, equipped: boolean) {
+    const s = this.player.stats;
+    if (!s.inventory) s.inventory = [];
+    // Un-equip previous item of same type
+    if (equipped) {
+      const itemType = item.type as InventoryItem['type'];
+      for (const inv of s.inventory) {
+        if (inv.type === itemType && inv.equipped) inv.equipped = false;
+      }
+    }
+    const typeMap: Record<string, InventoryItem['type']> = {
+      'WEAPON': 'WEAPON', 'ARMOR': 'ARMOR', 'SCROLL': 'SCROLL', 'STAT_TOME': 'STAT_TOME',
+    };
+    s.inventory.push({
+      id: `inv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: typeMap[item.type] ?? 'CONSUMABLE',
+      label: item.label,
+      bonus: item.bonus,
+      equipped,
+      floorFound: this.currentFloor,
+      timestamp: Date.now(),
+    });
+    // Cap at 100
+    if (s.inventory.length > 100) s.inventory = s.inventory.slice(-100);
   }
 
   // ── Items ─────────────────────────────────────────────────────────────────
@@ -1037,8 +1101,18 @@ export class GameScene extends Phaser.Scene {
     const p = this.player.stats;
     switch (type) {
       case "HEALTH_POTION": this.player.heal(30); this.events.emit("hud:status", "Health Potion +30 HP"); break;
-      case "WEAPON": p.attack += 5; p.weaponBonus += 5; this.spawnFloatingText(this.player.x, this.player.y - 30, "ATK +5", COLORS.WEAPON); this.events.emit("hud:status", "Weapon Upgrade +5 ATK"); this.emitHUD(); break;
-      case "ARMOR": p.defense += 2; p.armorBonus += 2; this.spawnFloatingText(this.player.x, this.player.y - 30, "DEF +2", COLORS.ARMOR); this.events.emit("hud:status", "Armor Shard +2 DEF"); this.emitHUD(); break;
+      case "WEAPON":
+        p.attack += 5; p.weaponBonus += 5;
+        p.equippedWeaponLabel = `Weapon +${p.weaponBonus}`;
+        this.trackInventory({ type: 'WEAPON', label: `Weapon +${p.weaponBonus}`, bonus: 5 }, true);
+        this.spawnFloatingText(this.player.x, this.player.y - 30, "ATK +5", COLORS.WEAPON);
+        this.events.emit("hud:status", "Weapon Upgrade +5 ATK"); this.emitHUD(); break;
+      case "ARMOR":
+        p.defense += 2; p.armorBonus += 2;
+        p.equippedArmorLabel = `Armor +${p.armorBonus}`;
+        this.trackInventory({ type: 'ARMOR', label: `Armor +${p.armorBonus}`, bonus: 2 }, true);
+        this.spawnFloatingText(this.player.x, this.player.y - 30, "DEF +2", COLORS.ARMOR);
+        this.events.emit("hud:status", "Armor Shard +2 DEF"); this.emitHUD(); break;
       case "XP_ORB": this.player.gainXP(40); this.events.emit("hud:status", "XP Orb +40 XP"); break;
     }
   }
@@ -1069,6 +1143,29 @@ export class GameScene extends Phaser.Scene {
       } else if (this.player.stats.maxMana === 0) {
         this.events.emit("hud:status", "Your class doesn't use mana!");
       } else { this.events.emit("hud:status", "No mana potions left!"); }
+    }
+  }
+
+  // ── Quest special room entry ──────────────────────────────────────────────
+
+  private checkSpecialRoomEntry() {
+    if (!this.dungeon.questRooms || this.dungeon.questRooms.length === 0) return;
+    if (!this.player.stats.activeQuests) return;
+
+    const ptx = Math.floor(this.player.x / TILE_SIZE);
+    const pty = Math.floor(this.player.y / TILE_SIZE);
+
+    for (const qr of this.dungeon.questRooms) {
+      if (this._enteredQuestRooms.has(qr.tag)) continue;
+      const room = this.dungeon.rooms[qr.roomIdx];
+      if (!room) continue;
+      if (ptx >= room.x && ptx < room.x + room.w && pty >= room.y && pty < room.y + room.h) {
+        this._enteredQuestRooms.add(qr.tag);
+        if (onSpecialRoomEntered(this.player.stats.activeQuests, qr.tag)) {
+          this.spawnFloatingText(this.player.x, this.player.y - 40, `Found: ${room.tag ?? qr.tag}!`, 0xffd700, 16);
+          this.events.emit("hud:status", `Quest room discovered: ${room.tag ?? qr.tag}`);
+        }
+      }
     }
   }
 
@@ -1270,6 +1367,10 @@ export class GameScene extends Phaser.Scene {
 
   private nextFloor() {
     this.saveCurrentFloor(); // persist current floor before descending
+    // Quest progress: floor reached
+    if (this.player.stats.activeQuests) {
+      onFloorReached(this.player.stats.activeQuests, this.currentFloor + 1);
+    }
     this.cameras.main.fade(300, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
       if (t === 1) {
         const ps = this._buildPersistedStats(this.currentFloor + 1);

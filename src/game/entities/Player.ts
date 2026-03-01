@@ -69,6 +69,14 @@ export interface PlayerStats {
   // Save metadata
   saveSlot?: number;
   savedDungeons?: Record<number, import("../systems/DungeonGenerator").SerializedFloor>;
+  // Quest & inventory (all optional for backwards compat)
+  activeQuests?: import("../systems/QuestSystem").Quest[];
+  completedQuests?: import("../systems/QuestSystem").Quest[];      // capped at 50
+  questBoardSeed?: number;
+  questBoardGeneratedAt?: number;
+  inventory?: import("../systems/QuestSystem").InventoryItem[];    // capped at 100
+  equippedWeaponLabel?: string;
+  equippedArmorLabel?: string;
 }
 
 export class Player extends Phaser.Physics.Arcade.Sprite {

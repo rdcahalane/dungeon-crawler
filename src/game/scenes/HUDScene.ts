@@ -2,6 +2,8 @@ import * as Phaser from "phaser";
 import { COLORS, SPELLS, SpellKey, STATUS_EFFECT_DEFS } from "../constants";
 import type { GameScene } from "./GameScene";
 import type { StatusEffect } from "../constants";
+import type { Quest, InventoryItem } from "../systems/QuestSystem";
+import { RARITY_COLORS } from "../systems/QuestSystem";
 
 export interface HUDData {
   hp: number;
@@ -24,6 +26,11 @@ export interface HUDData {
   potions?: number;
   manaPotions?: number;
   gold?: number;
+  activeQuests?: Quest[];
+  completedQuests?: Quest[];
+  inventory?: InventoryItem[];
+  equippedWeaponLabel?: string;
+  equippedArmorLabel?: string;
 }
 
 const CLASS_ICONS: Record<string, string> = {
@@ -56,6 +63,7 @@ export class HUDScene extends Phaser.Scene {
   private classIcon!: Phaser.GameObjects.Text;
   private nameText!: Phaser.GameObjects.Text;
   private zoomLabel!: Phaser.GameObjects.Text;
+  private questCountText!: Phaser.GameObjects.Text;
 
   // Status effect icons
   private effectIcons: Phaser.GameObjects.Text[] = [];
@@ -77,6 +85,16 @@ export class HUDScene extends Phaser.Scene {
 
   private lastClassKey = '';
   private lastSpellKeys: SpellKey[] = [];
+
+  // Panel state
+  private _questPanel?: Phaser.GameObjects.Container;
+  private _inventoryPanel?: Phaser.GameObjects.Container;
+  private _lastHUDData?: HUDData;
+
+  // Hotkeys
+  private _jKey?: Phaser.Input.Keyboard.Key;
+  private _iKey?: Phaser.Input.Keyboard.Key;
+  private _escKey?: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super({ key: "HUDScene" });
@@ -132,6 +150,11 @@ export class HUDScene extends Phaser.Scene {
       fontSize: '12px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(1, 0).setDepth(2);
 
+    // Quest count indicator (next to kills)
+    this.questCountText = this.add.text(W - PAD, PAD + 40, "", {
+      fontSize: '10px', color: '#66bb6a', fontFamily: 'monospace',
+    }).setOrigin(1, 0).setDepth(2);
+
     this.statusText = this.add.text(W / 2, H * 0.15, "", {
       fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(2);
@@ -140,10 +163,29 @@ export class HUDScene extends Phaser.Scene {
     this.zoomLabel = this.add.text(W - PAD - BTN * 1.75, H - PAD - BTN * 1.6, "100%", {
       fontSize: '11px', color: '#666688', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(2);
-    this.createZoomButton(W - PAD - BTN * 2.4, H - PAD - BTN / 2, "−", -0.15);
+    this.createZoomButton(W - PAD - BTN * 2.4, H - PAD - BTN / 2, "\u2212", -0.15);
     this.createZoomButton(W - PAD - BTN * 1.1, H - PAD - BTN / 2, "+", 0.15);
 
+    // Hotkeys for panels
+    this._jKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.J);
+    this._iKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this._escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+
     this.attachToGameScene();
+  }
+
+  update() {
+    // Panel toggle hotkeys
+    if (this._jKey && Phaser.Input.Keyboard.JustDown(this._jKey)) {
+      if (this._questPanel) { this.closeQuestPanel(); } else { this.closeInventoryPanel(); this.openQuestPanel(); }
+    }
+    if (this._iKey && Phaser.Input.Keyboard.JustDown(this._iKey)) {
+      if (this._inventoryPanel) { this.closeInventoryPanel(); } else { this.closeQuestPanel(); this.openInventoryPanel(); }
+    }
+    if (this._escKey && Phaser.Input.Keyboard.JustDown(this._escKey)) {
+      this.closeQuestPanel();
+      this.closeInventoryPanel();
+    }
   }
 
   private createZoomButton(x: number, y: number, label: string, delta: number) {
@@ -179,6 +221,7 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private onUpdate(data: HUDData) {
+    this._lastHUDData = data;
     const W = this.scale.width;
     const H = this.scale.height;
     const { BAR_W, BAR_H, PAD } = this;
@@ -226,6 +269,10 @@ export class HUDScene extends Phaser.Scene {
     this.floorText.setText(data.floor === 0 ? `The Tavern` : `Floor ${data.floor}`);
     this.killsText.setText(`Kills: ${data.kills}`);
 
+    // Quest count indicator
+    const activeCount = data.activeQuests?.length ?? 0;
+    this.questCountText.setText(activeCount > 0 ? `Quests: ${activeCount}  [J]log [I]inv` : '[J]log [I]inv');
+
     // Status effects
     this.updateEffectIcons(data.effects, PAD, H - PAD - BAR_H * 10);
 
@@ -243,6 +290,183 @@ export class HUDScene extends Phaser.Scene {
 
   private _goldValue = 0;
   private getGold(): number { return this._goldValue; }
+
+  // ── Quest Log Panel (J key) ────────────────────────────────────────────────
+
+  private openQuestPanel() {
+    if (this._questPanel) return;
+    const data = this._lastHUDData;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const panelW = 400;
+
+    const activeQuests = data?.activeQuests ?? [];
+    const completedQuests = (data?.completedQuests ?? []).slice(-10); // last 10
+    const totalEntries = activeQuests.length + completedQuests.length;
+    const panelH = Math.min(H - 40, 80 + totalEntries * 62 + (completedQuests.length > 0 ? 30 : 0));
+
+    this._questPanel = this.add.container(W / 2, H / 2).setDepth(200);
+
+    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0a0a18, 0.96)
+      .setStrokeStyle(2, 0x66bb6a);
+    this._questPanel.add(bg);
+
+    this._questPanel.add(this.add.text(0, -panelH / 2 + 18, "QUEST LOG  [J]", {
+      fontSize: "14px", color: "#66bb6a", fontFamily: "monospace",
+    }).setOrigin(0.5));
+
+    let yOff = -panelH / 2 + 44;
+
+    if (activeQuests.length === 0 && completedQuests.length === 0) {
+      this._questPanel.add(this.add.text(0, yOff + 20, "No quests yet.\nVisit the Notice Board in the Tavern.", {
+        fontSize: "10px", color: "#555566", fontFamily: "monospace", align: "center",
+      }).setOrigin(0.5, 0));
+    }
+
+    // Active quests
+    for (const q of activeQuests) {
+      const rarityColor = RARITY_COLORS[q.rarity];
+      const rarityHex = `#${rarityColor.toString(16).padStart(6, '0')}`;
+
+      this._questPanel.add(this.add.text(-panelW / 2 + 16, yOff, q.title, {
+        fontSize: "11px", color: rarityHex, fontFamily: "monospace",
+      }));
+
+      yOff += 16;
+
+      for (const obj of q.objectives) {
+        const pct = Math.min(1, obj.currentCount / obj.targetCount);
+        const filled = Math.round(pct * 10);
+        const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(10 - filled);
+        const progressColor = pct >= 1 ? "#66bb6a" : "#aaaacc";
+        this._questPanel.add(this.add.text(-panelW / 2 + 20, yOff, `${obj.label}: ${bar} ${obj.currentCount}/${obj.targetCount}`, {
+          fontSize: "9px", color: progressColor, fontFamily: "monospace",
+        }));
+        yOff += 14;
+      }
+
+      // Rewards line
+      this._questPanel.add(this.add.text(-panelW / 2 + 20, yOff, `Reward: ${q.rewardGold}g +${q.rewardXP}xp`, {
+        fontSize: "9px", color: "#ffd700", fontFamily: "monospace",
+      }));
+      yOff += 20;
+    }
+
+    // Completed quests
+    if (completedQuests.length > 0) {
+      this._questPanel.add(this.add.text(-panelW / 2 + 16, yOff, "--- Completed ---", {
+        fontSize: "10px", color: "#444455", fontFamily: "monospace",
+      }));
+      yOff += 18;
+
+      for (const q of completedQuests) {
+        const ts = q.completedAt ? new Date(q.completedAt).toLocaleDateString() : '';
+        this._questPanel.add(this.add.text(-panelW / 2 + 20, yOff, `${q.title}  ${ts}`, {
+          fontSize: "9px", color: "#444455", fontFamily: "monospace",
+        }));
+        yOff += 14;
+      }
+    }
+
+    // Close button
+    const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 18, 30, 22, 0x2a0a0a)
+      .setInteractive().setStrokeStyle(1, 0x884444);
+    this._questPanel.add(closeBtn);
+    this._questPanel.add(this.add.text(panelW / 2 - 20, -panelH / 2 + 18, "\u2715", {
+      fontSize: "13px", color: "#ff6666", fontFamily: "monospace",
+    }).setOrigin(0.5));
+    closeBtn.on("pointerdown", () => this.closeQuestPanel());
+  }
+
+  private closeQuestPanel() {
+    if (this._questPanel) { this._questPanel.destroy(); this._questPanel = undefined; }
+  }
+
+  // ── Inventory Panel (I key) ────────────────────────────────────────────────
+
+  private openInventoryPanel() {
+    if (this._inventoryPanel) return;
+    const data = this._lastHUDData;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const panelW = 380;
+
+    const inventory = data?.inventory ?? [];
+    const weaponLabel = data?.equippedWeaponLabel ?? 'None';
+    const armorLabel = data?.equippedArmorLabel ?? 'None';
+
+    const itemCount = inventory.length;
+    const panelH = Math.min(H - 40, 120 + itemCount * 16);
+
+    this._inventoryPanel = this.add.container(W / 2, H / 2).setDepth(200);
+
+    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0a0a18, 0.96)
+      .setStrokeStyle(2, 0x42a5f5);
+    this._inventoryPanel.add(bg);
+
+    this._inventoryPanel.add(this.add.text(0, -panelH / 2 + 18, "INVENTORY  [I]", {
+      fontSize: "14px", color: "#42a5f5", fontFamily: "monospace",
+    }).setOrigin(0.5));
+
+    let yOff = -panelH / 2 + 44;
+
+    // Equipment section
+    this._inventoryPanel.add(this.add.text(-panelW / 2 + 16, yOff, "--- Equipment ---", {
+      fontSize: "10px", color: "#888899", fontFamily: "monospace",
+    }));
+    yOff += 18;
+
+    this._inventoryPanel.add(this.add.text(-panelW / 2 + 20, yOff, `Weapon: ${weaponLabel}`, {
+      fontSize: "10px", color: "#ffa726", fontFamily: "monospace",
+    }));
+    yOff += 16;
+
+    this._inventoryPanel.add(this.add.text(-panelW / 2 + 20, yOff, `Armor:  ${armorLabel}`, {
+      fontSize: "10px", color: "#78909c", fontFamily: "monospace",
+    }));
+    yOff += 22;
+
+    // Items section
+    this._inventoryPanel.add(this.add.text(-panelW / 2 + 16, yOff, `--- Items (${itemCount}) ---`, {
+      fontSize: "10px", color: "#888899", fontFamily: "monospace",
+    }));
+    yOff += 18;
+
+    if (itemCount === 0) {
+      this._inventoryPanel.add(this.add.text(-panelW / 2 + 20, yOff, "No items collected yet.", {
+        fontSize: "9px", color: "#555566", fontFamily: "monospace",
+      }));
+    } else {
+      // Show items, newest first
+      const sorted = [...inventory].sort((a, b) => b.timestamp - a.timestamp);
+      for (const item of sorted) {
+        if (yOff > panelH / 2 - 30) break; // clip if too many
+        const eqMark = item.equipped ? ' [E]' : '';
+        const bonusStr = item.bonus ? ` (+${item.bonus})` : '';
+        const color = item.equipped ? '#ffd700' : '#aaaacc';
+        this._inventoryPanel.add(this.add.text(-panelW / 2 + 20, yOff,
+          `${item.label}${bonusStr}${eqMark}  F${item.floorFound}`, {
+          fontSize: "9px", color, fontFamily: "monospace",
+        }));
+        yOff += 14;
+      }
+    }
+
+    // Close button
+    const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 18, 30, 22, 0x2a0a0a)
+      .setInteractive().setStrokeStyle(1, 0x884444);
+    this._inventoryPanel.add(closeBtn);
+    this._inventoryPanel.add(this.add.text(panelW / 2 - 20, -panelH / 2 + 18, "\u2715", {
+      fontSize: "13px", color: "#ff6666", fontFamily: "monospace",
+    }).setOrigin(0.5));
+    closeBtn.on("pointerdown", () => this.closeInventoryPanel());
+  }
+
+  private closeInventoryPanel() {
+    if (this._inventoryPanel) { this._inventoryPanel.destroy(); this._inventoryPanel = undefined; }
+  }
+
+  // ── Status Effects ─────────────────────────────────────────────────────────
 
   private updateEffectIcons(effects: StatusEffect[], startX: number, startY: number) {
     // Destroy old icons
@@ -272,6 +496,8 @@ export class HUDScene extends Phaser.Scene {
       this.effectTimers.push(timer);
     });
   }
+
+  // ── Spell Bar ──────────────────────────────────────────────────────────────
 
   private buildSpellBar(keys: SpellKey[], W: number, H: number) {
     // Clear old

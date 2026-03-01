@@ -12,7 +12,8 @@ export interface Room {
   h: number;
   cx: number;
   cy: number;
-  type?: 'normal' | 'vault' | 'trap_corridor' | 'monster_closet';
+  type?: 'normal' | 'vault' | 'trap_corridor' | 'monster_closet' | 'quest_special';
+  tag?: string;  // quest special room identifier (e.g. 'harem', 'library')
 }
 
 export interface ItemSpawn {
@@ -43,6 +44,7 @@ export interface DungeonData {
   secretDoors: SecretDoor[];
   traps: TrapSpawn[];
   chests: ChestSpawn[];
+  questRooms?: { tag: string; roomIdx: number; cx: number; cy: number }[];
 }
 
 /**
@@ -122,7 +124,7 @@ function pickTrapType(floor: number): TrapTypeKey {
   return keys[rng(0, keys.length - 1)];
 }
 
-export function generateDungeon(floor: number): DungeonData {
+export function generateDungeon(floor: number, specialRoomTags?: string[]): DungeonData {
   const w = MAP_WIDTH;
   const h = MAP_HEIGHT;
 
@@ -252,24 +254,6 @@ export function generateDungeon(floor: number): DungeonData {
     }
   }
 
-  // ── Traps ─────────────────────────────────────────────────────────────────
-  const traps: TrapSpawn[] = [];
-  const maxTraps = Math.min(2 + (floor - 1), 12);
-
-  for (let t = 0; t < maxTraps; t++) {
-    // Place in a random non-start, non-last room corridor or room
-    const roomIdx = rng(1, rooms.length - 2);
-    const room = rooms[roomIdx];
-    const tx = rng(room.x + 1, room.x + room.w - 2);
-    const ty = rng(room.y + 1, room.y + room.h - 2);
-
-    // Don't stack traps
-    if (tiles[ty][tx] === TILE.FLOOR && !traps.some(tr => tr.tx === tx && tr.ty === ty)) {
-      tiles[ty][tx] = TILE.TRAP;
-      traps.push({ tx, ty, type: pickTrapType(floor), triggered: false });
-    }
-  }
-
   // ── Enemies ───────────────────────────────────────────────────────────────
   const enemies: EnemySpawn[] = [];
   const pool = getEnemyPool(floor);
@@ -317,5 +301,96 @@ export function generateDungeon(floor: number): DungeonData {
     }
   }
 
-  return { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests };
+  // ── Quest special rooms ──────────────────────────────────────────────────
+  const questRooms: DungeonData['questRooms'] = [];
+  if (specialRoomTags && specialRoomTags.length > 0 && rooms.length > 4) {
+    // Candidate rooms: mid-dungeon, not first/last, not vault
+    const candidates = rooms
+      .map((r, i) => ({ r, i }))
+      .filter(({ r, i }) => i > 1 && i < rooms.length - 1 && r.type !== 'vault');
+
+    for (const tag of specialRoomTags) {
+      if (candidates.length === 0) break;
+      const pick = candidates.splice(rng(0, candidates.length - 1), 1)[0];
+      const room = pick.r;
+      room.type = 'quest_special';
+      room.tag = tag;
+      questRooms.push({ tag, roomIdx: pick.i, cx: room.cx, cy: room.cy });
+
+      // Themed content per tag
+      if (tag === 'harem') {
+        // Decorative NPC items + golden chest
+        chests.push({
+          tx: rng(room.x + 1, room.x + room.w - 2),
+          ty: rng(room.y + 1, room.y + room.h - 2),
+          tier: 'golden', isMimic: false,
+          trapped: undefined,
+        });
+      } else if (tag === 'library') {
+        // Scroll + stat tome chests
+        for (let c = 0; c < 2; c++) {
+          chests.push({
+            tx: rng(room.x + 1, room.x + room.w - 2),
+            ty: rng(room.y + 1, room.y + room.h - 2),
+            tier: 'iron', isMimic: false,
+            trapped: undefined,
+          });
+        }
+      } else if (tag === 'arena') {
+        // Pack with 5-8 tough enemies
+        const arenaPool: EnemyTypeKey[] = floor >= 6
+          ? ['TROLL', 'DARK_ELF', 'GHOST']
+          : ['SKELETON', 'ZOMBIE', 'GIANT_SPIDER'];
+        const arenaCount = rng(5, 8);
+        for (let e = 0; e < arenaCount; e++) {
+          enemies.push({
+            tx: rng(room.x + 1, room.x + room.w - 2),
+            ty: rng(room.y + 1, room.y + room.h - 2),
+            type: arenaPool[rng(0, arenaPool.length - 1)],
+          });
+        }
+      } else if (tag === 'shrine') {
+        // Healing item spawn
+        items.push({
+          tx: rng(room.x + 1, room.x + room.w - 2),
+          ty: rng(room.y + 1, room.y + room.h - 2),
+          type: 'HEALTH_POTION',
+        });
+      } else if (tag === 'dragon_den') {
+        // Single powerful enemy + treasure hoard
+        enemies.push({
+          tx: room.cx, ty: room.cy,
+          type: 'TROLL', // toughest standard enemy
+        });
+        for (let c = 0; c < 3; c++) {
+          chests.push({
+            tx: rng(room.x + 1, room.x + room.w - 2),
+            ty: rng(room.y + 1, room.y + room.h - 2),
+            tier: 'golden', isMimic: false,
+            trapped: floor >= 5 ? pickTrapType(floor) : undefined,
+          });
+        }
+      }
+    }
+  }
+
+  // ── Traps ─────────────────────────────────────────────────────────────────
+  const traps: TrapSpawn[] = [];
+  const maxTraps = Math.min(2 + (floor - 1), 12);
+
+  for (let t = 0; t < maxTraps; t++) {
+    // Place in a random non-start, non-last room corridor or room
+    const roomIdx = rng(1, rooms.length - 2);
+    const room = rooms[roomIdx];
+    const tx = rng(room.x + 1, room.x + room.w - 2);
+    const ty = rng(room.y + 1, room.y + room.h - 2);
+
+    // Don't stack traps
+    if (tiles[ty][tx] === TILE.FLOOR && !traps.some(tr => tr.tx === tx && tr.ty === ty)) {
+      tiles[ty][tx] = TILE.TRAP;
+      traps.push({ tx, ty, type: pickTrapType(floor), triggered: false });
+    }
+  }
+
+  return { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms };
 }
