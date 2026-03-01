@@ -329,6 +329,27 @@ export class TavernScene extends Phaser.Scene {
       backgroundColor: "#00000088", padding: { x: 2, y: 1 },
     }).setOrigin(0.5).setDepth(6);
 
+    // Quest board glow — draws attention
+    const boardGlow = this.add.image(bx, by, "torch_glow")
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(1.5).setAlpha(0.25).setDepth(4).setTint(0xffcc00);
+    this.tweens.add({
+      targets: boardGlow,
+      alpha: 0.45, scaleX: 1.8, scaleY: 1.8,
+      duration: 1200, yoyo: true, repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+
+    // "[E] Quests" label below board
+    const questHint = this.add.text(bx, by + TILE_SIZE * 0.8, "[E] Quests", {
+      fontSize: "10px", color: "#ffe082", fontFamily: "monospace",
+      backgroundColor: "#00000088", padding: { x: 4, y: 2 },
+    }).setOrigin(0.5).setDepth(6);
+    this.tweens.add({
+      targets: questHint, alpha: 0.4,
+      duration: 1000, yoyo: true, repeat: -1,
+    });
+
     // Innkeeper idle — gentle lateral sway behind bar
     this.tweens.add({
       targets: this.innkeeperSprite,
@@ -530,9 +551,9 @@ export class TavernScene extends Phaser.Scene {
 
   private buildPromptText() {
     this.interactPrompt = this.add.text(
-      this.scale.width / 2, this.scale.height - 28,
+      this.scale.width / 2, this.scale.height - 36,
       "",
-      { fontSize: "13px", color: "#ffffff", fontFamily: "monospace", backgroundColor: "#00000099", padding: { x: 8, y: 4 } }
+      { fontSize: "15px", color: "#ffffff", fontFamily: "monospace", backgroundColor: "#000000cc", padding: { x: 12, y: 6 }, stroke: "#000000", strokeThickness: 2 }
     ).setOrigin(0.5).setDepth(100).setScrollFactor(0).setVisible(false);
   }
 

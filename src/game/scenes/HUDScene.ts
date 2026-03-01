@@ -155,6 +155,13 @@ export class HUDScene extends Phaser.Scene {
       fontSize: '10px', color: '#66bb6a', fontFamily: 'monospace',
     }).setOrigin(1, 0).setDepth(2);
 
+    // Hotkey bar (top center) — always visible
+    this.add.rectangle(W / 2, PAD + 6, 260, 22, 0x0a0a14, 0.75)
+      .setStrokeStyle(1, 0x333355).setDepth(2);
+    this.add.text(W / 2, PAD + 6, "[J] Quest Log    [I] Inventory", {
+      fontSize: '11px', color: '#888899', fontFamily: 'monospace',
+    }).setOrigin(0.5).setDepth(3);
+
     this.statusText = this.add.text(W / 2, H * 0.15, "", {
       fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(2);
