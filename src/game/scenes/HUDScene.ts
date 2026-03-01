@@ -92,7 +92,7 @@ export class HUDScene extends Phaser.Scene {
   private _lastHUDData?: HUDData;
 
   // Hotkeys
-  private _jKey?: Phaser.Input.Keyboard.Key;
+  private _qKey?: Phaser.Input.Keyboard.Key;
   private _iKey?: Phaser.Input.Keyboard.Key;
   private _escKey?: Phaser.Input.Keyboard.Key;
 
@@ -158,7 +158,7 @@ export class HUDScene extends Phaser.Scene {
     // Hotkey bar (top center) — always visible
     this.add.rectangle(W / 2, PAD + 6, 260, 22, 0x0a0a14, 0.75)
       .setStrokeStyle(1, 0x333355).setDepth(2);
-    this.add.text(W / 2, PAD + 6, "[J] Quest Log    [I] Inventory", {
+    this.add.text(W / 2, PAD + 6, "[Q] Quest Log    [I] Inventory", {
       fontSize: '11px', color: '#888899', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(3);
 
@@ -173,8 +173,8 @@ export class HUDScene extends Phaser.Scene {
     this.createZoomButton(W - PAD - BTN * 2.4, H - PAD - BTN / 2, "\u2212", -0.15);
     this.createZoomButton(W - PAD - BTN * 1.1, H - PAD - BTN / 2, "+", 0.15);
 
-    // Hotkeys for panels
-    this._jKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.J);
+    // Hotkeys for panels (Q only works in tavern to avoid spell conflict)
+    this._qKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this._iKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I);
     this._escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
 
@@ -182,8 +182,9 @@ export class HUDScene extends Phaser.Scene {
   }
 
   update() {
-    // Panel toggle hotkeys
-    if (this._jKey && Phaser.Input.Keyboard.JustDown(this._jKey)) {
+    // Q toggles quest panel (skip in dungeon — Q is spell key there)
+    const inDungeon = this.scene.isActive("GameScene");
+    if (this._qKey && Phaser.Input.Keyboard.JustDown(this._qKey) && !inDungeon) {
       if (this._questPanel) { this.closeQuestPanel(); } else { this.closeInventoryPanel(); this.openQuestPanel(); }
     }
     if (this._iKey && Phaser.Input.Keyboard.JustDown(this._iKey)) {
@@ -278,7 +279,7 @@ export class HUDScene extends Phaser.Scene {
 
     // Quest count indicator
     const activeCount = data.activeQuests?.length ?? 0;
-    this.questCountText.setText(activeCount > 0 ? `Quests: ${activeCount}  [J]log [I]inv` : '[J]log [I]inv');
+    this.questCountText.setText(activeCount > 0 ? `Quests: ${activeCount}  [Q]log [I]inv` : '[Q]log [I]inv');
 
     // Status effects
     this.updateEffectIcons(data.effects, PAD, H - PAD - BAR_H * 10);
@@ -318,7 +319,7 @@ export class HUDScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x66bb6a);
     this._questPanel.add(bg);
 
-    this._questPanel.add(this.add.text(0, -panelH / 2 + 18, "QUEST LOG  [J]", {
+    this._questPanel.add(this.add.text(0, -panelH / 2 + 18, "QUEST LOG  [Q]", {
       fontSize: "14px", color: "#66bb6a", fontFamily: "monospace",
     }).setOrigin(0.5));
 
@@ -374,6 +375,11 @@ export class HUDScene extends Phaser.Scene {
         yOff += 14;
       }
     }
+
+    // Close hint at bottom
+    this._questPanel.add(this.add.text(0, panelH / 2 - 16, "Q / ESC to close", {
+      fontSize: "9px", color: "#555566", fontFamily: "monospace",
+    }).setOrigin(0.5));
 
     // Close button
     const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 18, 30, 22, 0x2a0a0a)
@@ -458,6 +464,11 @@ export class HUDScene extends Phaser.Scene {
         yOff += 14;
       }
     }
+
+    // Close hint at bottom
+    this._inventoryPanel.add(this.add.text(0, panelH / 2 - 16, "I / ESC to close", {
+      fontSize: "9px", color: "#555566", fontFamily: "monospace",
+    }).setOrigin(0.5));
 
     // Close button
     const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 18, 30, 22, 0x2a0a0a)

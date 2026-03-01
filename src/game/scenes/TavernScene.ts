@@ -750,9 +750,22 @@ export class TavernScene extends Phaser.Scene {
       const rarityColor = RARITY_COLORS[q.rarity];
       const rarityHex = `#${rarityColor.toString(16).padStart(6, '0')}`;
 
-      // Card background
-      this.questPanel!.add(this.add.rectangle(0, qy, panelW - 20, cardH, 0x18160a)
-        .setStrokeStyle(1, rarityColor));
+      // Check if already active
+      const isActive = s.activeQuests!.some(aq => aq.id === q.id);
+
+      // Full-width interactive card background (click anywhere to accept)
+      const cardBg = this.add.rectangle(0, qy, panelW - 20, cardH, 0x18160a)
+        .setStrokeStyle(1, rarityColor).setInteractive();
+      this.questPanel!.add(cardBg);
+
+      if (!isActive) {
+        cardBg.on("pointerover", () => cardBg.setFillStyle(0x24220e));
+        cardBg.on("pointerout", () => cardBg.setFillStyle(0x18160a));
+        cardBg.on("pointerdown", () => {
+          this.acceptQuest(q);
+          this.openQuestBoard(); // refresh panel
+        });
+      }
 
       // Rarity badge
       this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 8, RARITY_LABELS[q.rarity], {
@@ -777,31 +790,24 @@ export class TavernScene extends Phaser.Scene {
         fontSize: "9px", color: "#ffd700", fontFamily: "monospace",
       }).setOrigin(0, 0));
 
-      // Check if already active
-      const isActive = s.activeQuests!.some(aq => aq.id === q.id);
-
+      // Status label on right side
       if (isActive) {
         this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "ACTIVE", {
           fontSize: "10px", color: "#66bb6a", fontFamily: "monospace",
           backgroundColor: "#1a2a1a", padding: { x: 6, y: 3 },
         }).setOrigin(1, 0.5));
       } else {
-        const btn = this.add.rectangle(panelW / 2 - 50, qy, 60, 24, 0x1a2a1a)
-          .setInteractive().setStrokeStyle(1, 0x66bb6a);
-        this.questPanel!.add(btn);
-        const btnTxt = this.add.text(panelW / 2 - 50, qy, "ACCEPT", {
+        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "ACCEPT", {
           fontSize: "10px", color: "#66bb6a", fontFamily: "monospace",
-        }).setOrigin(0.5);
-        this.questPanel!.add(btnTxt);
-
-        btn.on("pointerover", () => btn.setFillStyle(0x2a4a2a));
-        btn.on("pointerout", () => btn.setFillStyle(0x1a2a1a));
-        btn.on("pointerdown", () => {
-          this.acceptQuest(q);
-          this.openQuestBoard(); // refresh panel
-        });
+          backgroundColor: "#1a2a1a", padding: { x: 6, y: 3 },
+        }).setOrigin(1, 0.5));
       }
     });
+
+    // Close hint at bottom
+    this.questPanel.add(this.add.text(0, panelH / 2 - 16, "Click a quest to accept  |  ESC to close", {
+      fontSize: "9px", color: "#555544", fontFamily: "monospace",
+    }).setOrigin(0.5));
 
     // Close button
     const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 18, 30, 22, 0x2a0a0a)
