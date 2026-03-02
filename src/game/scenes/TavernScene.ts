@@ -699,14 +699,16 @@ export class TavernScene extends Phaser.Scene {
       }
     });
 
-    // Close button
-    const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 20, 30, 22, 0x2a0a0a)
+    // Full-width close bar (x=0 for reliable hit-testing under zoom)
+    const closeBg = this.add.rectangle(0, panelH / 2 - 18, panelW - 24, 26, 0x2a0a0a)
       .setInteractive().setStrokeStyle(1, 0x884444);
-    this.shopPanel.add(closeBtn);
-    this.shopPanel.add(this.add.text(panelW / 2 - 20, -panelH / 2 + 20, "✕", {
-      fontSize: "13px", color: "#ff6666", fontFamily: "monospace",
+    this.shopPanel.add(closeBg);
+    this.shopPanel.add(this.add.text(0, panelH / 2 - 18, "CLOSE  ✕", {
+      fontSize: "11px", color: "#ff6666", fontFamily: "monospace",
     }).setOrigin(0.5));
-    closeBtn.on("pointerdown", () => this.closeAllPanels());
+    closeBg.on("pointerover", () => closeBg.setFillStyle(0x3a1a1a));
+    closeBg.on("pointerout", () => closeBg.setFillStyle(0x2a0a0a));
+    closeBg.on("pointerdown", () => this.closeAllPanels());
   }
 
   // ── Quest Board ────────────────────────────────────────────────────────────
@@ -746,6 +748,17 @@ export class TavernScene extends Phaser.Scene {
       fontSize: "15px", color: "#ffe082", fontFamily: "monospace",
     }).setOrigin(0.5));
 
+    // Full-width close bar at top (x=0 for reliable hit-testing under zoom)
+    const closeBg = this.add.rectangle(0, -panelH / 2 + 18, panelW - 20, 26, 0x2a0a0a)
+      .setInteractive().setStrokeStyle(1, 0x884444);
+    this.questPanel.add(closeBg);
+    this.questPanel.add(this.add.text(0, -panelH / 2 + 18, "CLOSE  ✕", {
+      fontSize: "11px", color: "#ff6666", fontFamily: "monospace",
+    }).setOrigin(0.5));
+    closeBg.on("pointerover", () => closeBg.setFillStyle(0x3a1a1a));
+    closeBg.on("pointerout", () => closeBg.setFillStyle(0x2a0a0a));
+    closeBg.on("pointerdown", () => this.closeAllPanels());
+
     _boardQuests.forEach((q, i) => {
       const qy = -panelH / 2 + 55 + i * (cardH + 6);
       const rarityColor = RARITY_COLORS[q.rarity];
@@ -754,9 +767,11 @@ export class TavernScene extends Phaser.Scene {
       // Check if already active
       const isActive = s.activeQuests!.some(aq => aq.id === q.id);
 
-      // Full-width interactive card background (click anywhere to accept)
-      const cardBg = this.add.rectangle(0, qy, panelW - 20, cardH, 0x18160a)
-        .setStrokeStyle(1, rarityColor).setInteractive();
+      // Card background — full-width interactive for accepting
+      const cardFill = isActive ? 0x0e1a0e : 0x18160a;
+      const cardBg = this.add.rectangle(0, qy, panelW - 20, cardH, cardFill)
+        .setStrokeStyle(isActive ? 2 : 1, isActive ? 0x66bb6a : rarityColor)
+        .setInteractive();
       this.questPanel!.add(cardBg);
 
       if (!isActive) {
@@ -776,7 +791,7 @@ export class TavernScene extends Phaser.Scene {
 
       // Title
       this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 22, q.title, {
-        fontSize: "11px", color: rarityHex, fontFamily: "monospace",
+        fontSize: "11px", color: isActive ? "#66bb6a" : rarityHex, fontFamily: "monospace",
       }).setOrigin(0, 0));
 
       // Description
@@ -793,14 +808,13 @@ export class TavernScene extends Phaser.Scene {
 
       // Status label on right side
       if (isActive) {
-        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "ACTIVE", {
-          fontSize: "10px", color: "#66bb6a", fontFamily: "monospace",
-          backgroundColor: "#1a2a1a", padding: { x: 6, y: 3 },
+        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "ACCEPTED ✓", {
+          fontSize: "11px", color: "#66bb6a", fontFamily: "monospace",
+          backgroundColor: "#0a2a0a", padding: { x: 6, y: 3 },
         }).setOrigin(1, 0.5));
       } else {
-        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "ACCEPT", {
-          fontSize: "10px", color: "#66bb6a", fontFamily: "monospace",
-          backgroundColor: "#1a2a1a", padding: { x: 6, y: 3 },
+        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "▶ CLICK TO ACCEPT", {
+          fontSize: "9px", color: "#aaaa66", fontFamily: "monospace",
         }).setOrigin(1, 0.5));
       }
     });
@@ -809,15 +823,6 @@ export class TavernScene extends Phaser.Scene {
     this.questPanel.add(this.add.text(0, panelH / 2 - 16, "Click a quest to accept  |  ESC to close", {
       fontSize: "9px", color: "#555544", fontFamily: "monospace",
     }).setOrigin(0.5));
-
-    // Close button
-    const closeBtn = this.add.rectangle(panelW / 2 - 20, -panelH / 2 + 18, 30, 22, 0x2a0a0a)
-      .setInteractive().setStrokeStyle(1, 0x884444);
-    this.questPanel.add(closeBtn);
-    this.questPanel.add(this.add.text(panelW / 2 - 20, -panelH / 2 + 18, "✕", {
-      fontSize: "13px", color: "#ff6666", fontFamily: "monospace",
-    }).setOrigin(0.5));
-    closeBtn.on("pointerdown", () => this.closeAllPanels());
   }
 
   private acceptQuest(quest: Quest) {
