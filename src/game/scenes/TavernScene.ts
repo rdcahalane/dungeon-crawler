@@ -590,7 +590,8 @@ export class TavernScene extends Phaser.Scene {
     this.nearEntrance = entranceDist < TILE_SIZE * 3;
 
     // ESC closes dungeon choice dialog
-    if (this._esc && Phaser.Input.Keyboard.JustDown(this._esc) && this._dungeonChoiceOpen) {
+    // Check _dungeonChoiceOpen BEFORE JustDown — JustDown consumes the keypress
+    if (this._esc && this._dungeonChoiceOpen && Phaser.Input.Keyboard.JustDown(this._esc)) {
       this.closeDungeonChoice();
       return;
     }
