@@ -1,4 +1,4 @@
-import { ChestTier } from "../constants";
+import { ArmorTrait, ChestTier, EquipmentTrait, WeaponTrait } from "../constants";
 
 export interface LootResult {
   gold: number;
@@ -9,6 +9,7 @@ export interface LootItem {
   type: string;       // item type key
   label: string;
   bonus?: number;     // e.g. +1/+2/+3 for weapons/armor
+  trait?: EquipmentTrait;
   statKey?: string;   // for stat tomes: 'str','dex',etc.
   spellKey?: string;  // for scrolls
   value?: number;     // numeric value (hp heal, xp gain, etc.)
@@ -23,6 +24,20 @@ function d(sides: number, count = 1): number {
 const SCROLL_SPELLS = ['MAGIC_MISSILE', 'FIREBALL', 'FROST_BOLT', 'CURE_WOUNDS', 'BLESS'];
 const NAMED_WEAPONS = ['Short Sword', 'Long Sword', 'War Axe', 'Mace', 'Dagger', 'Staff'];
 const NAMED_ARMORS = ['Leather', 'Chain Mail', 'Scale Mail', 'Plate Armor'];
+const WEAPON_TRAITS: Record<string, { trait: WeaponTrait; tag: string }> = {
+  'Short Sword': { trait: 'quick', tag: 'Quick' },
+  'Long Sword': { trait: 'vampiric', tag: 'Drain' },
+  'War Axe': { trait: 'cleaving', tag: 'Cleave' },
+  'Mace': { trait: 'vampiric', tag: 'Drain' },
+  'Dagger': { trait: 'quick', tag: 'Quick' },
+  'Staff': { trait: 'arcane', tag: 'Arcane' },
+};
+const ARMOR_TRAITS: Record<string, { trait: ArmorTrait; tag: string }> = {
+  Leather: { trait: 'light', tag: 'Light' },
+  'Chain Mail': { trait: 'reinforced', tag: 'Guard' },
+  'Scale Mail': { trait: 'warded', tag: 'Ward' },
+  'Plate Armor': { trait: 'reinforced', tag: 'Guard' },
+};
 
 export class LootTable {
   static rollLoot(floor: number, tier: ChestTier): LootResult {
@@ -69,11 +84,13 @@ export class LootTable {
       if (Math.random() < 0.5) {
         const bonus = floor >= 7 ? d(3) : floor >= 4 ? d(2) : 1;
         const name = NAMED_WEAPONS[Math.floor(Math.random() * NAMED_WEAPONS.length)];
-        return { type: 'WEAPON', label: `${name} +${bonus}`, bonus };
+        const trait = WEAPON_TRAITS[name];
+        return { type: 'WEAPON', label: `${name} +${bonus} [${trait.tag}]`, bonus, trait: trait.trait };
       } else {
         const bonus = floor >= 7 ? d(3) : floor >= 4 ? d(2) : 1;
         const name = NAMED_ARMORS[Math.floor(Math.random() * NAMED_ARMORS.length)];
-        return { type: 'ARMOR', label: `${name} +${bonus}`, bonus };
+        const trait = ARMOR_TRAITS[name];
+        return { type: 'ARMOR', label: `${name} +${bonus} [${trait.tag}]`, bonus, trait: trait.trait };
       }
     }
 
@@ -90,9 +107,9 @@ export class LootTable {
     } else if (commonRoll < 0.55) {
       return { type: 'XP_ORB', label: 'XP Orb', value: 40 + floor * 10 };
     } else if (commonRoll < 0.70) {
-      return { type: 'WEAPON', label: 'Weapon Shard', bonus: 1 };
+      return { type: 'WEAPON', label: 'Weapon Shard +1 [Quick]', bonus: 1, trait: 'quick' };
     } else if (commonRoll < 0.85) {
-      return { type: 'ARMOR', label: 'Armor Shard', bonus: 1 };
+      return { type: 'ARMOR', label: 'Armor Shard +1 [Guard]', bonus: 1, trait: 'reinforced' };
     } else {
       // Extra gold
       return null;

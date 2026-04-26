@@ -1,12 +1,12 @@
-import { auth, signOut } from "@/auth";
+import { auth, hasAuthSecret, signOut } from "@/auth";
 import Link from "next/link";
 import GameWrapper from "./GameWrapper";
 
 export default async function HomePage() {
-  const session = await auth().catch(() => null);
+  const session = hasAuthSecret ? await auth().catch(() => null) : null;
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
+    <main className="min-h-screen flex flex-col items-center justify-center gap-4 p-4 bg-[#08080d] text-slate-200">
       {/* Auth bar */}
       <div className="flex items-center gap-4 text-sm font-mono">
         {session?.user ? (
@@ -47,7 +47,7 @@ export default async function HomePage() {
 
       {/* Controls hint */}
       <p className="text-xs text-gray-600 font-mono">
-        WASD / Arrows — Move &nbsp;|&nbsp; Space / Click — Attack &nbsp;|&nbsp; Step on ▲ — Next Floor
+        WASD / Arrows - Move &nbsp;|&nbsp; Space / Click - Attack &nbsp;|&nbsp; 1-4 Spells &nbsp;|&nbsp; E Open / G Search
       </p>
     </main>
   );

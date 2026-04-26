@@ -5,6 +5,7 @@ import {
   CHARACTER_CLASSES, SpellKey, SPELLS,
   TRAP_TYPES, TrapTypeKey,
   ENEMY_TYPES, EnemyTypeKey,
+  ArmorTrait, EquipmentTrait, WeaponTrait,
   abilityMod, getFloorThemeIdx,
 } from "../constants";
 import { generateDungeon, DungeonData, SerializedFloor } from "../systems/DungeonGenerator";
@@ -21,6 +22,33 @@ interface FloatingText {
 }
 
 type RestType = 'short' | 'long';
+type BoonKey = 'blade' | 'bulwark' | 'vigor' | 'arcana' | 'fortune';
+type LootLike = { type: string; label: string; bonus?: number; trait?: EquipmentTrait; statKey?: string; value?: number };
+
+interface BoonOption {
+  key: BoonKey;
+  title: string;
+  lines: string[];
+  color: number;
+  apply: () => void;
+}
+
+interface RoomChallenge {
+  roomIdx: number;
+  target: number;
+  kills: number;
+  timeLeft: number;
+}
+
+type RelicKey = 'ember_idol' | 'swift_vial' | 'chest_contract' | 'black_candle' | 'boss_trophy';
+
+const RELIC_LABELS: Record<RelicKey, string> = {
+  ember_idol: 'Ember Idol',
+  swift_vial: 'Swift Vial',
+  chest_contract: 'Chest Contract',
+  black_candle: 'Black Candle',
+  boss_trophy: 'Guardian Trophy',
+};
 
 export class GameScene extends Phaser.Scene {
   private dungeon!: DungeonData;
@@ -45,6 +73,7 @@ export class GameScene extends Phaser.Scene {
 
   // ── Trap detection ─────────────────────────────────────────────────────────
   private detectedTraps = new Set<string>();
+  private warnedTrapKeys = new Set<string>();
   private _trapOverlays = new Map<string, Phaser.GameObjects.Image>();
 
   // ── Secret door tracking ───────────────────────────────────────────────────
@@ -70,7 +99,20 @@ export class GameScene extends Phaser.Scene {
 
   // ── Misc ───────────────────────────────────────────────────────────────────
   private kills = 0;
+  private killStreak = 0;
+  private killStreakTimer = 0;
+  private floorObjectiveProgress = 0;
+  private floorObjectiveComplete = false;
   private _enteredQuestRooms = new Set<string>();
+  private _triggeredRoomEvents = new Set<number>();
+  private _triggeredRoomModifiers = new Set<number>();
+  private _clearedRoomBonuses = new Set<number>();
+  private _lastPlayerRoomIdx = -1;
+  private _roomChallenge?: RoomChallenge;
+  private _roomChallengesSeen = new Set<number>();
+  private _relicRoomTriggers = new Set<number>();
+  private _shrineDialogOpen = false;
+  private _shrineDialogElements: Phaser.GameObjects.GameObject[] = [];
   private initData: {
     floor?: number;
     charData?: CharCreationData;
@@ -87,6 +129,8 @@ export class GameScene extends Phaser.Scene {
   // ── Rest dialog ────────────────────────────────────────────────────────────
   private _restDialogOpen = false;
   private _restDialogElements: Phaser.GameObjects.GameObject[] = [];
+  private _boonDialogOpen = false;
+  private _boonDialogElements: Phaser.GameObjects.GameObject[] = [];
 
   // ── Extra keys ─────────────────────────────────────────────────────────────
   private _eKey?: Phaser.Input.Keyboard.Key;
@@ -103,7 +147,21 @@ export class GameScene extends Phaser.Scene {
     this.currentFloor = data?.floor ?? 1;
     this.saveSlot = data?.saveSlot ?? data?.persistedStats?.saveSlot ?? 1;
     this.kills = 0;
+    this.killStreak = 0;
+    this.killStreakTimer = 0;
+    this.floorObjectiveProgress = 0;
+    this.floorObjectiveComplete = false;
     this._enteredQuestRooms.clear();
+    this._triggeredRoomEvents.clear();
+    this._triggeredRoomModifiers.clear();
+    this._clearedRoomBonuses.clear();
+    this._lastPlayerRoomIdx = -1;
+    this._roomChallenge = undefined;
+    this._roomChallengesSeen.clear();
+    this._relicRoomTriggers.clear();
+    this._shrineDialogOpen = false;
+    this._shrineDialogElements.forEach(e => e.destroy());
+    this._shrineDialogElements = [];
     this.initData = data ?? {};
 
     // Clear session state
@@ -111,12 +169,16 @@ export class GameScene extends Phaser.Scene {
     this.secretDoorSprites.clear();
     this.trapMap.clear();
     this.detectedTraps.clear();
+    this.warnedTrapKeys.clear();
     this._trapOverlays.forEach(o => o.destroy());
     this._trapOverlays.clear();
     this.enemyProjectiles = [];
     this._restDialogOpen = false;
     this._restDialogElements.forEach(e => e.destroy());
     this._restDialogElements = [];
+    this._boonDialogOpen = false;
+    this._boonDialogElements.forEach(e => e.destroy());
+    this._boonDialogElements = [];
 
     // Load per-floor persistent state if available
     const sf = data?.persistedStats?.savedDungeons?.[this.currentFloor];
@@ -135,8 +197,11 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  create() {
-    const sf = this.initData.persistedStats?.savedDungeons?.[this.currentFloor];
+	  create() {
+	    const sf = this.initData.persistedStats?.savedDungeons?.[this.currentFloor];
+    if (this.initData.persistedStats) {
+      this.initData.persistedStats.runDeepestFloor = Math.max(this.initData.persistedStats.runDeepestFloor ?? 0, this.currentFloor);
+    }
 
     if (sf) {
       // Restore saved dungeon layout
@@ -229,6 +294,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    this.decorateRooms();
+
     // Build trap map — exclude already-triggered traps
     for (const trap of this.dungeon.traps) {
       const key = `${trap.tx},${trap.ty}`;
@@ -236,6 +303,86 @@ export class GameScene extends Phaser.Scene {
         this.trapMap.set(key, trap.type);
       }
     }
+  }
+
+  private decorateRooms() {
+    this.dungeon.rooms.forEach((room, idx) => {
+      const x = room.x * TILE_SIZE;
+      const y = room.y * TILE_SIZE;
+      const w = room.w * TILE_SIZE;
+      const h = room.h * TILE_SIZE;
+      const cx = room.cx * TILE_SIZE + TILE_SIZE / 2;
+      const cy = room.cy * TILE_SIZE + TILE_SIZE / 2;
+      const type = room.type ?? 'normal';
+
+      const colorByType: Record<string, number> = {
+        normal: idx === 0 ? 0x66bb6a : 0x3f4f6a,
+        vault: 0xffd166,
+        trap_corridor: 0xff5a5f,
+        monster_closet: 0x9b5de5,
+        quest_special: 0x00bbf9,
+      };
+      const color = colorByType[type] ?? 0x3f4f6a;
+      const modifierColor: Record<string, number> = {
+        blood_rune: 0xff5a5f,
+        healing_font: 0x69f0ae,
+        cursed_crypt: 0xce93d8,
+        gilded_cache: 0xffd166,
+      };
+
+      this.add.rectangle(x + w / 2, y + h / 2, w - 10, h - 10)
+        .setStrokeStyle(type === 'normal' ? 1 : 2, color, type === 'normal' ? 0.18 : 0.5)
+        .setDepth(2);
+
+      if (idx === 0) {
+        this.add.text(cx, y + 12, 'CAMP', {
+          fontSize: '9px', color: '#99e6a8', fontFamily: 'monospace',
+          stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(4);
+      } else if (type !== 'normal') {
+        const label = type === 'vault'
+          ? 'VAULT'
+          : type === 'trap_corridor'
+            ? 'RUNES'
+            : type === 'monster_closet'
+              ? 'DEN'
+              : (room.tag ?? 'QUEST').toUpperCase();
+        this.add.text(cx, y + 12, label, {
+          fontSize: '9px', color: `#${color.toString(16).padStart(6, '0')}`,
+          fontFamily: 'monospace', stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(4);
+      }
+
+      if (type === 'vault') {
+        this.add.image(cx, cy, 'decal_hoard').setAlpha(0.75).setDepth(2.5);
+      } else if (type === 'trap_corridor') {
+        this.add.image(cx, cy, 'decal_runes').setAlpha(0.75).setDepth(2.5);
+      } else if (type === 'monster_closet') {
+        this.add.image(cx, cy, 'decal_bones').setAlpha(0.75).setDepth(2.5);
+      } else if (type === 'quest_special') {
+        this.add.image(cx, cy, 'decal_shrine').setAlpha(0.8).setDepth(2.5);
+      } else if (idx % 3 === 0) {
+        this.add.image(cx, cy, 'decal_pillar').setAlpha(0.35).setDepth(2.5);
+      }
+
+      if (room.modifier) {
+        const modColor = modifierColor[room.modifier] ?? 0xffffff;
+        const modLabel = room.modifier === 'blood_rune'
+          ? 'BLOOD'
+          : room.modifier === 'healing_font'
+            ? 'FONT'
+            : room.modifier === 'cursed_crypt'
+              ? 'CURSE'
+              : 'GILD';
+        this.add.rectangle(cx, cy, Math.max(56, w * 0.38), Math.max(36, h * 0.32))
+          .setStrokeStyle(2, modColor, 0.42)
+          .setDepth(2.8);
+        this.add.text(cx, cy, modLabel, {
+          fontSize: '9px', color: `#${modColor.toString(16).padStart(6, '0')}`,
+          fontFamily: 'monospace', stroke: '#000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(4);
+      }
+    });
   }
 
   // ── Player ────────────────────────────────────────────────────────────────
@@ -290,8 +437,9 @@ export class GameScene extends Phaser.Scene {
       const spawn = this.dungeon.enemies[i];
       const ex = spawn.tx * TILE_SIZE + TILE_SIZE / 2;
       const ey = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
-      const enemy = new Enemy(this, ex, ey, spawn.type);
+      const enemy = new Enemy(this, ex, ey, spawn.type, !!spawn.elite);
       (enemy as Enemy & { _spawnIdx: number })._spawnIdx = i;
+      (enemy as Enemy & { _roomIdx?: number })._roomIdx = spawn.roomIdx;
       this.enemies.push(enemy);
       this.enemyGroup.add(enemy);
       this.physics.add.collider(enemy, this.wallGroup);
@@ -310,7 +458,7 @@ export class GameScene extends Phaser.Scene {
 
       const ix = spawn.tx * TILE_SIZE + TILE_SIZE / 2;
       const iy = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
-      const textureKey = `item_${spawn.type.toLowerCase()}`;
+      const textureKey = spawn.type === 'CURSED_SHRINE' ? 'decal_shrine' : `item_${spawn.type.toLowerCase()}`;
       const sprite = this.add.sprite(ix, iy, textureKey).setDepth(3);
       (sprite as Phaser.GameObjects.Sprite & { itemType: string; spawnKey: string }).itemType = spawn.type;
       (sprite as Phaser.GameObjects.Sprite & { itemType: string; spawnKey: string }).spawnKey = key;
@@ -444,10 +592,10 @@ export class GameScene extends Phaser.Scene {
     this.spellSystem = new SpellSystem(this);
     const classDef = CHARACTER_CLASSES[this.player.stats.classKey];
     const hotkeyKeyCodes = [
-      Phaser.Input.Keyboard.KeyCodes.Q,
-      Phaser.Input.Keyboard.KeyCodes.W,
-      Phaser.Input.Keyboard.KeyCodes.E,
-      Phaser.Input.Keyboard.KeyCodes.R,
+      Phaser.Input.Keyboard.KeyCodes.ONE,
+      Phaser.Input.Keyboard.KeyCodes.TWO,
+      Phaser.Input.Keyboard.KeyCodes.THREE,
+      Phaser.Input.Keyboard.KeyCodes.FOUR,
     ];
 
     this.spellHotkeys = [];
@@ -481,6 +629,15 @@ export class GameScene extends Phaser.Scene {
       potions: s.potions,
       manaPotions: s.manaPotions,
       gold: s.gold,
+      floorObjective: this.dungeon.floorObjective
+        ? {
+            title: this.dungeon.floorObjective.title,
+            detail: this.dungeon.floorObjective.detail,
+            progress: this.floorObjectiveProgress,
+            target: this.dungeon.floorObjective.targetCount,
+            complete: this.floorObjectiveComplete,
+          }
+        : undefined,
       activeQuests: s.activeQuests,
       completedQuests: s.completedQuests,
       inventory: s.inventory,
@@ -489,13 +646,47 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private addGold(amount: number) {
+    if (amount <= 0) return;
+    this.player.stats.gold += amount;
+    this.player.stats.runGoldEarned = (this.player.stats.runGoldEarned ?? 0) + amount;
+  }
+
+  private hasRelic(key: RelicKey) {
+    return this.player.stats.relics?.includes(key) ?? false;
+  }
+
+  private grantRelic(key: RelicKey) {
+    const s = this.player.stats;
+    if (!s.relics) s.relics = [];
+    if (s.relics.includes(key)) {
+      this.addGold(35 + this.currentFloor * 8);
+      this.events.emit("hud:status", `${RELIC_LABELS[key]} deepens into gold.`);
+      return;
+    }
+    s.relics.push(key);
+    this.spawnFloatingText(this.player.x, this.player.y - 72, RELIC_LABELS[key].toUpperCase(), 0xffd166, 13);
+    this.events.emit("hud:status", `Relic gained: ${RELIC_LABELS[key]}.`);
+  }
+
+  private grantRandomRelic() {
+    const pool: RelicKey[] = ['ember_idol', 'swift_vial', 'chest_contract', 'black_candle', 'boss_trophy'];
+    const missing = pool.filter(key => !this.hasRelic(key));
+    this.grantRelic((missing.length > 0 ? missing : pool)[Phaser.Math.Between(0, (missing.length > 0 ? missing : pool).length - 1)]);
+  }
+
   // ── Update loop ───────────────────────────────────────────────────────────
 
   update(_time: number, delta: number) {
-    if (!this.player || this.player.stats.hp <= 0) return;
-    if (this._restDialogOpen) return; // pause all gameplay during rest dialog
+	    if (!this.player || this.player.stats.hp <= 0) return;
+	    if (this._restDialogOpen) return; // pause all gameplay during rest dialog
+	    if (this._boonDialogOpen) return; // choose a build-defining reward before continuing
+    if (this._shrineDialogOpen) return;
 
-    this.player.update(delta);
+	    this.player.update(delta);
+	    this.killStreakTimer = Math.max(0, this.killStreakTimer - delta);
+	    if (this.killStreakTimer <= 0) this.killStreak = 0;
+    this.updateRoomChallenge(delta);
 
     // Torch glow flicker
     const flicker = 0.5 + Math.sin(this.time.now * 0.008) * 0.04 + (Math.random() - 0.5) * 0.025;
@@ -541,13 +732,22 @@ export class GameScene extends Phaser.Scene {
 
       if (enemy.canAttackPlayer(this.player.x, this.player.y)) {
         const dmg = enemy.doAttack();
-        if (ENEMY_TYPES[enemy.typeKey].isRanged) {
-          this.spawnEnemyBolt(enemy.x, enemy.y, this.player.x, this.player.y, dmg, enemy.typeKey);
-        } else {
-          this.player.takeDamage(dmg, enemy.ignoresArmor);
-          if (enemy.poisonDmg > 0) {
-            this.player.addEffect('POISONED', enemy.poisonDuration || 5000, enemy.poisonDmg);
+	        if (ENEMY_TYPES[enemy.typeKey].isRanged) {
+	          this.spawnEnemyBolt(enemy.x, enemy.y, this.player.x, this.player.y, dmg, enemy.typeKey);
+	        } else {
+	          this.player.takeDamage(dmg, enemy.ignoresArmor);
+          if (enemy.typeKey === 'GIANT_SPIDER') {
+            this.player.addEffect('SLOWED', 1600);
+            this.spawnFloatingText(this.player.x, this.player.y - 36, 'WEBBED', 0x80cbc4, 11);
+          } else if (enemy.typeKey === 'TROLL' || enemy.typeKey === 'TANK') {
+            this.cameras.main.shake(90, 0.006);
+            this.spawnFloatingText(this.player.x, this.player.y - 36, 'SLAM', 0xffd166, 11);
+          } else if (enemy.typeKey === 'GHOST') {
+            this.spawnFloatingText(this.player.x, this.player.y - 36, 'CHILL', 0x80cbc4, 11);
           }
+	          if (enemy.poisonDmg > 0) {
+	            this.player.addEffect('POISONED', enemy.poisonDuration || 5000, enemy.poisonDmg);
+	          }
         }
       }
     }
@@ -556,6 +756,7 @@ export class GameScene extends Phaser.Scene {
     this.checkChestInteraction();
     this.checkItemPickup();
     this.checkPotionInput();
+    this.checkRoomEvents(curTx, curTy);
     this.checkSpecialRoomEntry();
     this.checkStairs();
     this.checkStairsUp();
@@ -666,6 +867,7 @@ export class GameScene extends Phaser.Scene {
         // Disarm success
         this.trapMap.delete(key);
         this.detectedTraps.delete(key);
+        this.warnedTrapKeys.delete(key);
         this.triggeredTrapKeys.add(key); // mark as dealt with
         this._trapOverlays.get(key)?.destroy();
         this._trapOverlays.delete(key);
@@ -690,10 +892,23 @@ export class GameScene extends Phaser.Scene {
 
     // Detected traps: give +4 save bonus (player saw it coming)
     const isDetected = this.detectedTraps.has(trapKey);
+    if (isDetected) {
+      if (!this.warnedTrapKeys.has(trapKey)) {
+        const msg = this.player.stats.classKey === 'thief'
+          ? 'Known trap ahead. Press D beside it to disarm, or route around it.'
+          : 'Known trap ahead. Route around it or risk another path.';
+        this.events.emit("hud:status", msg);
+        this.spawnFloatingText(this.player.x, this.player.y - 34, 'TRAP AHEAD', 0xffd166, 11);
+        this.warnedTrapKeys.add(trapKey);
+      }
+      return;
+    }
+
     this.triggerTrap(trapType, ptx, pty, trapKey, isDetected ? 4 : 0);
 
     // Clean up detection overlay
     this.detectedTraps.delete(trapKey);
+    this.warnedTrapKeys.delete(trapKey);
     this._trapOverlays.get(trapKey)?.destroy();
     this._trapOverlays.delete(trapKey);
   }
@@ -767,6 +982,7 @@ export class GameScene extends Phaser.Scene {
     const s = this.player.stats;
 
     this.trapMap.delete(mapKey);
+    this.warnedTrapKeys.delete(mapKey);
     this.dungeon.tiles[ty][tx] = TILE.FLOOR;
     this.triggeredTrapKeys.add(mapKey);
 
@@ -859,6 +1075,8 @@ export class GameScene extends Phaser.Scene {
 
   private handlePlayerAttack() {
     const attackBox = this.player.getAttackBox();
+    this.spawnAttackArc();
+    let hitCount = 0;
 
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const enemy = this.enemies[i];
@@ -871,12 +1089,25 @@ export class GameScene extends Phaser.Scene {
         !enemy.canAttackPlayer(this.player.x, this.player.y);
       const dmg = this.player.getAttackDamage(isSneakAttack);
       const dealt = enemy.takeDamage(dmg);
+      hitCount++;
+      this.cameras.main.shake(40, 0.0025);
+      this.tweens.add({
+        targets: enemy,
+        scaleX: 1.15,
+        scaleY: 1.15,
+        duration: 60,
+        yoyo: true,
+      });
       this.spawnFloatingText(enemy.x, enemy.y - 20, `-${dealt}`, 0xffffff);
       if (isSneakAttack) this.spawnFloatingText(enemy.x, enemy.y - 36, 'SNEAK!', 0xffa726, 11);
 
-      if (enemy.hp <= 0) {
-        this.player.gainXP(enemy.xp);
-        this.kills++;
+	      if (enemy.hp <= 0) {
+        if (this.tryEnemyReform(enemy)) continue;
+	        this.player.gainXP(enemy.xp);
+	        this.kills++;
+        this.recordRoomChallengeKill(enemy);
+	        this.applyKillMomentum(enemy);
+	        this.applyEquipmentKillEffects(enemy, i);
 
         // Quest progress: enemy kill
         if (this.player.stats.activeQuests) {
@@ -889,13 +1120,360 @@ export class GameScene extends Phaser.Scene {
         const spawnIdx = (enemy as Enemy & { _spawnIdx?: number })._spawnIdx;
         if (typeof spawnIdx === 'number') this.deadEnemyIndices.add(spawnIdx);
 
-        if (this.player.stats.classKey === 'fighter') this.doCleave(enemy.x, enemy.y, i);
+	        if (this.player.stats.classKey === 'fighter') this.doCleave(enemy.x, enemy.y, i);
 
         this.spawnDeathEffect(enemy.x, enemy.y, enemy.typeKey);
         enemy.destroy();
         this.enemies.splice(i, 1);
       }
     }
+
+    if (hitCount === 0) {
+      const fx = this.player.stats.facing.x || 0;
+      const fy = this.player.stats.facing.y || 1;
+      this.spawnFloatingText(this.player.x + fx * 28, this.player.y + fy * 28, 'MISS', 0x888899, 10);
+    }
+  }
+
+  private spawnAttackArc() {
+    const fx = this.player.stats.facing.x || 0;
+    const fy = this.player.stats.facing.y || 1;
+    const horizontal = Math.abs(fx) > Math.abs(fy);
+    const x = this.player.x + fx * 28;
+    const y = this.player.y + fy * 28;
+    const arc = this.add.rectangle(x, y, horizontal ? 34 : 10, horizontal ? 10 : 34, 0xf8f4d8, 0.55)
+      .setDepth(18);
+    this.tweens.add({
+      targets: arc,
+      alpha: 0,
+      scaleX: horizontal ? 1.4 : 0.6,
+      scaleY: horizontal ? 0.6 : 1.4,
+      duration: 120,
+      onComplete: () => arc.destroy(),
+    });
+  }
+
+	  private applyKillMomentum(enemy: Enemy) {
+    this.killStreak = this.killStreakTimer > 0 ? this.killStreak + 1 : 1;
+    this.killStreakTimer = 4500;
+    this.player.stats.runBestStreak = Math.max(this.player.stats.runBestStreak ?? 0, this.killStreak);
+    this.player.stats.runDeepestFloor = Math.max(this.player.stats.runDeepestFloor ?? 0, this.currentFloor);
+
+    if (this.killStreak >= 3) {
+      const bonusGold = Math.min(25, this.killStreak * 2);
+      const bonusXP = Math.min(30, this.killStreak * 3);
+      this.addGold(bonusGold);
+      this.player.gainXP(bonusXP);
+      this.player.addEffect('RUSHED', Math.min(7000, 2200 + this.killStreak * 450));
+      this.spawnFloatingText(this.player.x, this.player.y - 54, `STREAK x${this.killStreak} +${bonusGold}g`, 0xffd166, 12);
+    }
+
+    if (this.killStreak >= 5) {
+      const hpGain = Math.max(1, Math.floor(this.player.stats.maxHp * 0.04));
+      this.player.heal(hpGain);
+      if (this.player.stats.maxMana > 0) this.player.restoreMana(3);
+      this.spawnFloatingText(this.player.x, this.player.y - 70, 'ADRENALINE!', 0xffd166, 12);
+    }
+
+	    if (enemy.isElite) {
+      const trophyBonus = this.hasRelic('boss_trophy') ? 1.5 : 1;
+      const bonusGold = Math.floor((35 + this.currentFloor * 8) * trophyBonus);
+      const bonusXP = Math.floor((30 + this.currentFloor * 10) * trophyBonus);
+      this.addGold(bonusGold);
+      this.player.gainXP(bonusXP);
+      this.cameras.main.flash(180, 255, 209, 102);
+      this.spawnFloatingText(enemy.x, enemy.y - 44, `CHAMPION +${bonusGold}g`, 0xffd166, 14);
+    }
+
+    this.applyRoomClearBonus(enemy);
+
+    const objective = this.dungeon.floorObjective;
+    if (!objective || this.floorObjectiveComplete) return;
+
+    const enemyRoomIdx = (enemy as Enemy & { _roomIdx?: number })._roomIdx;
+    if (
+      (objective.type === 'CLEAR_DEN' && enemyRoomIdx === objective.roomIdx) ||
+      (objective.type === 'SLAY_CHAMPION' && enemy.isElite) ||
+      (objective.type === 'CLAIM_KEY' && enemy.isElite && enemyRoomIdx === objective.roomIdx)
+    ) {
+      this.floorObjectiveProgress = Math.min(objective.targetCount, this.floorObjectiveProgress + 1);
+      if (this.floorObjectiveProgress >= objective.targetCount) this.completeFloorObjective();
+    }
+	  }
+
+  private tryEnemyReform(enemy: Enemy) {
+    if (!enemy.tryReform()) return false;
+    this.spawnFloatingText(enemy.x, enemy.y - 28, 'REFORMS!', 0xe0e0e0, 12);
+    this.events.emit("hud:status", "Skeleton bones knit back together. Finish it again.");
+    return true;
+  }
+
+  private updateRoomChallenge(delta: number) {
+    const challenge = this._roomChallenge;
+    if (!challenge) return;
+    challenge.timeLeft -= delta;
+    if (challenge.timeLeft > 0) return;
+    this.spawnFloatingText(this.player.x, this.player.y - 54, 'CHANCE LOST', 0x888899, 11);
+    this.events.emit("hud:status", "Room challenge faded. The dungeon will not wait.");
+    this._roomChallenge = undefined;
+  }
+
+  private startRoomChallenge(roomIdx: number) {
+    if (this._roomChallenge || this._roomChallengesSeen.has(roomIdx) || roomIdx <= 0) return;
+    const hostileCount = this.enemies.filter(enemy =>
+      enemy.active && enemy.hp > 0 && (enemy as Enemy & { _roomIdx?: number })._roomIdx === roomIdx
+    ).length;
+    if (hostileCount < 2) return;
+
+    const target = Math.min(3, hostileCount);
+    this._roomChallengesSeen.add(roomIdx);
+    this._roomChallenge = {
+      roomIdx,
+      target,
+      kills: 0,
+      timeLeft: 7000 + target * 2500,
+    };
+    this.spawnFloatingText(this.player.x, this.player.y - 58, `GAMBIT: ${target} KILLS`, 0xffd166, 13);
+    this.events.emit("hud:status", `Room gambit: kill ${target} enemies fast for bonus gold, XP, and rush.`);
+  }
+
+  private recordRoomChallengeKill(enemy: Enemy) {
+    const roomIdx = (enemy as Enemy & { _roomIdx?: number })._roomIdx;
+    if (this.hasRelic('ember_idol') && roomIdx !== undefined && !this._relicRoomTriggers.has(roomIdx)) {
+      this._relicRoomTriggers.add(roomIdx);
+      this.player.addEffect('RUSHED', 3200);
+      this.spawnFloatingText(this.player.x, this.player.y - 74, 'EMBER IGNITES', 0xff5a5f, 11);
+    }
+
+    const challenge = this._roomChallenge;
+    if (!challenge) return;
+    if (roomIdx !== challenge.roomIdx) return;
+
+    challenge.kills++;
+    if (challenge.kills < challenge.target) {
+      this.spawnFloatingText(this.player.x, this.player.y - 58, `${challenge.kills}/${challenge.target}`, 0xffd166, 11);
+      return;
+    }
+
+    const multiplier = this.hasRelic('black_candle') ? 2 : 1;
+    const gold = (18 + this.currentFloor * 6) * multiplier;
+    const xp = (16 + this.currentFloor * 8) * multiplier;
+    this.addGold(gold);
+    this.player.gainXP(xp);
+    this.player.addEffect('RUSHED', 5500);
+    this.spawnFloatingText(this.player.x, this.player.y - 66, `GAMBIT WON +${gold}g`, 0xffd166, 13);
+    this.events.emit("hud:status", `Room gambit won: +${gold}g +${xp} XP and Rush.`);
+    this._roomChallenge = undefined;
+    this.emitHUD();
+  }
+
+  private applyEquipmentKillEffects(enemy: Enemy, killedIdx: number) {
+    const trait = this.player.stats.weaponTrait;
+    if (trait === 'vampiric') {
+      const heal = Math.max(2, Math.floor(this.player.stats.maxHp * 0.04));
+      this.player.heal(heal);
+      this.spawnFloatingText(this.player.x, this.player.y - 62, `DRAIN +${heal}`, COLORS.HEAL_TEXT, 11);
+    } else if (trait === 'arcane' && this.player.stats.maxMana > 0) {
+      this.player.restoreMana(5);
+      this.spawnFloatingText(this.player.x, this.player.y - 62, '+5 MANA', COLORS.MANA_BAR, 11);
+    } else if (trait === 'cleaving' && this.player.stats.classKey !== 'fighter') {
+      this.doTraitCleave(enemy.x, enemy.y, killedIdx);
+    }
+  }
+
+  private applyRoomClearBonus(enemy: Enemy) {
+    const roomIdx = (enemy as Enemy & { _roomIdx?: number })._roomIdx;
+    if (roomIdx === undefined || this._clearedRoomBonuses.has(roomIdx)) return;
+
+    const stillHostile = this.enemies.some((other) => {
+      if (other === enemy || !other.active || other.hp <= 0) return false;
+      return (other as Enemy & { _roomIdx?: number })._roomIdx === roomIdx;
+    });
+    if (stillHostile) return;
+
+    const room = this.dungeon.rooms[roomIdx];
+    if (!room) return;
+
+    this._clearedRoomBonuses.add(roomIdx);
+    const type = room.type ?? 'normal';
+    const rewardByType: Record<string, { gold: number; xp: number; label: string; color: number }> = {
+      normal: { gold: 4 + this.currentFloor, xp: 5 + this.currentFloor * 2, label: 'Room Clear', color: 0x99aabb },
+      monster_closet: { gold: 18 + this.currentFloor * 4, xp: 22 + this.currentFloor * 6, label: 'Den Cleared', color: 0xff5a5f },
+      trap_corridor: { gold: 14 + this.currentFloor * 3, xp: 16 + this.currentFloor * 4, label: 'Runes Secured', color: 0xffd166 },
+      vault: { gold: 24 + this.currentFloor * 5, xp: 12 + this.currentFloor * 3, label: 'Vault Secured', color: 0xffd166 },
+      quest_special: { gold: 20 + this.currentFloor * 4, xp: 24 + this.currentFloor * 5, label: 'Chamber Secured', color: 0x00bbf9 },
+    };
+    const reward = rewardByType[type] ?? rewardByType.normal;
+    const modifierGold = room.modifier === 'gilded_cache' ? 18 + this.currentFloor * 5 : 0;
+    const modifierXP = room.modifier === 'cursed_crypt' ? 16 + this.currentFloor * 5 : 0;
+
+    this.addGold(reward.gold + modifierGold);
+    this.player.gainXP(reward.xp + modifierXP);
+    this.player.heal(Math.max(1, Math.floor(this.player.stats.maxHp * 0.03)));
+    this.spawnFloatingText(this.player.x, this.player.y - 48, `${reward.label} +${reward.gold + modifierGold}g`, reward.color, 13);
+    this.events.emit("hud:status", `${reward.label}: +${reward.gold + modifierGold}g +${reward.xp + modifierXP} XP`);
+    this.emitHUD();
+  }
+
+  private completeFloorObjective() {
+    const objective = this.dungeon.floorObjective;
+    if (!objective || this.floorObjectiveComplete) return;
+    this.floorObjectiveComplete = true;
+	    this.addGold(objective.rewardGold);
+	    this.player.gainXP(objective.rewardXP);
+    if (objective.type === 'CLAIM_KEY') this.grantRandomRelic();
+	    this.cameras.main.flash(220, 80, 180, 90);
+    this.spawnFloatingText(this.player.x, this.player.y - 60, `${objective.title}!`, 0x69f0ae, 16);
+    this.events.emit("hud:status", `${objective.title} complete: +${objective.rewardGold}g +${objective.rewardXP} XP`);
+    this.emitHUD();
+    this.showBoonChoice();
+  }
+
+  private buildBoonOptions(): BoonOption[] {
+    const s = this.player.stats;
+    const floor = this.currentFloor;
+    const all: BoonOption[] = [
+      {
+        key: 'blade',
+        title: 'Honed Blade',
+        lines: ['+2 attack', 'Next streaks hit harder'],
+        color: 0xff5a5f,
+        apply: () => {
+          s.weaponBonus += 2;
+          s.attack += 2;
+          s.equippedWeaponLabel = `Honed Weapon +${s.weaponBonus}`;
+          this.trackInventory({ type: 'WEAPON', label: s.equippedWeaponLabel, bonus: 2 }, true);
+        },
+      },
+      {
+        key: 'bulwark',
+        title: 'Old Shield',
+        lines: ['+2 AC', 'Heal 25% max HP'],
+        color: 0x80d8ff,
+        apply: () => {
+          s.armorBonus += 2;
+          s.defense += 2;
+          s.equippedArmorLabel = `Old Shield +${s.armorBonus}`;
+          this.player.heal(Math.ceil(s.maxHp * 0.25));
+          this.trackInventory({ type: 'ARMOR', label: s.equippedArmorLabel, bonus: 2 }, true);
+        },
+      },
+      {
+        key: 'vigor',
+        title: 'Warrior Vigor',
+        lines: ['+10 max HP', 'Full potion refill +1'],
+        color: 0x69f0ae,
+        apply: () => {
+          s.maxHp += 10;
+          this.player.heal(999);
+          s.potions += 1;
+        },
+      },
+      {
+        key: 'arcana',
+        title: 'Arcane Spark',
+        lines: s.maxMana > 0 ? ['+8 max mana', 'Restore all mana'] : ['Gain 2 mana potions', '+20 XP'],
+        color: 0xce93d8,
+        apply: () => {
+          if (s.maxMana > 0) {
+            s.maxMana += 8;
+            this.player.restoreMana(999);
+          } else {
+            s.manaPotions += 2;
+            this.player.gainXP(20);
+          }
+        },
+      },
+      {
+        key: 'fortune',
+        title: 'Lucky Find',
+        lines: [`+${40 + floor * 12} gold`, '+1 health potion'],
+        color: 0xffd166,
+        apply: () => {
+          this.addGold(40 + floor * 12);
+          s.potions += 1;
+        },
+      },
+    ];
+
+    const start = (this.currentFloor + this.kills) % all.length;
+    return [all[start], all[(start + 2) % all.length], all[(start + 4) % all.length]];
+  }
+
+  private showBoonChoice() {
+    if (this._boonDialogOpen) return;
+    this._boonDialogOpen = true;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cx = W / 2;
+    const cy = H / 2;
+    const D = 220;
+    const els = this._boonDialogElements;
+
+    els.push(this.add.rectangle(cx, cy, W, H, 0x000000, 0.62).setScrollFactor(0).setDepth(D));
+    els.push(this.add.rectangle(cx, cy, 720, 300, 0x080814, 0.97)
+      .setStrokeStyle(2, 0xffd166).setScrollFactor(0).setDepth(D));
+    els.push(this.add.text(cx, cy - 126, 'CLAIM A BOON', {
+      fontSize: '24px', color: '#ffd166', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+    els.push(this.add.text(cx, cy - 96, 'Choose one reward for this run.', {
+      fontSize: '12px', color: '#888899', fontFamily: 'monospace',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+
+    this.buildBoonOptions().forEach((option, i) => {
+      const x = cx - 230 + i * 230;
+      this.addBoonCard(x, cy + 32, option);
+    });
+  }
+
+  private addBoonCard(x: number, y: number, option: BoonOption) {
+    const D = 220;
+    const W = 200;
+    const H = 190;
+    const els = this._boonDialogElements;
+    const hex = `#${option.color.toString(16).padStart(6, '0')}`;
+
+    const bg = this.add.rectangle(x, y, W, H, 0x111122, 0.98)
+      .setInteractive({ useHandCursor: true })
+      .setStrokeStyle(1, option.color)
+      .setScrollFactor(0)
+      .setDepth(D);
+    els.push(bg);
+
+    els.push(this.add.text(x, y - H / 2 + 24, option.title, {
+      fontSize: '15px', color: hex, fontFamily: 'monospace',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 1));
+
+    option.lines.forEach((line, i) => {
+      els.push(this.add.text(x - W / 2 + 18, y - H / 2 + 58 + i * 24, line, {
+        fontSize: '12px', color: '#c8c8d8', fontFamily: 'monospace',
+      }).setOrigin(0, 0).setScrollFactor(0).setDepth(D + 1));
+    });
+
+    const choose = this.add.text(x, y + H / 2 - 28, 'CHOOSE', {
+      fontSize: '13px', color: hex, fontFamily: 'monospace',
+      backgroundColor: '#00000066',
+      padding: { x: 12, y: 5 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 1);
+    els.push(choose);
+
+    const apply = () => this.chooseBoon(option);
+    bg.on('pointerover', () => bg.setFillStyle(option.color, 0.12));
+    bg.on('pointerout', () => bg.setFillStyle(0x111122, 0.98));
+    bg.on('pointerdown', apply);
+    choose.setInteractive({ useHandCursor: true }).on('pointerdown', apply);
+  }
+
+  private chooseBoon(option: BoonOption) {
+    if (!this._boonDialogOpen) return;
+    option.apply();
+    this._boonDialogElements.forEach(e => e.destroy());
+    this._boonDialogElements = [];
+    this._boonDialogOpen = false;
+    this.spawnFloatingText(this.player.x, this.player.y - 64, option.title, option.color, 15);
+    this.events.emit("hud:status", `Boon claimed: ${option.title}`);
+    this.emitHUD();
   }
 
   private doCleave(killedX: number, killedY: number, killedIdx: number) {
@@ -909,9 +1487,12 @@ export class GameScene extends Phaser.Scene {
       if (Math.sqrt(dx * dx + dy * dy) <= range) {
         const dealt = target.takeDamage(this.player.getAttackDamage(false));
         this.spawnFloatingText(target.x, target.y - 20, `CLEAVE -${dealt}`, COLORS.ENEMY_BASIC, 12);
-        if (target.hp <= 0) {
-          this.player.gainXP(target.xp);
-          this.kills++;
+	        if (target.hp <= 0) {
+          if (this.tryEnemyReform(target)) break;
+	          this.player.gainXP(target.xp);
+	          this.kills++;
+          this.recordRoomChallengeKill(target);
+	          this.applyKillMomentum(target);
           if (this.player.stats.activeQuests) {
             onEnemyKilled(this.player.stats.activeQuests, target.typeKey);
           }
@@ -923,6 +1504,38 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       }
+    }
+  }
+
+  private doTraitCleave(killedX: number, killedY: number, killedIdx: number) {
+    const range = TILE_SIZE * 1.75;
+    const cleaveDamage = Math.max(4, Math.floor(this.player.getAttackDamage(false) * 0.55));
+    for (let j = this.enemies.length - 1; j >= 0; j--) {
+      if (j === killedIdx) continue;
+      const target = this.enemies[j];
+      if (!target.active) continue;
+      const dx = target.x - killedX;
+      const dy = target.y - killedY;
+      if (Math.sqrt(dx * dx + dy * dy) > range) continue;
+
+      const dealt = target.takeDamage(cleaveDamage);
+      this.spawnFloatingText(target.x, target.y - 20, `RIPOSTE -${dealt}`, 0xffa726, 11);
+	      if (target.hp <= 0) {
+        if (this.tryEnemyReform(target)) break;
+	        this.player.gainXP(target.xp);
+	        this.kills++;
+        this.recordRoomChallengeKill(target);
+	        this.applyKillMomentum(target);
+        if (this.player.stats.activeQuests) {
+          onEnemyKilled(this.player.stats.activeQuests, target.typeKey);
+        }
+        const idx = (target as Enemy & { _spawnIdx?: number })._spawnIdx;
+        if (typeof idx === 'number') this.deadEnemyIndices.add(idx);
+        this.spawnDeathEffect(target.x, target.y, target.typeKey);
+        target.destroy();
+        this.enemies.splice(j, 1);
+      }
+      break;
     }
   }
 
@@ -999,17 +1612,23 @@ export class GameScene extends Phaser.Scene {
           const ctx = Math.round((chest.x - TILE_SIZE / 2) / TILE_SIZE);
           const cty = Math.round((chest.y - TILE_SIZE / 2) / TILE_SIZE);
           this.openedChestKeys.add(`${ctx},${cty}`);
+          this.applyChestObjectiveProgress(ctx, cty);
 
           // Quest progress: chest opened
           if (this.player.stats.activeQuests) {
             onChestOpened(this.player.stats.activeQuests);
           }
 
-          const { gold, items } = result.loot;
-          if (gold > 0) {
-            s.gold += gold;
-            this.spawnFloatingText(chest.x, chest.y - 20, `+${gold} gold`, COLORS.GOLD_TEXT);
-          }
+	          const { gold, items } = result.loot;
+	          if (gold > 0) {
+            const paidGold = this.hasRelic('chest_contract') ? gold * 2 : gold;
+            this.addGold(paidGold);
+            if (this.hasRelic('chest_contract')) {
+              this.player.takeDamage(Math.max(1, Math.floor(this.player.stats.maxHp * 0.04)), true);
+              this.spawnFloatingText(chest.x, chest.y - 38, 'PACT PAID', 0xce93d8, 11);
+            }
+	            this.spawnFloatingText(chest.x, chest.y - 20, `+${paidGold} gold`, COLORS.GOLD_TEXT);
+	          }
           for (const lootItem of items) this.applyLootItem(lootItem);
           this.emitHUD();
         }
@@ -1017,7 +1636,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private applyLootItem(item: { type: string; label: string; bonus?: number; statKey?: string; value?: number }) {
+  private applyLootItem(item: LootLike) {
     const s = this.player.stats;
     switch (item.type) {
       case 'HEALTH_POTION': this.player.heal(item.value ?? 30); this.events.emit("hud:status", `Found: ${item.label}`); break;
@@ -1025,13 +1644,16 @@ export class GameScene extends Phaser.Scene {
       case 'WEAPON':
         s.weaponBonus += item.bonus ?? 1; s.attack += item.bonus ?? 1;
         s.equippedWeaponLabel = item.label;
-        this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} ATK)`);
+        s.weaponTrait = item.trait as WeaponTrait | undefined;
+        this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} ATK${this.describeTrait(item.trait)})`);
         this.trackInventory(item, true);
         break;
       case 'ARMOR':
         s.armorBonus += item.bonus ?? 1; s.defense += item.bonus ?? 1;
         s.equippedArmorLabel = item.label;
-        this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} DEF)`);
+        s.armorTrait = item.trait as ArmorTrait | undefined;
+        this.player.refreshArmorWard();
+        this.events.emit("hud:status", `Equipped: ${item.label} (+${item.bonus} DEF${this.describeTrait(item.trait)})`);
         this.trackInventory(item, true);
         break;
       case 'STAT_TOME':
@@ -1053,7 +1675,32 @@ export class GameScene extends Phaser.Scene {
     this.spawnFloatingText(this.player.x, this.player.y - 20, item.label, COLORS.GOLD_TEXT, 11);
   }
 
-  private trackInventory(item: { type: string; label: string; bonus?: number }, equipped: boolean) {
+  private applyChestObjectiveProgress(tx: number, ty: number) {
+    const objective = this.dungeon.floorObjective;
+    if (!objective || this.floorObjectiveComplete || objective.type !== 'RAID_VAULT') return;
+    const room = objective.roomIdx !== undefined ? this.dungeon.rooms[objective.roomIdx] : undefined;
+    if (!room) return;
+    if (tx < room.x || tx >= room.x + room.w || ty < room.y || ty >= room.y + room.h) return;
+
+    this.floorObjectiveProgress = Math.min(objective.targetCount, this.floorObjectiveProgress + 1);
+    if (this.floorObjectiveProgress >= objective.targetCount) this.completeFloorObjective();
+  }
+
+  private describeTrait(trait?: EquipmentTrait) {
+    if (!trait) return '';
+    const labels: Record<EquipmentTrait, string> = {
+      cleaving: ', cleave on kill',
+      quick: ', faster swings',
+      vampiric: ', heal on kill',
+      arcane: ', mana on kill',
+      light: ', faster movement',
+      reinforced: ', -1 damage taken',
+      warded: ', first hit per room reduced',
+    };
+    return labels[trait];
+  }
+
+  private trackInventory(item: { type: string; label: string; bonus?: number; trait?: EquipmentTrait }, equipped: boolean) {
     const s = this.player.stats;
     if (!s.inventory) s.inventory = [];
     // Un-equip previous item of same type
@@ -1097,46 +1744,146 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private applyItem(type: string) {
-    const p = this.player.stats;
-    switch (type) {
-      case "HEALTH_POTION": this.player.heal(30); this.events.emit("hud:status", "Health Potion +30 HP"); break;
+	  private applyItem(type: string) {
+	    switch (type) {
+      case "CURSED_SHRINE": this.showCursedShrine(); break;
+	      case "HEALTH_POTION": this.player.heal(30); this.events.emit("hud:status", "Health Potion +30 HP"); break;
       case "WEAPON":
-        p.attack += 5; p.weaponBonus += 5;
-        p.equippedWeaponLabel = `Weapon +${p.weaponBonus}`;
-        this.trackInventory({ type: 'WEAPON', label: `Weapon +${p.weaponBonus}`, bonus: 5 }, true);
-        this.spawnFloatingText(this.player.x, this.player.y - 30, "ATK +5", COLORS.WEAPON);
-        this.events.emit("hud:status", "Weapon Upgrade +5 ATK"); this.emitHUD(); break;
+        this.applyLootItem(this.rollFloorEquipment('WEAPON'));
+        this.spawnFloatingText(this.player.x, this.player.y - 30, "WEAPON", COLORS.WEAPON);
+        this.emitHUD(); break;
       case "ARMOR":
-        p.defense += 2; p.armorBonus += 2;
-        p.equippedArmorLabel = `Armor +${p.armorBonus}`;
-        this.trackInventory({ type: 'ARMOR', label: `Armor +${p.armorBonus}`, bonus: 2 }, true);
-        this.spawnFloatingText(this.player.x, this.player.y - 30, "DEF +2", COLORS.ARMOR);
-        this.events.emit("hud:status", "Armor Shard +2 DEF"); this.emitHUD(); break;
+        this.applyLootItem(this.rollFloorEquipment('ARMOR'));
+        this.spawnFloatingText(this.player.x, this.player.y - 30, "ARMOR", COLORS.ARMOR);
+        this.emitHUD(); break;
       case "XP_ORB": this.player.gainXP(40); this.events.emit("hud:status", "XP Orb +40 XP"); break;
     }
   }
 
-  // ── Potions ────────────────────────────────────────────────────────────────
+  private rollFloorEquipment(type: 'WEAPON' | 'ARMOR'): LootLike {
+    if (type === 'WEAPON') {
+      const weapons: LootLike[] = [
+        { type, label: 'Scout Dagger +2 [Quick]', bonus: 2, trait: 'quick' },
+        { type, label: 'Hungry Mace +2 [Drain]', bonus: 2, trait: 'vampiric' },
+        { type, label: 'Notched Axe +2 [Cleave]', bonus: 2, trait: 'cleaving' },
+        { type, label: 'Runed Staff +2 [Arcane]', bonus: 2, trait: 'arcane' },
+      ];
+      return weapons[Phaser.Math.Between(0, weapons.length - 1)];
+    }
+    const armors: LootLike[] = [
+      { type, label: 'Traveler Leather +1 [Light]', bonus: 1, trait: 'light' },
+      { type, label: 'Guard Mail +1 [Guard]', bonus: 1, trait: 'reinforced' },
+      { type, label: 'Warded Scale +1 [Ward]', bonus: 1, trait: 'warded' },
+    ];
+    return armors[Phaser.Math.Between(0, armors.length - 1)];
+  }
+
+  private showCursedShrine() {
+    if (this._shrineDialogOpen) return;
+    this._shrineDialogOpen = true;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const cx = W / 2;
+    const cy = H / 2;
+    const D = 220;
+    const s = this.player.stats;
+
+    const options = [
+      {
+        title: 'Blood for Fire',
+        relic: 'ember_idol' as RelicKey,
+        lines: ['Lose 8 max HP', 'First kill in each room grants Rush'],
+        color: 0xff5a5f,
+        pay: () => { s.maxHp = Math.max(20, s.maxHp - 8); s.hp = Math.min(s.hp, s.maxHp); },
+      },
+      {
+        title: 'Vow of Greed',
+        relic: 'chest_contract' as RelicKey,
+        lines: ['Chests pay double gold', 'Each chest bites for a little HP'],
+        color: 0xffd166,
+        pay: () => this.player.takeDamage(Math.max(2, Math.floor(s.maxHp * 0.08)), true),
+      },
+      {
+        title: 'Black Candle',
+        relic: 'black_candle' as RelicKey,
+        lines: ['Room gambits pay double', 'Lose half current mana or 1 potion'],
+        color: 0xce93d8,
+        pay: () => {
+          if (s.maxMana > 0) s.mana = Math.floor(s.mana / 2);
+          else s.potions = Math.max(0, s.potions - 1);
+        },
+      },
+    ];
+
+    const els = this._shrineDialogElements;
+    els.push(this.add.rectangle(cx, cy, W, H, 0x000000, 0.62).setScrollFactor(0).setDepth(D));
+    els.push(this.add.rectangle(cx, cy, 690, 300, 0x120812, 0.98).setStrokeStyle(2, 0xce93d8).setScrollFactor(0).setDepth(D));
+    els.push(this.add.text(cx, cy - 118, 'Cursed Shrine', {
+      fontSize: '22px', color: '#ce93d8', fontFamily: 'monospace', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+    els.push(this.add.text(cx, cy - 88, 'Pick a relic. The dungeon takes its price now.', {
+      fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+
+    options.forEach((option, i) => {
+      const x = cx - 220 + i * 220;
+      const card = this.add.rectangle(x, cy + 20, 200, 190, 0x160f1f, 0.98)
+        .setInteractive({ useHandCursor: true })
+        .setStrokeStyle(1, option.color)
+        .setScrollFactor(0)
+        .setDepth(D);
+      els.push(card);
+      els.push(this.add.text(x, cy - 50, option.title, {
+        fontSize: '14px', color: `#${option.color.toString(16).padStart(6, '0')}`, fontFamily: 'monospace',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+      option.lines.forEach((line, lineIdx) => {
+        els.push(this.add.text(x - 82, cy - 16 + lineIdx * 24, line, {
+          fontSize: '11px', color: '#c9bed6', fontFamily: 'monospace',
+        }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(D));
+      });
+      const take = () => {
+        option.pay();
+        this.grantRelic(option.relic);
+        this.closeCursedShrine();
+        this.emitHUD();
+      };
+      card.on('pointerover', () => card.setFillStyle(0x241432));
+      card.on('pointerout', () => card.setFillStyle(0x160f1f));
+      card.on('pointerdown', take);
+      els.push(this.add.text(x, cy + 88, 'TAKE BARGAIN', {
+        fontSize: '11px', color: '#ffffff', fontFamily: 'monospace',
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+    });
+  }
+
+  private closeCursedShrine() {
+    this._shrineDialogElements.forEach(e => e.destroy());
+    this._shrineDialogElements = [];
+    this._shrineDialogOpen = false;
+  }
+
+	  // ── Potions ────────────────────────────────────────────────────────────────
 
   private checkPotionInput() {
     if (!this._fKey) this._fKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
     if (!this._mKey) this._mKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.M);
 
-    if (Phaser.Input.Keyboard.JustDown(this._fKey)) {
-      if (this.player.stats.potions > 0) {
-        this.player.stats.potions--;
-        this.player.heal(50);
-        this.spawnFloatingText(this.player.x, this.player.y - 30, 'Potion! +50 HP', COLORS.HEAL_TEXT, 12);
+	    if (Phaser.Input.Keyboard.JustDown(this._fKey)) {
+	      if (this.player.stats.potions > 0) {
+	        this.player.stats.potions--;
+	        this.player.heal(50);
+        if (this.hasRelic('swift_vial')) this.player.addEffect('RUSHED', 4500);
+	        this.spawnFloatingText(this.player.x, this.player.y - 30, 'Potion! +50 HP', COLORS.HEAL_TEXT, 12);
         this.events.emit("hud:status", `Used Health Potion (${this.player.stats.potions} left)`);
         this.emitHUD();
       } else { this.events.emit("hud:status", "No potions left!"); }
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this._mKey)) {
-      if (this.player.stats.manaPotions > 0 && this.player.stats.maxMana > 0) {
-        this.player.stats.manaPotions--;
-        this.player.restoreMana(40);
+	    if (Phaser.Input.Keyboard.JustDown(this._mKey)) {
+	      if (this.player.stats.manaPotions > 0 && this.player.stats.maxMana > 0) {
+	        this.player.stats.manaPotions--;
+	        this.player.restoreMana(40);
+        if (this.hasRelic('swift_vial')) this.player.addEffect('RUSHED', 4500);
         this.spawnFloatingText(this.player.x, this.player.y - 30, '+40 Mana', COLORS.MANA_BAR, 12);
         this.events.emit("hud:status", `Used Mana Potion (${this.player.stats.manaPotions} left)`);
         this.emitHUD();
@@ -1147,6 +1894,96 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ── Quest special room entry ──────────────────────────────────────────────
+
+  private checkRoomEvents(ptx: number, pty: number) {
+    const roomIdx = this.dungeon.rooms.findIndex(room =>
+      ptx >= room.x && ptx < room.x + room.w && pty >= room.y && pty < room.y + room.h
+    );
+    if (roomIdx < 0) return;
+
+    const room = this.dungeon.rooms[roomIdx];
+    if (roomIdx !== this._lastPlayerRoomIdx) {
+      this._lastPlayerRoomIdx = roomIdx;
+      this.player.refreshArmorWard();
+      if (this.player.stats.armorTrait === 'warded') {
+        this.spawnFloatingText(this.player.x, this.player.y - 42, 'WARD READY', 0x80d8ff, 10);
+      }
+    }
+	    if (!this._triggeredRoomEvents.has(roomIdx) && room.type === 'monster_closet') {
+	      this._triggeredRoomEvents.add(roomIdx);
+	      this.events.emit("hud:status", "Den ambush! Hold the room for streak rewards.");
+      this.spawnFloatingText(this.player.x, this.player.y - 48, 'AMBUSH!', 0xff5a5f, 16);
+      const pool: EnemyTypeKey[] = this.currentFloor >= 4
+        ? ['SKELETON', 'FAST', 'DARK_ELF']
+        : ['GIANT_RAT', 'GIANT_SPIDER', 'BASIC'];
+      for (let i = 0; i < 2; i++) {
+        const type = pool[Phaser.Math.Between(0, pool.length - 1)];
+	        this.spawnRoomEnemy(roomIdx, type, i === 0 && !this.enemies.some(e => e.isElite));
+	      }
+      this.startRoomChallenge(roomIdx);
+	    } else if (!this._triggeredRoomEvents.has(roomIdx) && room.type === 'trap_corridor') {
+      this._triggeredRoomEvents.add(roomIdx);
+      let found = 0;
+      for (const trap of this.dungeon.traps) {
+        const key = `${trap.tx},${trap.ty}`;
+        if (this.triggeredTrapKeys.has(key) || this.detectedTraps.has(key)) continue;
+        if (trap.tx >= room.x && trap.tx < room.x + room.w && trap.ty >= room.y && trap.ty < room.y + room.h) {
+          this.detectTrap(key, trap.tx, trap.ty, trap.type, 'search');
+          found++;
+        }
+      }
+      this.events.emit("hud:status", found > 0 ? `Rune room: ${found} hazards revealed.` : 'Rune room: the floor hums, but seems safe.');
+	    } else if (!this._triggeredRoomEvents.has(roomIdx) && room.type === 'vault') {
+	      this._triggeredRoomEvents.add(roomIdx);
+	      this.events.emit("hud:status", "Vault found. Loot the hoard before you leave.");
+	      this.spawnFloatingText(this.player.x, this.player.y - 44, 'VAULT', 0xffd166, 14);
+    } else if (!this._triggeredRoomEvents.has(roomIdx)) {
+      this._triggeredRoomEvents.add(roomIdx);
+      this.startRoomChallenge(roomIdx);
+	    }
+
+    if (room.modifier && !this._triggeredRoomModifiers.has(roomIdx)) {
+      this._triggeredRoomModifiers.add(roomIdx);
+      this.triggerRoomModifier(roomIdx, room.modifier);
+    }
+  }
+
+  private triggerRoomModifier(roomIdx: number, modifier: NonNullable<DungeonData['rooms'][number]['modifier']>) {
+    if (modifier === 'blood_rune') {
+      this.player.addEffect('RUSHED', 9000);
+      this.spawnFloatingText(this.player.x, this.player.y - 56, 'BLOOD RUNE', 0xff5a5f, 14);
+      this.events.emit("hud:status", "Blood Rune: move fast and chain kills for extra momentum.");
+      const pool: EnemyTypeKey[] = this.currentFloor >= 5 ? ['FAST', 'DARK_ELF', 'SKELETON'] : ['GIANT_RAT', 'GIANT_SPIDER', 'BASIC'];
+      this.spawnRoomEnemy(roomIdx, pool[Phaser.Math.Between(0, pool.length - 1)]);
+    } else if (modifier === 'healing_font') {
+      const heal = Math.ceil(this.player.stats.maxHp * 0.35);
+      this.player.heal(heal);
+      if (this.player.stats.maxMana > 0) this.player.restoreMana(Math.ceil(this.player.stats.maxMana * 0.45));
+      this.spawnFloatingText(this.player.x, this.player.y - 56, 'FONT', 0x69f0ae, 14);
+      this.events.emit("hud:status", "Healing Font: recovered HP and mana.");
+    } else if (modifier === 'cursed_crypt') {
+      this.player.addEffect('SHIELDED', 7000, 2);
+      this.spawnRoomEnemy(roomIdx, this.currentFloor >= 5 ? 'GHOST' : 'ZOMBIE', true);
+      this.spawnFloatingText(this.player.x, this.player.y - 56, 'CURSED CRYPT', 0xce93d8, 14);
+      this.events.emit("hud:status", "Cursed Crypt: a champion rises, but clearing it pays bonus XP.");
+    } else if (modifier === 'gilded_cache') {
+      this.spawnFloatingText(this.player.x, this.player.y - 56, 'GILDED CACHE', 0xffd166, 14);
+      this.events.emit("hud:status", "Gilded Cache: clear the room for a rich bonus.");
+    }
+  }
+
+  private spawnRoomEnemy(roomIdx: number, type: EnemyTypeKey, elite = false) {
+    const room = this.dungeon.rooms[roomIdx];
+    if (!room || !this.enemyGroup) return;
+    const tx = Phaser.Math.Between(room.x + 1, room.x + room.w - 2);
+    const ty = Phaser.Math.Between(room.y + 1, room.y + room.h - 2);
+    const enemy = new Enemy(this, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, type, elite);
+    (enemy as Enemy & { _roomIdx?: number })._roomIdx = roomIdx;
+    this.enemies.push(enemy);
+    this.enemyGroup.add(enemy);
+    this.physics.add.collider(enemy, this.wallGroup);
+    this.spawnFloatingText(enemy.x, enemy.y - 24, elite ? 'CHAMPION!' : 'JOINED!', elite ? 0xffd166 : 0xff5a5f, elite ? 13 : 10);
+  }
 
   private checkSpecialRoomEntry() {
     if (!this.dungeon.questRooms || this.dungeon.questRooms.length === 0) return;
@@ -1173,12 +2010,19 @@ export class GameScene extends Phaser.Scene {
 
   private checkStairs() {
     const { tx, ty } = this.dungeon.stairsPos;
-    const sx = tx * TILE_SIZE + TILE_SIZE / 2;
-    const sy = ty * TILE_SIZE + TILE_SIZE / 2;
-    const dx = this.player.x - sx;
-    const dy = this.player.y - sy;
-    if (Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.7) this.nextFloor();
-  }
+	    const sx = tx * TILE_SIZE + TILE_SIZE / 2;
+	    const sy = ty * TILE_SIZE + TILE_SIZE / 2;
+	    const dx = this.player.x - sx;
+	    const dy = this.player.y - sy;
+    if (Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.7) {
+      if (this.dungeon.floorObjective?.type === 'CLAIM_KEY' && !this.floorObjectiveComplete) {
+        this.spawnFloatingText(sx, sy - 28, 'SEALED', 0xce93d8, 12);
+        this.events.emit("hud:status", "The stairs are sealed. Defeat the guardian and claim the key.");
+        return;
+      }
+      this.nextFloor();
+    }
+	  }
 
   private checkStairsUp() {
     const { tx, ty } = this.dungeon.stairsUpPos;
@@ -1403,11 +2247,14 @@ export class GameScene extends Phaser.Scene {
   private handlePlayerDeath() {
     this.player.setTint(0x888888);
     this.time.delayedCall(800, () => {
-      this.scene.start("GameOverScene", {
-        floor: this.currentFloor,
-        kills: this.kills,
-        level: this.player.stats.level,
-      });
+	      this.scene.start("GameOverScene", {
+	        floor: this.currentFloor,
+	        kills: this.kills,
+	        level: this.player.stats.level,
+        gold: this.player.stats.runGoldEarned ?? 0,
+        bestStreak: this.player.stats.runBestStreak ?? 0,
+        relics: this.player.stats.relics ?? [],
+	      });
     });
   }
 

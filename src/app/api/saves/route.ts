@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { auth, hasAuthSecret } from "@/auth";
 import { prisma } from "@/lib/db";
 
 /** Returns all 5 save slots for the current user (empty slots included as null). */
 export async function GET() {
+  if (!hasAuthSecret) {
+    return NextResponse.json({ saves: Array(5).fill(null), offline: true });
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ saves: [] }, { status: 401 });

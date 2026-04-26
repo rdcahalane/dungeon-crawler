@@ -31,8 +31,8 @@ export default function PhaserGame() {
   return (
     <div
       ref={containerRef}
-      className="rounded-lg overflow-hidden shadow-2xl shadow-black/50"
-      style={{ width: 960, height: 640 }}
+      className="overflow-hidden shadow-2xl shadow-black/50"
+      style={{ width: "min(100vw - 24px, 960px)", height: "min(calc((100vw - 24px) * 0.6667), 640px)" }}
     />
   );
 }

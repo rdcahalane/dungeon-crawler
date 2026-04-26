@@ -13,6 +13,7 @@ export interface Room {
   cx: number;
   cy: number;
   type?: 'normal' | 'vault' | 'trap_corridor' | 'monster_closet' | 'quest_special';
+  modifier?: 'blood_rune' | 'healing_font' | 'cursed_crypt' | 'gilded_cache';
   tag?: string;  // quest special room identifier (e.g. 'harem', 'library')
 }
 
@@ -26,6 +27,18 @@ export interface EnemySpawn {
   tx: number;
   ty: number;
   type: EnemyTypeKey;
+  roomIdx?: number;
+  elite?: boolean;
+}
+
+export interface FloorObjective {
+  type: 'CLEAR_DEN' | 'RAID_VAULT' | 'SLAY_CHAMPION' | 'CLAIM_KEY';
+  title: string;
+  detail: string;
+  roomIdx?: number;
+  targetCount: number;
+  rewardGold: number;
+  rewardXP: number;
 }
 
 export interface SecretDoor {
@@ -45,6 +58,7 @@ export interface DungeonData {
   traps: TrapSpawn[];
   chests: ChestSpawn[];
   questRooms?: { tag: string; roomIdx: number; cx: number; cy: number }[];
+  floorObjective?: FloorObjective;
 }
 
 /**
@@ -233,10 +247,12 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
 
   // ── Special rooms (floor 3+) ──────────────────────────────────────────────
   const chests: ChestSpawn[] = [];
+  let vaultRoomIdx = -1;
 
   if (floor >= 3 && rooms.length > 4) {
     // Designate one mid-game room as a vault (hidden behind secret door)
     const vaultIdx = rng(2, rooms.length - 2);
+    vaultRoomIdx = vaultIdx;
     rooms[vaultIdx].type = 'vault';
     // Place 2-3 chests in the vault
     const vaultRoom = rooms[vaultIdx];
@@ -254,13 +270,29 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     }
   }
 
+  // Give each floor a couple of memorable set-pieces so it stops feeling like
+  // one repeated rectangle after another.
+  const setPieceCandidates = rooms
+    .map((r, i) => ({ r, i }))
+    .filter(({ r, i }) => i > 0 && i < rooms.length - 1 && r.type === 'normal');
+  if (setPieceCandidates.length > 0) {
+    const pick = setPieceCandidates.splice(rng(0, setPieceCandidates.length - 1), 1)[0];
+    pick.r.type = 'monster_closet';
+  }
+  if (setPieceCandidates.length > 0) {
+    const pick = setPieceCandidates.splice(rng(0, setPieceCandidates.length - 1), 1)[0];
+    pick.r.type = 'trap_corridor';
+  }
+
   // ── Enemies ───────────────────────────────────────────────────────────────
   const enemies: EnemySpawn[] = [];
   const pool = getEnemyPool(floor);
 
   for (let i = 1; i < rooms.length - 1; i++) {
     const room = rooms[i];
-    const count = rng(1, 2 + Math.floor(floor / 3));
+    const count = room.type === 'monster_closet'
+      ? rng(3, 4 + Math.floor(floor / 3))
+      : rng(1, 2 + Math.floor(floor / 3));
     for (let e = 0; e < count; e++) {
       const ex = rng(room.x + 1, room.x + room.w - 2);
       const ey = rng(room.y + 1, room.y + room.h - 2);
@@ -268,7 +300,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
       // Only place MIMIC in chests, not as random enemies
       const finalType: EnemyTypeKey = type === 'MIMIC' ? pool[rng(0, pool.length - 2)] : type;
       if (ENEMY_TYPES[finalType]) {
-        enemies.push({ tx: ex, ty: ey, type: finalType });
+        enemies.push({ tx: ex, ty: ey, type: finalType, roomIdx: i });
       }
     }
   }
@@ -347,6 +379,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
             tx: rng(room.x + 1, room.x + room.w - 2),
             ty: rng(room.y + 1, room.y + room.h - 2),
             type: arenaPool[rng(0, arenaPool.length - 1)],
+            roomIdx: pick.i,
           });
         }
       } else if (tag === 'shrine') {
@@ -361,6 +394,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
         enemies.push({
           tx: room.cx, ty: room.cy,
           type: 'TROLL', // toughest standard enemy
+          roomIdx: pick.i,
         });
         for (let c = 0; c < 3; c++) {
           chests.push({
@@ -371,6 +405,38 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
           });
         }
       }
+    }
+  }
+
+  // ── Room modifiers ─────────────────────────────────────────────────────────
+  // These are small set pieces that make otherwise-normal rooms feel tactical.
+  const modifierDeck: NonNullable<Room['modifier']>[] = ['blood_rune', 'healing_font', 'cursed_crypt', 'gilded_cache'];
+  const modifierCandidates = rooms
+    .map((r, i) => ({ r, i }))
+    .filter(({ r, i }) => i > 0 && i < rooms.length - 1 && (r.type ?? 'normal') === 'normal' && !r.modifier);
+  const modifierCount = Math.min(modifierCandidates.length, floor >= 4 ? 3 : 2);
+  for (let m = 0; m < modifierCount; m++) {
+    const pick = modifierCandidates.splice(rng(0, modifierCandidates.length - 1), 1)[0];
+    const mod = modifierDeck.splice(rng(0, modifierDeck.length - 1), 1)[0];
+    pick.r.modifier = mod;
+  }
+
+  // First contact should be a hook, not a hallway tax: room 1 always offers a
+  // visible choice/reward beat with a special mood and at least one build item.
+  const firstHookRoom = rooms[1];
+  if (firstHookRoom) {
+    if (!firstHookRoom.modifier && (firstHookRoom.type ?? 'normal') === 'normal') {
+      firstHookRoom.modifier = Math.random() < 0.55 ? 'blood_rune' : 'gilded_cache';
+    }
+    const ix = firstHookRoom.cx;
+    const iy = Math.min(firstHookRoom.y + firstHookRoom.h - 2, firstHookRoom.cy + 1);
+    if (!items.some(item => item.tx === ix && item.ty === iy)) {
+      items.push({ tx: ix, ty: iy, type: Math.random() < 0.65 ? 'WEAPON' : 'ARMOR' });
+    }
+    const cx = Math.max(firstHookRoom.x + 1, firstHookRoom.cx - 1);
+    const cy = Math.max(firstHookRoom.y + 1, firstHookRoom.cy - 1);
+    if (!chests.some(chest => chest.tx === cx && chest.ty === cy)) {
+      chests.push({ tx: cx, ty: cy, tier: 'wooden', isMimic: false, trapped: undefined });
     }
   }
 
@@ -392,5 +458,99 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     }
   }
 
-  return { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms };
+  for (const room of rooms) {
+    if (room.type !== 'trap_corridor') continue;
+    const trapCount = rng(2, 4);
+    for (let t = 0; t < trapCount; t++) {
+      const tx = rng(room.x + 1, room.x + room.w - 2);
+      const ty = rng(room.y + 1, room.y + room.h - 2);
+
+      if (tiles[ty][tx] === TILE.FLOOR && !traps.some(tr => tr.tx === tx && tr.ty === ty)) {
+        tiles[ty][tx] = TILE.TRAP;
+        traps.push({ tx, ty, type: pickTrapType(floor), triggered: false });
+      }
+    }
+  }
+
+  const bossFloor = floor > 1 && floor % 3 === 0;
+  if (bossFloor && rooms.length > 2) {
+    const bossRoomIdx = rooms.length - 1;
+    const bossRoom = rooms[bossRoomIdx];
+    bossRoom.type = 'quest_special';
+    bossRoom.modifier = bossRoom.modifier ?? 'cursed_crypt';
+    const bossType: EnemyTypeKey = floor >= 6 ? 'TROLL' : floor >= 3 ? 'TANK' : 'BASIC';
+    enemies.push({ tx: bossRoom.cx, ty: bossRoom.cy, type: bossType, roomIdx: bossRoomIdx, elite: true });
+    chests.push({
+      tx: Math.max(bossRoom.x + 1, bossRoom.cx - 1),
+      ty: Math.min(bossRoom.y + bossRoom.h - 2, bossRoom.cy + 1),
+      tier: floor >= 6 ? 'golden' : 'iron',
+      isMimic: false,
+      trapped: undefined,
+    });
+  }
+
+  const shrineCandidates = rooms
+    .map((r, i) => ({ r, i }))
+    .filter(({ r, i }) => i > 1 && i < rooms.length - 1 && r.type !== 'vault');
+  if (shrineCandidates.length > 0 && (floor === 1 || Math.random() < 0.55)) {
+    const pick = shrineCandidates[rng(0, shrineCandidates.length - 1)];
+    pick.r.modifier = pick.r.modifier ?? 'healing_font';
+    items.push({ tx: pick.r.cx, ty: pick.r.cy, type: 'CURSED_SHRINE' });
+  }
+
+  const denIdx = rooms.findIndex(r => r.type === 'monster_closet');
+  const denEnemyCount = denIdx >= 0 ? enemies.filter(e => e.roomIdx === denIdx).length : 0;
+  const championCandidates = enemies
+    .map((enemy, idx) => ({ enemy, idx }))
+    .filter(({ enemy }) => enemy.type !== 'MIMIC');
+  const preferredChampion = championCandidates.find(({ enemy }) => enemy.roomIdx === denIdx)
+    ?? championCandidates[rng(0, Math.max(0, championCandidates.length - 1))];
+  if (preferredChampion) preferredChampion.enemy.elite = true;
+
+  const floorObjective: FloorObjective | undefined = bossFloor
+    ? {
+        type: 'CLAIM_KEY',
+        title: 'Claim the Boss Key',
+        detail: 'Defeat the floor guardian to unseal the stairs.',
+        roomIdx: rooms.length - 1,
+        targetCount: 1,
+        rewardGold: 45 + floor * 15,
+        rewardXP: 45 + floor * 16,
+      }
+    : denIdx >= 0 && denEnemyCount > 0
+      ? {
+        type: 'CLEAR_DEN',
+        title: 'Clear the Den',
+        detail: 'Wipe out the marked monster den before descending.',
+        roomIdx: denIdx,
+        targetCount: denEnemyCount,
+        rewardGold: 18 + floor * 8,
+        rewardXP: 25 + floor * 12,
+      }
+    : vaultRoomIdx >= 0
+      ? {
+          type: 'RAID_VAULT',
+          title: 'Raid the Vault',
+          detail: 'Crack open the vault hoard on this floor.',
+          roomIdx: vaultRoomIdx,
+          targetCount: Math.max(1, chests.filter(c => {
+            const room = rooms[vaultRoomIdx];
+            return c.tx >= room.x && c.tx < room.x + room.w && c.ty >= room.y && c.ty < room.y + room.h;
+          }).length),
+          rewardGold: 30 + floor * 12,
+          rewardXP: 20 + floor * 10,
+        }
+      : preferredChampion
+        ? {
+            type: 'SLAY_CHAMPION',
+            title: 'Slay the Champion',
+            detail: 'Hunt the glowing champion before taking the stairs.',
+            roomIdx: preferredChampion.enemy.roomIdx,
+            targetCount: 1,
+            rewardGold: 25 + floor * 10,
+            rewardXP: 30 + floor * 12,
+          }
+        : undefined;
+
+  return { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms, floorObjective };
 }

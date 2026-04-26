@@ -31,6 +31,13 @@ export interface HUDData {
   inventory?: InventoryItem[];
   equippedWeaponLabel?: string;
   equippedArmorLabel?: string;
+  floorObjective?: {
+    title: string;
+    detail: string;
+    progress: number;
+    target: number;
+    complete: boolean;
+  };
 }
 
 const CLASS_ICONS: Record<string, string> = {
@@ -59,6 +66,7 @@ export class HUDScene extends Phaser.Scene {
   private levelText!: Phaser.GameObjects.Text;
   private floorText!: Phaser.GameObjects.Text;
   private killsText!: Phaser.GameObjects.Text;
+  private objectiveText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private classIcon!: Phaser.GameObjects.Text;
   private nameText!: Phaser.GameObjects.Text;
@@ -73,6 +81,7 @@ export class HUDScene extends Phaser.Scene {
   private spellSlots: {
     bg: Phaser.GameObjects.Rectangle;
     label: Phaser.GameObjects.Text;
+    shortLabel: string;
     cost: Phaser.GameObjects.Text;
     hotkey: Phaser.GameObjects.Text;
     cooldownOverlay: Phaser.GameObjects.Rectangle;
@@ -155,10 +164,17 @@ export class HUDScene extends Phaser.Scene {
       fontSize: '10px', color: '#66bb6a', fontFamily: 'monospace',
     }).setOrigin(1, 0).setDepth(2);
 
+    this.objectiveText = this.add.text(PAD, PAD, "", {
+      fontSize: '11px', color: '#ffd166', fontFamily: 'monospace',
+      backgroundColor: '#00000088',
+      padding: { x: 6, y: 4 },
+      lineSpacing: 3,
+    }).setDepth(3);
+
     // Hotkey bar (top center) — always visible
     this.add.rectangle(W / 2, PAD + 6, 260, 22, 0x0a0a14, 0.75)
       .setStrokeStyle(1, 0x333355).setDepth(2);
-    this.add.text(W / 2, PAD + 6, "[Q] Quest Log    [I] Inventory", {
+    this.add.text(W / 2, PAD + 6, "[1-4] Spells    [I] Inventory", {
       fontSize: '11px', color: '#888899', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(3);
 
@@ -182,7 +198,7 @@ export class HUDScene extends Phaser.Scene {
   }
 
   update() {
-    // Q toggles quest panel (skip in dungeon — Q is spell key there)
+    // Q toggles quest panel only outside the dungeon.
     const inDungeon = this.scene.isActive("GameScene");
     if (this._qKey && Phaser.Input.Keyboard.JustDown(this._qKey) && !inDungeon) {
       if (this._questPanel) { this.closeQuestPanel(); } else { this.closeInventoryPanel(); this.openQuestPanel(); }
@@ -276,6 +292,17 @@ export class HUDScene extends Phaser.Scene {
     this.levelText.setText(`LV ${data.level}  ATK ${data.attack}  AC ${data.defense}${potStr}${mpStr}`);
     this.floorText.setText(data.floor === 0 ? `The Tavern` : `Floor ${data.floor}`);
     this.killsText.setText(`Kills: ${data.kills}`);
+
+    if (data.floorObjective && data.floor !== 0) {
+      const obj = data.floorObjective;
+      const mark = obj.complete ? 'DONE' : `${obj.progress}/${obj.target}`;
+      this.objectiveText
+        .setVisible(true)
+        .setColor(obj.complete ? '#69f0ae' : '#ffd166')
+        .setText(`${obj.title}  ${mark}\n${obj.detail}`);
+    } else {
+      this.objectiveText.setVisible(false);
+    }
 
     // Quest count indicator
     const activeCount = data.activeQuests?.length ?? 0;
@@ -529,7 +556,7 @@ export class HUDScene extends Phaser.Scene {
     const slotH = 50;
     const startX = W / 2 - (keys.length * (slotW + 4)) / 2;
     const y = H - 36;
-    const hotkeyLabels = ['Q', 'W', 'E', 'R'];
+    const hotkeyLabels = ['1', '2', '3', '4'];
 
     keys.forEach((spellKey, i) => {
       const spell = SPELLS[spellKey];
@@ -557,7 +584,7 @@ export class HUDScene extends Phaser.Scene {
       const cooldownOverlay = this.add.rectangle(x + slotW / 2, y, slotW - 2, slotH - 2, 0x000000, 0)
         .setDepth(5);
 
-      this.spellSlots.push({ bg, label, cost, hotkey, cooldownOverlay });
+      this.spellSlots.push({ bg, label, shortLabel: label.text, cost, hotkey, cooldownOverlay });
     });
   }
 
@@ -573,7 +600,7 @@ export class HUDScene extends Phaser.Scene {
         slot.label.setText(`${Math.ceil(cd / 1000)}s`);
       } else {
         slot.cooldownOverlay.setAlpha(0);
-        // Restore spell initials
+        slot.label.setText(slot.shortLabel);
       }
 
       if (!canCast && cd <= 0) {

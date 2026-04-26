@@ -62,8 +62,6 @@ for (const cx of [2, 6, 12, 17, 22]) {
 // NPC positions
 const INNKEEPER_POS = { tx: 5, ty: 1 };     // behind the bar counter
 const NOTICE_BOARD_POS = { tx: 23, ty: 5 };  // in front of notice board
-const ENTRANCE_LABEL_POS = { tx: 13, ty: 10 }; // above portal
-
 // Shop items available
 interface ShopItem {
   key: string;
@@ -182,11 +180,12 @@ export class TavernScene extends Phaser.Scene {
     }
     this.emitHUD();
 
-    // Claim rewards for completed quests
-    this.claimCompletedQuests();
-  }
+	    // Claim rewards for completed quests
+	    this.claimCompletedQuests();
+    this.showRunSummary();
+	  }
 
-  private claimCompletedQuests() {
+	  private claimCompletedQuests() {
     const s = this.playerStats;
     if (!s.activeQuests) return;
     const completed = s.activeQuests.filter(q => q.status === 'completed');
@@ -197,9 +196,9 @@ export class TavernScene extends Phaser.Scene {
     for (const q of completed) {
       applyQuestReward(q, s, (xp) => this.player.gainXP(xp));
       s.completedQuests.push(q);
-    }
+	  }
 
-    // Cap completed quests at 50
+	    // Cap completed quests at 50
     if (s.completedQuests.length > 50) {
       s.completedQuests = s.completedQuests.slice(-50);
     }
@@ -234,10 +233,47 @@ export class TavernScene extends Phaser.Scene {
     });
 
     this.updateStatsPanel();
-    this.emitHUD();
+	    this.emitHUD();
+	  }
+
+  private showRunSummary() {
+    const s = this.playerStats;
+    const gold = s.runGoldEarned ?? 0;
+    const streak = s.runBestStreak ?? 0;
+    const floor = s.runDeepestFloor ?? 0;
+    if (gold <= 0 && streak <= 0 && floor <= 0) return;
+
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const popup = this.add.container(W / 2, H / 2 + 24).setDepth(290).setScrollFactor(0);
+    popup.add(this.add.rectangle(0, 0, 360, 110, 0x101018, 0.96).setStrokeStyle(2, 0xffd166));
+    popup.add(this.add.text(0, -34, 'Delve Summary', {
+      fontSize: '15px', color: '#ffd166', fontFamily: 'monospace',
+    }).setOrigin(0.5));
+    popup.add(this.add.text(0, -4, [
+      `Deepest floor ${floor}`,
+      `Gold hauled ${gold}g`,
+      `Best streak x${streak}`,
+      `Relics ${s.relics?.length ?? 0}`,
+    ].join('   '), {
+      fontSize: '10px', color: '#c9bed6', fontFamily: 'monospace', align: 'center', wordWrap: { width: 330 },
+    }).setOrigin(0.5));
+
+    s.runGoldEarned = 0;
+    s.runBestStreak = 0;
+    s.runDeepestFloor = 0;
+
+    this.tweens.add({
+      targets: popup,
+      alpha: 0,
+      y: H / 2 - 50,
+      delay: 3600,
+      duration: 900,
+      onComplete: () => popup.destroy(),
+    });
   }
 
-  // ── Build Tavern ──────────────────────────────────────────────────────────
+	  // ── Build Tavern ──────────────────────────────────────────────────────────
 
   private buildTavern() {
     this.wallGroup = this.physics.add.staticGroup();

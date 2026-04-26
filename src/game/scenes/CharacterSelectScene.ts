@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import {
-  CHARACTER_CLASSES, ClassKey, ClassDef,
+  CHARACTER_CLASSES, ClassKey,
   abilityMod, goodSave, poorSave, calcBAB,
 } from "../constants";
 import { CharCreationData } from "../entities/Player";
@@ -259,9 +259,11 @@ export class CharacterSelectScene extends Phaser.Scene {
   private _prepareScoreMethod(method: ScoreMethod) {
     this.assigned = [null, null, null, null, null, null];
     this.selectedScoreIdx = -1;
+    this._scoreToAbilityMap.clear();
 
     if (method === 'standard') {
       this.scores = [...STANDARD_ARRAY];
+      this._autoAssignScores();
     } else if (method === 'pointbuy') {
       this.pointBuyScores = [10, 10, 10, 10, 10, 10];
       this.pointsRemaining = 27;
@@ -273,7 +275,30 @@ export class CharacterSelectScene extends Phaser.Scene {
         this.rollResults.push(dice);
       }
       this.scores = this.rollResults.map(dice => dice[1] + dice[2] + dice[3]);
+      this._autoAssignScores();
     }
+  }
+
+  private _autoAssignScores() {
+    const classPriority: Record<ClassKey, number[]> = {
+      fighter: [0, 2, 1, 4, 3, 5],
+      thief: [1, 3, 0, 2, 4, 5],
+      wizard: [3, 1, 2, 4, 0, 5],
+      cleric: [4, 2, 0, 1, 5, 3],
+    };
+    const sorted = this.scores
+      .map((score, idx) => ({ score, idx }))
+      .sort((a, b) => b.score - a.score);
+
+    this.assigned = [null, null, null, null, null, null];
+    this._scoreToAbilityMap.clear();
+
+    classPriority[this.selectedClass].forEach((abilityIdx, rank) => {
+      const score = sorted[rank];
+      if (!score) return;
+      this.assigned[abilityIdx] = score.score;
+      this._scoreToAbilityMap.set(score.idx, abilityIdx);
+    });
   }
 
   // ── Step 3: Assign Scores ─────────────────────────────────────────────────
@@ -297,6 +322,12 @@ export class CharacterSelectScene extends Phaser.Scene {
       this._renderPointBuy();
     } else {
       this._renderDragAssign();
+      const autoBtn = this._makeButton(width / 2, height - 100, 'AUTO ASSIGN', 160, 30);
+      autoBtn.bg.on('pointerdown', () => {
+        this._autoAssignScores();
+        this.renderStep();
+      });
+      this.container.add([autoBtn.bg, autoBtn.border, autoBtn.text]);
     }
 
     // Live preview
@@ -323,7 +354,6 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   private _renderDragAssign() {
-    const { height } = this.scale;
     const leftX = 160;
 
     // Score pool
@@ -331,9 +361,6 @@ export class CharacterSelectScene extends Phaser.Scene {
       fontSize: '12px', color: '#aaaaaa', fontFamily: 'monospace',
     }).setOrigin(0.5);
     this.container.add(poolTitle);
-
-    const usedScores = new Set(this.assigned.filter(v => v !== null) as number[]);
-    const availableScores = this.scores.filter((_, i) => !this._isScoreUsedAt(i));
 
     this.scores.forEach((score, i) => {
       const isUsed = this._isScoreUsedAt(i);
@@ -358,8 +385,6 @@ export class CharacterSelectScene extends Phaser.Scene {
           this.renderStep();
         });
       }
-
-      void availableScores;
     });
 
     // Ability assignment slots
@@ -398,18 +423,13 @@ export class CharacterSelectScene extends Phaser.Scene {
       slot.on('pointerdown', () => {
         if (this.selectedScoreIdx >= 0) {
           // Assign selected score to this slot
-          const prev = this.assigned[i];
-          if (prev !== null) {
-            // Unassign previous at this slot (find original index in scores)
-            const prevIdx = this.scores.indexOf(prev);
-            // If was assigned, mark as unassigned — but we need to track by score idx not value
-          }
           this.assigned[i] = this.scores[this.selectedScoreIdx];
           this._markScoreUsed(this.selectedScoreIdx, i);
           this.selectedScoreIdx = -1;
         } else if (assignedScore !== null) {
           // Unassign
           this.assigned[i] = null;
+          this._unmarkAbility(i);
         }
         this.renderStep();
       });
@@ -420,7 +440,6 @@ export class CharacterSelectScene extends Phaser.Scene {
       this.container.add(descText);
     });
 
-    void usedScores;
   }
 
   // Track which score index is assigned to which ability slot
@@ -436,6 +455,15 @@ export class CharacterSelectScene extends Phaser.Scene {
       if (aIdx === abilityIdx) { this._scoreToAbilityMap.delete(sIdx); break; }
     }
     this._scoreToAbilityMap.set(scoreIdx, abilityIdx);
+  }
+
+  private _unmarkAbility(abilityIdx: number) {
+    for (const [sIdx, aIdx] of this._scoreToAbilityMap) {
+      if (aIdx === abilityIdx) {
+        this._scoreToAbilityMap.delete(sIdx);
+        break;
+      }
+    }
   }
 
   private _renderPointBuy() {

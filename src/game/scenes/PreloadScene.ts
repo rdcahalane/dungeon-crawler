@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, COLORS, FOG_RADIUS, FLOOR_THEMES, FloorTheme } from "../constants";
+import { TILE_SIZE, FOG_RADIUS, FLOOR_THEMES, FloorTheme } from "../constants";
 
 function lerpColor(c1: number, c2: number, t: number): number {
   const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
@@ -36,6 +36,7 @@ export class PreloadScene extends Phaser.Scene {
     this.createNewEnemyTextures();
     this.createItemTextures();
     this.createChestTextures();
+    this.createRoomDecals();
     this.createFogBrush();
     this.createTorchGlow();
     this.createSpellGlows();
@@ -527,7 +528,7 @@ export class PreloadScene extends Phaser.Scene {
     g.fillStyle(0xa0b4cc);
     g.fillRect(10, 3, 8, 4);
     // Cheek guards
-    g.fillStyle(0x5868806);
+    g.fillStyle(0x586880);
     g.fillRect(8, 7, 5, 6);
     g.fillRect(19, 7, 5, 6);
     // Visor slit
@@ -657,10 +658,10 @@ export class PreloadScene extends Phaser.Scene {
     g.fillTriangle(16, 0, 8, 13, 24, 13); // cone
     g.fillStyle(0x6600cc); // lighter purple side
     g.fillTriangle(16, 0, 16, 13, 24, 13);
-    g.fillStyle(0x3300664); // shadow side
+    g.fillStyle(0x330066); // shadow side
     g.fillTriangle(16, 0, 8, 13, 16, 13);
     // Hat brim
-    g.fillStyle(0x4400884);
+    g.fillStyle(0x440088);
     g.fillRect(6, 12, 20, 4);
     // Gold hat band
     g.fillStyle(0xffd700);
@@ -1062,6 +1063,63 @@ export class PreloadScene extends Phaser.Scene {
     ogre.fillRect(18, 11, 2, 3);              // right tusk
     ogre.generateTexture("enemy_tank", S, S);
     ogre.destroy();
+  }
+
+  private createRoomDecals() {
+    const S = TILE_SIZE;
+
+    const pillar = this.add.graphics();
+    pillar.fillStyle(0x090910, 0.7);
+    pillar.fillEllipse(16, 24, 20, 8);
+    pillar.fillStyle(0x566070, 0.75);
+    pillar.fillRect(11, 8, 10, 18);
+    pillar.fillStyle(0x7b8798, 0.5);
+    pillar.fillRect(10, 6, 12, 4);
+    pillar.fillRect(9, 24, 14, 4);
+    pillar.generateTexture("decal_pillar", S, S);
+    pillar.destroy();
+
+    const bones = this.add.graphics();
+    bones.lineStyle(3, 0xd8d1b4, 0.75);
+    bones.lineBetween(8, 22, 24, 12);
+    bones.lineBetween(9, 12, 24, 23);
+    bones.fillStyle(0xd8d1b4, 0.8);
+    bones.fillCircle(7, 22, 2);
+    bones.fillCircle(25, 12, 2);
+    bones.fillCircle(8, 12, 2);
+    bones.fillCircle(25, 23, 2);
+    bones.generateTexture("decal_bones", S, S);
+    bones.destroy();
+
+    const runes = this.add.graphics();
+    runes.lineStyle(2, 0xff5a5f, 0.8);
+    runes.strokeCircle(16, 16, 10);
+    runes.lineBetween(16, 6, 16, 26);
+    runes.lineBetween(7, 20, 25, 12);
+    runes.fillStyle(0xffd166, 0.75);
+    runes.fillCircle(16, 16, 2);
+    runes.generateTexture("decal_runes", S, S);
+    runes.destroy();
+
+    const hoard = this.add.graphics();
+    hoard.fillStyle(0xffd166, 0.7);
+    hoard.fillCircle(11, 20, 3);
+    hoard.fillCircle(16, 16, 4);
+    hoard.fillCircle(22, 20, 3);
+    hoard.fillStyle(0xffffff, 0.55);
+    hoard.fillRect(10, 13, 2, 2);
+    hoard.fillRect(19, 15, 2, 2);
+    hoard.generateTexture("decal_hoard", S, S);
+    hoard.destroy();
+
+    const shrine = this.add.graphics();
+    shrine.fillStyle(0x00bbf9, 0.22);
+    shrine.fillCircle(16, 16, 14);
+    shrine.lineStyle(2, 0x00bbf9, 0.85);
+    shrine.lineBetween(16, 6, 16, 26);
+    shrine.lineBetween(9, 14, 23, 14);
+    shrine.generateTexture("decal_shrine", S, S);
+    shrine.destroy();
   }
 
   // ── Items ─────────────────────────────────────────────────────────────────

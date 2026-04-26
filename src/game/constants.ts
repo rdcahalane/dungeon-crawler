@@ -69,6 +69,10 @@ export const PLAYER_STATS = {
   XP_PER_LEVEL: 100,
 } as const;
 
+export type WeaponTrait = 'cleaving' | 'quick' | 'vampiric' | 'arcane';
+export type ArmorTrait = 'light' | 'reinforced' | 'warded';
+export type EquipmentTrait = WeaponTrait | ArmorTrait;
+
 // ── Character Classes ───────────────────────────────────────────────────────
 
 export type ClassKey = 'fighter' | 'thief' | 'wizard' | 'cleric';
@@ -400,7 +404,7 @@ export const TRAP_TYPES: Record<TrapTypeKey, TrapDef> = {
 
 // ── Status Effects ───────────────────────────────────────────────────────────
 
-export type StatusEffectKey = 'POISONED' | 'SLOWED' | 'BLESSED' | 'SHIELDED';
+export type StatusEffectKey = 'POISONED' | 'SLOWED' | 'BLESSED' | 'SHIELDED' | 'RUSHED';
 
 export interface StatusEffectDef {
   key: StatusEffectKey;
@@ -414,6 +418,7 @@ export const STATUS_EFFECT_DEFS: Record<StatusEffectKey, StatusEffectDef> = {
   SLOWED: { key: 'SLOWED', label: 'Slowed', color: 0x0288d1, icon: 'S' },
   BLESSED: { key: 'BLESSED', label: 'Blessed', color: 0xffd700, icon: 'B' },
   SHIELDED: { key: 'SHIELDED', label: 'Shielded', color: 0x7e57c2, icon: 'Sh' },
+  RUSHED: { key: 'RUSHED', label: 'Rushed', color: 0xffd166, icon: 'R' },
 };
 
 export interface StatusEffect {

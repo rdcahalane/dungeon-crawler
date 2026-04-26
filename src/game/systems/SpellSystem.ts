@@ -3,11 +3,6 @@ import { SPELLS, SpellKey, TILE_SIZE, TILE } from "../constants";
 import { Player } from "../entities/Player";
 import { Enemy } from "../entities/Enemy";
 
-interface SpellCooldown {
-  key: SpellKey;
-  remaining: number; // ms
-}
-
 interface Projectile {
   obj: Phaser.GameObjects.Arc | Phaser.GameObjects.Rectangle;
   vx: number;

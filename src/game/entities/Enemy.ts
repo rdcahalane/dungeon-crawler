@@ -12,11 +12,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   public attackRange: number;
   public aggroRange: number;
   public attackCooldown: number;
+  public isElite: boolean;
 
   private _attackTimer = 0;
   private _aiState: "idle" | "chase" | "attack" | "flee" = "idle";
   private hpBar!: Phaser.GameObjects.Rectangle;
   private hpBarBg!: Phaser.GameObjects.Rectangle;
+  private nameTag!: Phaser.GameObjects.Text;
+  private threatRing!: Phaser.GameObjects.Arc;
 
   // Troll regen
   private _regenTimer = 0;
@@ -28,31 +31,35 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Mimic: hidden until revealed
   private _mimicRevealed = false;
 
-  // Ranged zap effect (Dark Elf)
-  private _zapLine?: Phaser.GameObjects.Graphics;
+  // Special behavior timers
+  private _specialTimer = 0;
+  private _reformed = false;
 
   // Callbacks
   onRangedAttack?: (enemyX: number, enemyY: number, targetX: number, targetY: number) => void;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, typeKey: EnemyTypeKey) {
+  constructor(scene: Phaser.Scene, x: number, y: number, typeKey: EnemyTypeKey, elite = false) {
     const def = ENEMY_TYPES[typeKey];
     super(scene, x, y, def.textureKey || "enemy");
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
     this.typeKey = typeKey;
+    this.isElite = elite;
 
-    this.hp = def.hp;
-    this.maxHp = def.hp;
-    this.attack = def.attack;
-    this.defense = def.defense;
-    this.speed = def.speed;
-    this.xp = def.xp;
+    const eliteHpMul = elite ? 1.9 : 1;
+    const eliteAtkMul = elite ? 1.35 : 1;
+    this.hp = Math.ceil(def.hp * eliteHpMul);
+    this.maxHp = this.hp;
+    this.attack = Math.ceil(def.attack * eliteAtkMul);
+    this.defense = def.defense + (elite ? 1 : 0);
+    this.speed = def.speed * (elite ? 1.08 : 1);
+    this.xp = Math.ceil(def.xp * (elite ? 2.4 : 1));
     this.attackRange = def.attackRange;
     this.aggroRange = def.aggroRange;
     this.attackCooldown = def.attackCooldown;
 
-    const size = def.size;
+    const size = elite ? Math.ceil(def.size * 1.25) : def.size;
     this.setDisplaySize(size, size);
     this.setDepth(9);
 
@@ -70,10 +77,33 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Ghost: translucent
     if (typeKey === 'GHOST') this.setAlpha(0.7);
 
+    this.threatRing = scene.add.arc(x, y, size * (elite ? 0.9 : 0.72), 0, 360, false, elite ? 0xffd166 : def.color, elite ? 0.42 : 0.2)
+      .setDepth(8);
+
     // HP bar
     this.hpBarBg = scene.add.rectangle(x, y - size / 2 - 6, size, 4, 0x333333).setDepth(11);
     this.hpBar = scene.add.rectangle(x - size / 2, y - size / 2 - 6, size, 4, 0x4caf50)
       .setOrigin(0, 0.5).setDepth(12);
+    this.nameTag = scene.add.text(x, y + size / 2 + 5, elite ? `*${this._shortName(typeKey)}*` : this._shortName(typeKey), {
+      fontSize: '8px',
+      color: `#${(elite ? 0xffd166 : def.color).toString(16).padStart(6, '0')}`,
+      fontFamily: 'monospace',
+      stroke: '#000',
+      strokeThickness: 2,
+    }).setOrigin(0.5, 0).setDepth(12);
+
+    if (elite) {
+      this.setTint(0xffd166);
+      scene.tweens.add({
+        targets: this.threatRing,
+        alpha: 0.12,
+        scaleX: 1.25,
+        scaleY: 1.25,
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+      });
+    }
   }
 
   update(delta: number, playerX: number, playerY: number) {
@@ -93,6 +123,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     this._attackTimer = Math.max(0, this._attackTimer - delta);
+    this._specialTimer = Math.max(0, this._specialTimer - delta);
 
     // Troll: regenerate HP
     if (def.regenRate && def.regenRate > 0) {
@@ -104,10 +135,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    const dx = playerX - this.x;
-    const dy = playerY - this.y;
-    const distToPlayer = Math.sqrt(dx * dx + dy * dy);
-    const body = this.body as Phaser.Physics.Arcade.Body;
+	    const dx = playerX - this.x;
+	    const dy = playerY - this.y;
+	    const distToPlayer = Math.sqrt(dx * dx + dy * dy);
+    const moveLen = distToPlayer || 1;
+	    const body = this.body as Phaser.Physics.Arcade.Body;
 
     // Flee state (Turn Undead)
     if (this._aiState === 'flee') {
@@ -127,20 +159,40 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     if (this._aiState === 'chase') {
+      if (this.typeKey === 'FAST' && this._specialTimer <= 0 && distToPlayer > 55 && distToPlayer < 170) {
+        this._specialTimer = this.isElite ? 900 : 1300;
+        body.setVelocity((dx / moveLen) * this.speed * 2.35, (dy / moveLen) * this.speed * 2.35);
+        this.scene.tweens.add({ targets: this, alpha: 0.45, duration: 70, yoyo: true });
+        this.updateHpBar();
+        return;
+      }
+
+      if (this.typeKey === 'DARK_ELF' && distToPlayer < 85 && this._specialTimer <= 0) {
+        this._specialTimer = 2400;
+        const bounds = this.scene.physics.world.bounds;
+        const blinkX = Phaser.Math.Clamp(this.x - (dx / moveLen) * 96, bounds.x + 24, bounds.right - 24);
+        const blinkY = Phaser.Math.Clamp(this.y - (dy / moveLen) * 96, bounds.y + 24, bounds.bottom - 24);
+        this.setPosition(blinkX, blinkY);
+        this.setTint(0xce93d8);
+        this.scene.time.delayedCall(120, () => {
+          if (this.active) this.setTint(this.isElite ? 0xffd166 : def.color);
+        });
+      }
+
       if (def.isRanged) {
         // Ranged: keep distance 100-200px, strafe side if too close
         if (distToPlayer < 100) {
           // Back away
-          body.setVelocity(-(dx / distToPlayer) * this.speed, -(dy / distToPlayer) * this.speed);
+          body.setVelocity(-(dx / moveLen) * this.speed, -(dy / moveLen) * this.speed);
         } else if (distToPlayer > this.attackRange) {
           // Move closer
-          body.setVelocity((dx / distToPlayer) * this.speed * 0.6, (dy / distToPlayer) * this.speed * 0.6);
+          body.setVelocity((dx / moveLen) * this.speed * 0.6, (dy / moveLen) * this.speed * 0.6);
         } else {
           body.setVelocity(0, 0);
         }
       } else {
         if (distToPlayer > this.attackRange + 8) {
-          body.setVelocity((dx / distToPlayer) * this.speed, (dy / distToPlayer) * this.speed);
+          body.setVelocity((dx / moveLen) * this.speed, (dy / moveLen) * this.speed);
         } else {
           body.setVelocity(0, 0);
         }
@@ -150,6 +202,17 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.updateHpBar();
+  }
+
+  tryReform(): boolean {
+    if (this.typeKey !== 'SKELETON' || this._reformed || this.isElite) return false;
+    if (Math.random() > 0.45) return false;
+    this._reformed = true;
+    this.hp = Math.max(6, Math.ceil(this.maxHp * 0.38));
+    this.updateHpBar();
+    this.setTint(0xe0e0e0);
+    this.scene.tweens.add({ targets: this, scaleX: 1.25, scaleY: 1.25, duration: 90, yoyo: true });
+    return true;
   }
 
   private _revealMimic() {
@@ -162,7 +225,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Flash reveal effect
     this.setTint(0xff4444);
     this.scene.time.delayedCall(200, () => {
-      if (this.active) this.setTint(def.color);
+      if (this.active) this.setTint(this.isElite ? 0xffd166 : def.color);
     });
   }
 
@@ -190,25 +253,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._attackTimer = this.attackCooldown;
     const def = ENEMY_TYPES[this.typeKey];
 
-    // Ranged: fire visual bolt
-    if (def.isRanged && this.scene) {
-      this._fireRangedBolt();
-    }
-
     // Flash
     this.setTint(0xffffff);
     this.scene.time.delayedCall(80, () => {
       if (this.active) this.setTint(def.color);
     });
     return this.attack;
-  }
-
-  private _fireRangedBolt() {
-    if (!this.scene) return;
-    const bolt = this.scene.add.rectangle(this.x, this.y, 4, 4, 0xce93d8).setDepth(15);
-    // Bolt needs to travel toward player — since we don't have player ref here,
-    // the GameScene handles this via onRangedAttack callback
-    bolt.destroy();
   }
 
   // bypassArmor for Ghost attacks
@@ -244,7 +294,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const def = ENEMY_TYPES[this.typeKey];
     this.setTint(0xffffff);
     this.scene.time.delayedCall(100, () => {
-      if (this.active && this.hp > 0) this.setTint(def.color);
+      if (this.active && this.hp > 0) this.setTint(this.isElite ? 0xffd166 : def.color);
     });
 
     return dmg;
@@ -259,17 +309,39 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const visible = !(def.isMimic && !this._mimicRevealed);
     this.hpBarBg.setVisible(visible);
     this.hpBar.setVisible(visible);
+    this.nameTag.setVisible(visible);
+    this.threatRing.setVisible(visible);
 
+    this.threatRing.setPosition(this.x, this.y);
     this.hpBarBg.setPosition(this.x, this.y - size / 2 - 6);
     this.hpBar.setPosition(this.x - size / 2, this.y - size / 2 - 6);
+    this.nameTag.setPosition(this.x, this.y + size / 2 + 5);
     this.hpBar.setDisplaySize(size * pct, 4);
     this.hpBar.setFillStyle(pct > 0.5 ? 0x4caf50 : pct > 0.25 ? 0xffa726 : 0xf44336);
   }
 
+  private _shortName(typeKey: EnemyTypeKey): string {
+    const labels: Record<EnemyTypeKey, string> = {
+      BASIC: 'GOB',
+      FAST: 'IMP',
+      TANK: 'OGR',
+      SKELETON: 'SKL',
+      ZOMBIE: 'ZOM',
+      GIANT_RAT: 'RAT',
+      GIANT_SPIDER: 'SPD',
+      TROLL: 'TRL',
+      DARK_ELF: 'ELF',
+      GHOST: 'GST',
+      MIMIC: 'MIM',
+    };
+    return labels[typeKey];
+  }
+
   destroy(fromScene?: boolean) {
     this.hpBar?.destroy();
-    this.hpBarBg?.destroy();
-    this._zapLine?.destroy();
-    super.destroy(fromScene);
-  }
+	    this.hpBarBg?.destroy();
+	    this.nameTag?.destroy();
+	    this.threatRing?.destroy();
+	    super.destroy(fromScene);
+	  }
 }

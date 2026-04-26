@@ -6,6 +6,8 @@ import {
   CHARACTER_CLASSES,
   SpellKey,
   StatusEffect,
+  ArmorTrait,
+  WeaponTrait,
   abilityMod,
   goodSave,
   poorSave,
@@ -52,6 +54,8 @@ export interface PlayerStats {
   // Equipment bonuses
   weaponBonus: number;
   armorBonus: number;
+  weaponTrait?: WeaponTrait;
+  armorTrait?: ArmorTrait;
   // Misc
   speed: number;
   gold: number;
@@ -75,14 +79,19 @@ export interface PlayerStats {
   questBoardSeed?: number;
   questBoardGeneratedAt?: number;
   inventory?: import("../systems/QuestSystem").InventoryItem[];    // capped at 100
-  equippedWeaponLabel?: string;
-  equippedArmorLabel?: string;
-}
+	  equippedWeaponLabel?: string;
+	  equippedArmorLabel?: string;
+  relics?: string[];
+  runGoldEarned?: number;
+  runBestStreak?: number;
+  runDeepestFloor?: number;
+	}
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   public stats!: PlayerStats;
   private attackCooldown = 0;
   private invincible = 0;
+  private armorWardReady = true;
   private _idleTimer = 0; // ms standing still
   private attackIndicator!: Phaser.GameObjects.Rectangle;
   private playerShadow!: Phaser.GameObjects.Ellipse;  // floor shadow anchors character
@@ -223,6 +232,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       disableBonus: dexMod + (data.classKey === 'thief' ? 1 : 0),
       weaponBonus,
       armorBonus,
+      weaponTrait: data.classKey === 'fighter' ? 'cleaving' : data.classKey === 'thief' ? 'quick' : data.classKey === 'wizard' ? 'arcane' : 'vampiric',
+      armorTrait: data.classKey === 'thief' ? 'light' : data.classKey === 'wizard' ? 'warded' : 'reinforced',
       speed: PLAYER_STATS.BASE_SPEED,
       gold: 0,
       floor: 1,
@@ -396,6 +407,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private getEffectiveSpeed(): number {
     let spd = this.stats.speed;
     if (this.stats.effects.some(e => e.key === 'SLOWED')) spd *= 0.5;
+    if (this.stats.effects.some(e => e.key === 'RUSHED')) spd *= 1.25;
+    if (this.stats.armorTrait === 'light') spd *= 1.12;
     return spd;
   }
 
@@ -423,7 +436,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       !this.scene.input.mousePointer.isDown
     ) return false;
 
-    this.attackCooldown = PLAYER_STATS.ATTACK_COOLDOWN;
+    const haste = this.stats.weaponTrait === 'quick' ? 0.68 : 1;
+    this.attackCooldown = PLAYER_STATS.ATTACK_COOLDOWN * haste;
     this.setTint(0xffffff); // brief white flash
     this.scene.time.delayedCall(80, () => {
       if (this.active) this.clearTint();
@@ -475,6 +489,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     } else {
       dmg = Math.max(1, amount - (this.stats.defense - 10));
     }
+    if (this.stats.armorTrait === 'reinforced') dmg = Math.max(1, dmg - 1);
+    if (this.stats.armorTrait === 'warded' && this.armorWardReady) {
+      dmg = Math.max(0, Math.floor(dmg * 0.25));
+      this.armorWardReady = false;
+    }
 
     this.stats.hp = Math.max(0, this.stats.hp - dmg);
     this.invincible = 600;
@@ -493,6 +512,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.stats.hp <= 0) {
       this.onDead?.();
     }
+  }
+
+  refreshArmorWard() {
+    if (this.stats.armorTrait === 'warded') this.armorWardReady = true;
   }
 
   heal(amount: number) {

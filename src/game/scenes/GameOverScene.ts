@@ -17,16 +17,22 @@ export class GameOverScene extends Phaser.Scene {
   private floor = 1;
   private kills = 0;
   private level = 1;
+  private gold = 0;
+  private bestStreak = 0;
+  private relics: string[] = [];
   private optionsContainer!: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: "GameOverScene" });
   }
 
-  init(data: { floor?: number; kills?: number; level?: number }) {
+  init(data: { floor?: number; kills?: number; level?: number; gold?: number; bestStreak?: number; relics?: string[] }) {
     this.floor = data?.floor ?? 1;
     this.kills = data?.kills ?? 0;
     this.level = data?.level ?? 1;
+    this.gold = data?.gold ?? 0;
+    this.bestStreak = data?.bestStreak ?? 0;
+    this.relics = data?.relics ?? [];
   }
 
   create() {
@@ -44,11 +50,14 @@ export class GameOverScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const stats = [
-      `Floor reached:  ${this.floor}`,
-      `Enemies killed: ${this.kills}`,
-      `Level:          ${this.level}`,
-    ];
+	    const stats = [
+	      `Floor reached:  ${this.floor}`,
+	      `Enemies killed: ${this.kills}`,
+	      `Level:          ${this.level}`,
+      `Gold hauled:    ${this.gold}`,
+      `Best streak:    ${this.bestStreak}`,
+      `Relics found:   ${this.relics.length}`,
+	    ];
 
     stats.forEach((line, i) => {
       this.add
@@ -86,7 +95,7 @@ export class GameOverScene extends Phaser.Scene {
     this.optionsContainer.removeAll(true);
 
     const { width, height } = this.scale;
-    let cursorY = height * 0.48;
+    let cursorY = height * 0.56;
 
     // -- Saved characters section --
     if (saves.length > 0) {
