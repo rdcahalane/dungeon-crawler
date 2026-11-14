@@ -304,7 +304,7 @@ export class MechanismController {
     this.flickPole(plan.dir);
     let any = 0;
     for (const ev of plan.events) any += this.emit(ev).length;
-    if (any === 0) ctx.status("The pole taps stone. Nothing gives.");
+    if (any === 0) ctx.status(`You probe ${plan.dirName}: the pole taps stone. Nothing gives.`);
   }
 
   private doListen(tx: number, ty: number): void {
