@@ -49,6 +49,16 @@ export interface GameEventMap {
   detect_traps: { radiusTiles: number; durationMs: number };
   /** Knock: open the locked or stuck thing on this tile. */
   knock: { tx: number; ty: number };
+  /** A monster was caught flat on first contact (stands still about a second, +2 to be hit). */
+  monster_surprised: { enemyKey: string };
+  /** An intelligent monster rolled its reaction the first time it noticed the player. */
+  monster_reaction: { enemyKey: string; reaction: 'hostile' | 'wary' | 'afraid' };
+  /** A morale check was rolled (`passed` false means the monster flees). */
+  monster_morale: { enemyKey: string; passed: boolean; roll: number; cause: 'wounded' | 'ally_died' };
+  /** A wandering monster came looking for the player. */
+  wandering_monster: { enemyKey: string; tx: number; ty: number };
+  /** One game turn (60 seconds of dungeon time) went by. */
+  game_turn: { turn: number };
 }
 
 export type GameEventName = keyof GameEventMap;
@@ -58,6 +68,7 @@ export const GAME_EVENT_NAMES: readonly GameEventName[] = [
   'item_pickup', 'gold', 'chest_open', 'door_secret_found', 'trap_triggered', 'spell_cast', 'spell_fizzle',
   'heal', 'level_up', 'floor_enter', 'floor_exit', 'rest', 'ui_open', 'ui_close', 'status',
   'detect_traps', 'knock', 'item_dropped', 'torch_out',
+  'monster_surprised', 'monster_reaction', 'monster_morale', 'wandering_monster', 'game_turn',
 ];
 
 export type GameEventHandler<K extends GameEventName> = (payload: GameEventMap[K]) => void;

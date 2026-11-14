@@ -81,6 +81,15 @@ describe("to-hit odds", () => {
       expect(r.damage).toBe(16);
     }
   });
+
+  it("a surprised target is struck at +2: a roll that misses a steady one hits a flat-footed one", () => {
+    const sheet = sheetFor("fighter");
+    // d20 = 17 against AC 0 needs 18 (THAC0 20, +2 real-time bonus); surprise brings it to 16.
+    const steady = resolvePlayerAttack(sheet, { ac: 0 }, fixed(0.8, 0.5), "melee");
+    expect(steady.kind).toBe("miss");
+    const flat = resolvePlayerAttack(sheet, { ac: 0, surprised: true }, fixed(0.8, 0.5), "melee");
+    expect(flat.kind).toBe("hit");
+  });
 });
 
 describe("weapons, immunities and backstab", () => {

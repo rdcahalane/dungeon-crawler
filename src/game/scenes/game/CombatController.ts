@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import type { PlayerStats, CharCreationData } from "../../entities/Player";
-import { TILE_SIZE, COLORS, PLAYER_STATS, ENEMY_TYPES, EnemyTypeKey } from "../../constants";
+import { TILE, TILE_SIZE, COLORS, PLAYER_STATS, ENEMY_TYPES, EnemyTypeKey } from "../../constants";
 import { onEnemyKilled } from "../../systems/QuestSystem";
 import { Player } from "../../entities/Player";
 import { Enemy } from "../../entities/Enemy";
@@ -9,6 +9,12 @@ import {
   MONSTERS, WIZARD_DART, RANGE_PX, mathRng, rollDice, turnUndead, hasSpecial, isTurnable,
 } from "../../rules";
 import { equipmentBonuses, getDef } from "../../items";
+import { charismaReaction } from "../../rules";
+import {
+  ALLY_DEATH_RADIUS_PX, KEEP_DISTANCE_MS, SURPRISE_MS, fleeDurationMs, isIntelligent, lineOfSight, monsterReaction,
+  moraleCheck, neverChecksMorale, retreatOutcome, surpriseRoll,
+} from "../../rules/encounter";
+import type { EnemyEvent } from "../../entities/Enemy";
 import {
   resolvePlayerAttack, resolveMonsterRound, playerArmorClass, ignoresArmor, weaponProfile, enemyKeyIsMonster,
   type MonsterRound, type PlayerAttackOutcome, type TargetInfo,
@@ -235,7 +241,11 @@ export class CombatController {
       const enemy = ctx.enemies[i];
       if (!enemy.active) { ctx.enemies.splice(i, 1); continue; }
 
-      enemy.update(delta, player.x, player.y);
+      if (!enemy.contactDone) this.checkFirstContact(enemy);
+      // Only wary monsters need to know whether they can see you (their patience runs while you are in sight).
+      const sees = enemy.attitude === 'wary' ? this.canSee(enemy.x, enemy.y, player.x, player.y) : true;
+      enemy.update(delta, player.x, player.y, sees);
+      this.handleEnemyEvents(enemy);
       const dist = Phaser.Math.Distance.Between(enemy.x, enemy.y, player.x, player.y);
 
       const spell = enemy.takeSpellTurn(dist);
@@ -252,6 +262,110 @@ export class CombatController {
           this.applyMonsterRound(enemy, round);
         }
       }
+    }
+  }
+
+  // ── Encounter rules: surprise, reaction, morale (the dice live in rules/encounter.ts) ──
+
+  private isOpaqueTile = (tx: number, ty: number): boolean => {
+    const t = this.ctx.dungeon.tiles[ty]?.[tx];
+    return t === undefined || t === TILE.WALL || t === TILE.SECRET_DOOR;
+  };
+
+  /** Straight-line sight between two world positions, over the dungeon tiles. */
+  canSee(ax: number, ay: number, bx: number, by: number): boolean {
+    return lineOfSight(
+      this.isOpaqueTile,
+      { tx: Math.floor(ax / TILE_SIZE), ty: Math.floor(ay / TILE_SIZE) },
+      { tx: Math.floor(bx / TILE_SIZE), ty: Math.floor(by / TILE_SIZE) },
+    );
+  }
+
+  /** The moment a monster first notices the player: 2 in 6 it is caught flat, and the intelligent ones size you up. */
+  private checkFirstContact(enemy: Enemy) {
+    if (enemy.status) return; // asleep or held: it has not noticed anything yet
+    if (enemy.isMimic) {
+      // A mimic springs on you; there is no talking to a chest.
+      if (enemy.mimicRevealed) enemy.contactDone = true;
+      return;
+    }
+    const player = this.ctx.player;
+    const dist = Phaser.Math.Distance.Between(enemy.x, enemy.y, player.x, player.y);
+    if (dist > enemy.aggroRange) return;
+    enemy.contactDone = true;
+
+    const ctx = this.ctx;
+    const summoned = !!enemy.summonedBy;
+    if (!summoned && !enemy.def.boss && surpriseRoll(mathRng)) {
+      enemy.beginSurprise(SURPRISE_MS);
+      ctx.floatText(enemy.x, enemy.y - 28, '!', 0xffd166, 16);
+      ctx.bus.emit('monster_surprised', { enemyKey: enemy.typeKey });
+    }
+
+    if (summoned || !isIntelligent(enemy.def)) return;
+    const reaction = monsterReaction(enemy.def, mathRng, charismaReaction(player.stats.cha), { summoned });
+    ctx.bus.emit('monster_reaction', { enemyKey: enemy.typeKey, reaction });
+    if (reaction === 'wary') {
+      enemy.attitude = 'wary';
+      ctx.floatText(enemy.x, enemy.y - 40, 'wary', 0xffe082, 10);
+    } else if (reaction === 'afraid') {
+      enemy.attitude = 'afraid';
+      ctx.floatText(enemy.x, enemy.y - 40, 'afraid', 0x90caf9, 10);
+    }
+  }
+
+  /** Floating words and the next roll for things the monster's own AI reported this frame. */
+  private handleEnemyEvents(enemy: Enemy) {
+    const events: EnemyEvent[] = enemy.drainEvents();
+    for (const ev of events) {
+      if (ev === 'afraid_flee') {
+        this.ctx.floatText(enemy.x, enemy.y - 28, 'flees!', 0x90caf9, 11);
+      } else if (ev === 'cornered') {
+        this.ctx.floatText(enemy.x, enemy.y - 28, 'cornered!', 0xff8a65, 10);
+      } else if (ev === 'flee_ended' || ev === 'distance_ended') {
+        const { outcome } = retreatOutcome(enemy.def.morale, mathRng, enemy.retreats - 1);
+        if (outcome === 'return') {
+          enemy.returnToFight();
+          this.ctx.floatText(enemy.x, enemy.y - 28, 'rallies!', 0xffd166, 10);
+        } else {
+          enemy.startKeepDistance(KEEP_DISTANCE_MS);
+          this.ctx.floatText(enemy.x, enemy.y - 28, 'hangs back', 0xb0bec5, 10);
+        }
+      }
+    }
+  }
+
+  /** One morale check. A failure sends the monster running from the player for four to six seconds. */
+  private checkMorale(enemy: Enemy, cause: 'wounded' | 'ally_died') {
+    if (!enemy.active || enemy.hp <= 0 || enemy.status) return;
+    if (neverChecksMorale(enemy.def, { summoned: !!enemy.summonedBy })) return;
+    if (enemy.retreating || enemy.desperate || !enemy.contactDone) return;
+    const result = moraleCheck(enemy.def.morale, mathRng);
+    this.ctx.bus.emit('monster_morale', { enemyKey: enemy.typeKey, passed: result.passed, roll: result.roll, cause });
+    if (result.passed) return;
+    enemy.startMoraleFlee(fleeDurationMs(mathRng));
+    this.ctx.floatText(enemy.x, enemy.y - 28, 'flees!', 0xff8a65, 11);
+  }
+
+  /** After a blow: the monster and its neighbours stop being wary, and a monster under half hit points checks nerve. */
+  private afterBlow(enemy: Enemy) {
+    for (const e of this.ctx.enemies) {
+      if (e === enemy || !e.active || e.attitude === 'hostile') continue;
+      if (Phaser.Math.Distance.Between(e.x, e.y, enemy.x, enemy.y) <= ALLY_DEATH_RADIUS_PX) e.provoke();
+    }
+    if (enemy.hp > 0 && !enemy.halfMoraleChecked && enemy.hp * 2 < enemy.maxHp) {
+      enemy.halfMoraleChecked = true;
+      this.checkMorale(enemy, 'wounded');
+    }
+  }
+
+  /** A monster died: each living one within about six tiles that can see the body checks its nerve. */
+  private allyDied(x: number, y: number, dead: Enemy) {
+    for (const e of [...this.ctx.enemies]) {
+      if (e === dead || !e.active || e.hp <= 0) continue;
+      if (Phaser.Math.Distance.Between(e.x, e.y, x, y) > ALLY_DEATH_RADIUS_PX) continue;
+      if (!this.canSee(e.x, e.y, x, y)) continue;
+      this.checkMorale(e, 'ally_died');
     }
   }
 
@@ -441,6 +555,7 @@ export class CombatController {
       key: enemy.typeKey,
       unaware: enemy.isUnaware,
       helpless: enemy.isHelpless,
+      surprised: enemy.isSurprised,
     };
   }
 
@@ -506,6 +621,9 @@ export class CombatController {
   private applyPlayerOutcome(enemy: Enemy, outcome: PlayerAttackOutcome, style: 'melee' | 'missile'): boolean {
     const ctx = this.ctx;
     const player = ctx.player;
+    // Any swing at it, hit or miss, ends a wary or afraid monster's patience (and its neighbours').
+    enemy.provoke();
+    this.afterBlow(enemy);
     if (outcome.kind === 'immune') {
       ctx.floatText(enemy.x, enemy.y - 20, 'no effect', 0xb0bec5, 11);
       ctx.status("Your weapon passes through it. You need a magic weapon, or silver.");
@@ -544,6 +662,7 @@ export class CombatController {
    */
   damageEnemy(enemy: Enemy, amount: number, opts: { fire?: boolean; acid?: boolean } = {}, killIfDead = true): number {
     const dealt = enemy.takeDamage(amount, opts);
+    this.afterBlow(enemy);
     const phase = enemy.hp > 0 ? enemy.checkPhase() : null;
     if (phase) {
       this.ctx.floatText(enemy.x, enemy.y - 44, phase.label, 0xff8a65, 12);
@@ -586,9 +705,12 @@ export class CombatController {
 
     ctx.loot.dropFromMonster(enemy);
     this.spawnDeathEffect(enemy.x, enemy.y, enemy.typeKey);
+    const deadX = enemy.x;
+    const deadY = enemy.y;
     enemy.destroy();
     const idx = ctx.enemies.indexOf(enemy);
     if (idx >= 0) ctx.enemies.splice(idx, 1);
+    this.allyDied(deadX, deadY, enemy);
     ctx.emitHUD();
     return true;
   }
