@@ -29,10 +29,11 @@ for (const th of THEMES) {
 
 describe("room text coverage", () => {
   it("has text for every vault", () => {
+    // The riddle vaults keep their text in roomTextRiddles.ts; textForArea looks in both tables.
     for (const v of VAULTS) {
-      expect(VAULT_TEXT[v.id], v.id).toBeDefined();
-      expect(VAULT_TEXT[v.id].title).toBe(v.name);
-      expect(textForArea(v.id)).toBeDefined();
+      const t = textForArea(v.id);
+      expect(t, v.id).toBeDefined();
+      expect(t?.title).toBe(v.name);
     }
   });
 
