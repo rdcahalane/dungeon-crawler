@@ -9,10 +9,14 @@ export default function PhaserGame() {
 
   useEffect(() => {
     if (gameRef.current || !containerRef.current) return;
+    // React strict mode mounts, unmounts and mounts again; the imports below
+    // resolve after that, so without this flag both mounts create a game.
+    let cancelled = false;
 
     // Dynamic import keeps Phaser out of the SSR bundle
     import("phaser").then((PhaserModule) => {
       import("./config").then(({ gameConfig }) => {
+        if (cancelled || gameRef.current || !containerRef.current) return;
         const Phaser = PhaserModule;
         const config: Phaser.Types.Core.GameConfig = {
           ...gameConfig,
@@ -23,6 +27,7 @@ export default function PhaserGame() {
     });
 
     return () => {
+      cancelled = true;
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };
