@@ -5,6 +5,7 @@ import { PALETTE, PALETTE_CHARS, isPaletteChar } from "./palette";
 import { SIX_COLOR_KEYS, SPRITES } from "./sprites";
 import {
   CREATURE_KEYS,
+  HIRELING_KEYS,
   ITEM_KEYS,
   LEGACY_TEXTURE_KEYS,
   LEGACY_TEXTURE_SIZES,
@@ -69,7 +70,7 @@ describe("sprite maps", () => {
 
 describe("texture coverage", () => {
   it("defines every legacy, mech, item and new enemy key", () => {
-    for (const k of [...LEGACY_TEXTURE_KEYS, ...MECH_KEYS, ...ITEM_KEYS, ...NEW_ENEMY_KEYS]) {
+    for (const k of [...LEGACY_TEXTURE_KEYS, ...MECH_KEYS, ...ITEM_KEYS, ...NEW_ENEMY_KEYS, ...HIRELING_KEYS]) {
       expect(SPRITES[k], `missing sprite ${k}`).toBeDefined();
     }
   });
@@ -88,7 +89,7 @@ describe("texture coverage", () => {
   });
 
   it("uses 16x16 grids at 2x for 32px tile textures", () => {
-    for (const k of [...MECH_KEYS, ...ITEM_KEYS, ...NEW_ENEMY_KEYS]) {
+    for (const k of [...MECH_KEYS, ...ITEM_KEYS, ...NEW_ENEMY_KEYS, ...HIRELING_KEYS]) {
       expect([SPRITES[k].w, SPRITES[k].h, SPRITES[k].scale]).toEqual([16, 16, 2]);
     }
   });

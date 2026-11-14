@@ -5,15 +5,17 @@
 import * as Phaser from "phaser";
 import { Sfx } from "../../audio/Sfx";
 import { PanelBase } from "./PanelBase";
+import { HirePanel } from "./HirePanel";
+import { restParty } from "../../rules/hirelings";
 import type { TavernHost } from "./tavernHost";
 import { ROOM_PRICE_GP, innRest, type InnKind } from "../../systems/inn";
 import { LINE, UI, drawBox, label, pointIn, wrap } from "./theme";
 
-type Choice = "shop" | "room" | "common" | "leave";
+type Choice = "shop" | "room" | "common" | "hire" | "leave";
 
 interface Option { id: Choice; title: string; sub: string; enabled: boolean }
 
-const OPT_H = 56;
+const OPT_H = 48;
 const OPT_Y = 150;
 
 export class InnkeeperPanel extends PanelBase {
@@ -21,6 +23,7 @@ export class InnkeeperPanel extends PanelBase {
   private msg = "";
   private msgColor: number = UI.gold;
   private boxes: Array<{ x: number; y: number; w: number; h: number; index: number }> = [];
+  private hirePanel?: HirePanel;
 
   constructor(
     scene: Phaser.Scene,
@@ -30,7 +33,7 @@ export class InnkeeperPanel extends PanelBase {
     private afterRoom: () => void,
     onClose: () => void,
   ) {
-    super(scene, 160, 90, 640, 460, "THE INNKEEPER", UI.orange, onClose);
+    super(scene, 160, 90, 640, 520, "THE INNKEEPER", UI.orange, onClose);
   }
 
   private options(): Option[] {
@@ -39,6 +42,7 @@ export class InnkeeperPanel extends PanelBase {
       { id: "shop", title: "BUY AND SELL GEAR", sub: "TORCHES, POLES, POTIONS, STEEL", enabled: true },
       { id: "room", title: `ROOM FOR THE NIGHT (${ROOM_PRICE_GP} GP)`, sub: "FULL HP, DRAIN MENDED, SPELLS BACK", enabled: gold >= ROOM_PRICE_GP },
       { id: "common", title: "SLEEP IN THE COMMON ROOM (FREE)", sub: "HALF THE MISSING HP, SPELLS BACK", enabled: true },
+      { id: "hire", title: "HIRE HELP", sub: "A TORCHBEARER OR A MAN-AT-ARMS", enabled: true },
       { id: "leave", title: "NEVER MIND", sub: "", enabled: true },
     ];
   }
@@ -61,7 +65,7 @@ export class InnkeeperPanel extends PanelBase {
     this.dyn.add(label(scene, x0, this.y + 38 + 2 * LINE + 6, `HP ${Math.ceil(s.hp)}/${s.maxHp}   GOLD ${s.gold}`, { color: UI.gold }));
 
     this.options().forEach((o, i) => {
-      const y = this.y + OPT_Y + i * (OPT_H + 6);
+      const y = this.y + OPT_Y + i * (OPT_H + 4);
       const picked = i === this.cursor;
       drawBox(g, x0, y, this.w - 40, OPT_H, picked ? UI.dusk : UI.ink, picked ? UI.gold : UI.slate, null);
       this.dyn.add(label(scene, x0 + 12, y + 8, `${i + 1} ${o.title}`, { color: o.enabled ? UI.white : UI.grey }));
@@ -87,7 +91,30 @@ export class InnkeeperPanel extends PanelBase {
       case "leave": this.onClose(); break;
       case "room": this.rest("room"); break;
       case "common": this.rest("common"); break;
+      case "hire": this.openHire(); break;
     }
+  }
+
+  /**
+   * The hire panel takes this one's place. This panel is closed without calling `onClose`, so the HUD still counts a
+   * tavern panel as open (the world stays blocked) and Esc or X on the hire panel comes back here.
+   */
+  private openHire(): void {
+    Sfx.play("ui_select");
+    this.close();
+    this.hirePanel?.destroy();
+    this.hirePanel = new HirePanel(this.scene, this.host, () => {
+      this.hirePanel?.destroy();
+      this.hirePanel = undefined;
+      this.open();
+    });
+    this.hirePanel.open();
+  }
+
+  destroy(): void {
+    this.hirePanel?.destroy();
+    this.hirePanel = undefined;
+    super.destroy();
   }
 
   private rest(kind: InnKind): void {
@@ -113,6 +140,7 @@ export class InnkeeperPanel extends PanelBase {
     const parts = [`+${r.healed} HP`];
     if (r.drainRestored > 0) parts.push(`${r.drainRestored} drain mended`);
     if (r.spellsRestored) parts.push("spells back");
+    if (restParty(s.party, kind) > 0) parts.push("hirelings mended");
     this.host.say(kind === "room" ? `You sleep in a bed (-${r.cost} gp): ${parts.join(", ")}.` : `You doze by the fire: ${parts.join(", ")}.`);
     Sfx.play("heal");
     this.host.refresh();
@@ -132,7 +160,7 @@ export class InnkeeperPanel extends PanelBase {
       case "ArrowUp": this.cursor = (this.cursor + n - 1) % n; this.msg = ""; this.render(); break;
       case "ArrowDown": this.cursor = (this.cursor + 1) % n; this.msg = ""; this.render(); break;
       case "Enter": case "NumpadEnter": this.choose(this.cursor); break;
-      case "Digit1": case "Digit2": case "Digit3": case "Digit4": this.choose(Number(e.code.slice(5)) - 1); break;
+      case "Digit1": case "Digit2": case "Digit3": case "Digit4": case "Digit5": this.choose(Number(e.code.slice(5)) - 1); break;
       default: break;
     }
   }

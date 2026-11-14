@@ -19,6 +19,7 @@ import { SpellInputController } from "./game/SpellInputController";
 import { FloatingTextController } from "./game/FloatingText";
 import { MechanismController } from "./game/MechanismController";
 import { InputController } from "./game/InputController";
+import { PartyController } from "./game/PartyController";
 import { buildHudExtras } from "./game/AdndHud";
 
 interface GameSceneInit {
@@ -147,6 +148,7 @@ export class GameScene extends Phaser.Scene {
     ctx.combat.spawnPlayer(this.initData.charData, this.initData.persistedStats);
     ctx.map.spawnTorchGlow();
     ctx.combat.spawnEnemies();
+    ctx.party.create(); // hirelings come down the stairs with the player
     ctx.loot.spawnItems();
     ctx.loot.spawnChests();
     ctx.map.initFog();
@@ -204,9 +206,12 @@ export class GameScene extends Phaser.Scene {
       },
       addGold: (amount: number) => {
         if (amount <= 0) return;
-        ctx.player.stats.gold += amount;
-        ctx.player.stats.runGoldEarned = (ctx.player.stats.runGoldEarned ?? 0) + amount;
-        this.bus.emit('gold', { amount });
+        // A living man-at-arms keeps a third of what is found.
+        const kept = ctx.party?.takeShare(amount) ?? 0;
+        const yours = amount - kept;
+        ctx.player.stats.gold += yours;
+        ctx.player.stats.runGoldEarned = (ctx.player.stats.runGoldEarned ?? 0) + yours;
+        this.bus.emit('gold', { amount: yours });
       },
       hasRelic: (key: RelicKey) => ctx.player.stats.relics?.includes(key) ?? false,
     } as unknown as GameContext;
@@ -221,8 +226,10 @@ export class GameScene extends Phaser.Scene {
     ctx.floor = new FloorController(ctx);
     ctx.spells = new SpellInputController(ctx);
     ctx.input = new InputController(ctx);
+    ctx.party = new PartyController(ctx);
     this.controllers = [
       ctx.text, ctx.map, ctx.mech, ctx.traps, ctx.combat, ctx.loot, ctx.rooms, ctx.floor, ctx.spells, ctx.input,
+      ctx.party,
     ];
     return ctx;
   }
@@ -312,6 +319,9 @@ export class GameScene extends Phaser.Scene {
     // Enemy update, enemy bolts
     ctx.combat.updateEnemies(delta);
     ctx.combat.updateEnemyProjectiles(delta);
+
+    // Hirelings: follow, fight, morale. After the monsters, so a monster that can reach the player strikes him first.
+    ctx.party.update(delta);
 
     // Chests, floor items, potions
     ctx.loot.update();

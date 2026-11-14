@@ -165,6 +165,9 @@ export const NEW_ENEMY_KEYS: readonly string[] = [
   "enemy_hollow_king",
 ];
 
+/** Hirelings hired at the inn (32x32, 16x16 grid drawn 2x). */
+export const HIRELING_KEYS: readonly string[] = ["hireling_torchbearer", "hireling_man_at_arms"];
+
 /** Creatures get a second walk frame under `<key>_f2`. */
 export const CREATURE_KEYS: readonly string[] = [
   "player",
@@ -174,6 +177,7 @@ export const CREATURE_KEYS: readonly string[] = [
   "player_cleric",
   "npc",
   "tavern_patron",
+  ...HIRELING_KEYS,
   "enemy",
   "enemy_skeleton",
   "enemy_zombie",
@@ -198,6 +202,7 @@ export const RETRO_TEXTURE_KEYS: readonly string[] = Array.from(
     ...MECH_KEYS,
     ...ITEM_KEYS,
     ...NEW_ENEMY_KEYS,
+    ...HIRELING_KEYS,
     ...WALK_FRAME_KEYS,
   ]),
 );
