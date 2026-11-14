@@ -1,8 +1,9 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, EnemyTypeKey } from "../../constants";
+import { TILE_SIZE, EnemyTypeKey, enemyPoolForFloor } from "../../constants";
 import type { DungeonData } from "../../systems/DungeonGenerator";
 import { onSpecialRoomEntered } from "../../systems/QuestSystem";
-import { Enemy } from "../../entities/Enemy";
+import type { Enemy } from "../../entities/Enemy";
+import { MONSTERS } from "../../rules";
 import type { GameContext, RelicKey } from "../../GameContext";
 
 type BoonKey = 'blade' | 'bulwark' | 'vigor' | 'arcana' | 'fortune';
@@ -21,6 +22,9 @@ interface RoomChallenge {
   kills: number;
   timeLeft: number;
 }
+
+/** Room, gambit and objective XP was written when a goblin gave 15 and levels came every 100; a quarter of it fits first-edition XP. */
+const bonusXp = (n: number): number => Math.max(1, Math.round(n * 0.25));
 
 const RELIC_LABELS: Record<RelicKey, string> = {
   ember_idol: 'Ember Idol',
@@ -140,7 +144,7 @@ export class RoomEventController {
 
     const multiplier = ctx.hasRelic('black_candle') ? 2 : 1;
     const gold = (18 + ctx.currentFloor * 6) * multiplier;
-    const xp = (16 + ctx.currentFloor * 8) * multiplier;
+    const xp = bonusXp(16 + ctx.currentFloor * 8) * multiplier;
     ctx.addGold(gold);
     player.gainXP(xp);
     player.addEffect('RUSHED', 5500);
@@ -176,13 +180,14 @@ export class RoomEventController {
     };
     const reward = rewardByType[type] ?? rewardByType.normal;
     const modifierGold = room.modifier === 'gilded_cache' ? 18 + ctx.currentFloor * 5 : 0;
-    const modifierXP = room.modifier === 'cursed_crypt' ? 16 + ctx.currentFloor * 5 : 0;
+    const modifierXP = room.modifier === 'cursed_crypt' ? bonusXp(16 + ctx.currentFloor * 5) : 0;
 
     ctx.addGold(reward.gold + modifierGold);
-    player.gainXP(reward.xp + modifierXP);
+    const rewardXp = bonusXp(reward.xp);
+    player.gainXP(rewardXp + modifierXP);
     player.heal(Math.max(1, Math.floor(player.stats.maxHp * 0.03)));
     ctx.floatText(player.x, player.y - 48, `${reward.label} +${reward.gold + modifierGold}g`, reward.color, 13);
-    ctx.status(`${reward.label}: +${reward.gold + modifierGold}g +${reward.xp + modifierXP} XP`);
+    ctx.status(`${reward.label}: +${reward.gold + modifierGold}g +${rewardXp + modifierXP} XP`);
     ctx.emitHUD();
   }
 
@@ -194,11 +199,12 @@ export class RoomEventController {
     if (!objective || ctx.run.floorObjectiveComplete) return;
     ctx.run.floorObjectiveComplete = true;
     ctx.addGold(objective.rewardGold);
-    ctx.player.gainXP(objective.rewardXP);
+    const objXp = bonusXp(objective.rewardXP);
+    ctx.player.gainXP(objXp);
     if (objective.type === 'CLAIM_KEY') this.grantRandomRelic();
     ctx.scene.cameras.main.flash(220, 80, 180, 90);
     ctx.floatText(ctx.player.x, ctx.player.y - 60, `${objective.title}!`, 0x69f0ae, 16);
-    ctx.status(`${objective.title} complete: +${objective.rewardGold}g +${objective.rewardXP} XP`);
+    ctx.status(`${objective.title} complete: +${objective.rewardGold}g +${objXp} XP`);
     ctx.emitHUD();
     this.showBoonChoice();
   }
@@ -208,66 +214,64 @@ export class RoomEventController {
     const player = ctx.player;
     const s = player.stats;
     const floor = ctx.currentFloor;
+    const book = player.spellbook;
     const all: BoonOption[] = [
       {
         key: 'blade',
         title: 'Honed Blade',
-        lines: ['+2 attack', 'Next streaks hit harder'],
+        lines: ['+1 to hit and damage', 'For the rest of the run'],
         color: 0xff5a5f,
         apply: () => {
-          s.weaponBonus += 2;
-          s.attack += 2;
-          s.equippedWeaponLabel = `Honed Weapon +${s.weaponBonus}`;
-          ctx.loot.trackInventory({ type: 'WEAPON', label: s.equippedWeaponLabel, bonus: 2 }, true);
+          s.weaponBonus += 1;
+          player.recomputeDerived();
         },
       },
       {
         key: 'bulwark',
         title: 'Old Shield',
-        lines: ['+2 AC', 'Heal 25% max HP'],
+        lines: ['Armor class 1 better', 'Heal 25% max HP'],
         color: 0x80d8ff,
         apply: () => {
-          s.armorBonus += 2;
-          s.defense += 2;
-          s.equippedArmorLabel = `Old Shield +${s.armorBonus}`;
+          s.armorBonus += 1;
+          player.recomputeDerived();
           player.heal(Math.ceil(s.maxHp * 0.25));
-          ctx.loot.trackInventory({ type: 'ARMOR', label: s.equippedArmorLabel, bonus: 2 }, true);
         },
       },
       {
         key: 'vigor',
         title: 'Warrior Vigor',
-        lines: ['+10 max HP', 'Full potion refill +1'],
+        lines: ['+3 max HP, fully healed', 'A healing potion'],
         color: 0x69f0ae,
         apply: () => {
-          s.maxHp += 10;
+          s.baseMaxHp = (s.baseMaxHp ?? s.maxHp) + 3;
+          player.recomputeDerived();
           player.heal(999);
-          s.potions += 1;
+          ctx.loot.giveItem('healing_potion');
         },
       },
       {
         key: 'arcana',
         title: 'Arcane Spark',
-        lines: s.maxMana > 0 ? ['+8 max mana', 'Restore all mana'] : ['Gain 2 mana potions', '+20 XP'],
+        lines: book ? ['Every spell memorized again', 'Drained HP mended'] : ['A Scroll of Identify', 'A little experience'],
         color: 0xce93d8,
         apply: () => {
-          if (s.maxMana > 0) {
-            s.maxMana += 8;
-            player.restoreMana(999);
+          if (book) {
+            book.rest();
+            player.restoreDrained();
           } else {
-            s.manaPotions += 2;
-            player.gainXP(20);
+            ctx.loot.giveItem('scroll_identify');
+            player.gainXP(bonusXp(40));
           }
         },
       },
       {
         key: 'fortune',
         title: 'Lucky Find',
-        lines: [`+${40 + floor * 12} gold`, '+1 health potion'],
+        lines: [`+${20 + floor * 6} gold`, 'A healing potion'],
         color: 0xffd166,
         apply: () => {
-          ctx.addGold(40 + floor * 12);
-          s.potions += 1;
+          ctx.addGold(20 + floor * 6);
+          ctx.loot.giveItem('healing_potion');
         },
       },
     ];
@@ -377,9 +381,9 @@ export class RoomEventController {
       {
         title: 'Blood for Fire',
         relic: 'ember_idol' as RelicKey,
-        lines: ['Lose 8 max HP', 'First kill in each room grants Rush'],
+        lines: ['Lose 3 max HP for good', 'First kill in each room grants Rush'],
         color: 0xff5a5f,
-        pay: () => { s.maxHp = Math.max(20, s.maxHp - 8); s.hp = Math.min(s.hp, s.maxHp); },
+        pay: () => { s.baseMaxHp = Math.max(4, (s.baseMaxHp ?? s.maxHp) - 3); player.recomputeDerived(); },
       },
       {
         title: 'Vow of Greed',
@@ -391,11 +395,12 @@ export class RoomEventController {
       {
         title: 'Black Candle',
         relic: 'black_candle' as RelicKey,
-        lines: ['Room gambits pay double', 'Lose half current mana or 1 potion'],
+        lines: ['Room gambits pay double', 'Lose a spell, or a healing potion'],
         color: 0xce93d8,
         pay: () => {
-          if (s.maxMana > 0) s.mana = Math.floor(s.mana / 2);
-          else s.potions = Math.max(0, s.potions - 1);
+          const ready = player.spellbook?.available() ?? [];
+          if (ready.length > 0) player.spellbook!.cast(ready[0].key);
+          else { player.inventory.consume('healing_potion', 1); player.recomputeDerived(); }
         },
       },
     ];
@@ -470,9 +475,7 @@ export class RoomEventController {
       this._triggeredRoomEvents.add(roomIdx);
       ctx.status("Den ambush! Hold the room for streak rewards.");
       ctx.floatText(player.x, player.y - 48, 'AMBUSH!', 0xff5a5f, 16);
-      const pool: EnemyTypeKey[] = ctx.currentFloor >= 4
-        ? ['SKELETON', 'FAST', 'DARK_ELF']
-        : ['GIANT_RAT', 'GIANT_SPIDER', 'BASIC'];
+      const pool: EnemyTypeKey[] = enemyPoolForFloor(ctx.currentFloor);
       for (let i = 0; i < 2; i++) {
         const type = pool[Phaser.Math.Between(0, pool.length - 1)];
         this.spawnRoomEnemy(roomIdx, type, i === 0 && !ctx.enemies.some(e => e.isElite));
@@ -512,17 +515,18 @@ export class RoomEventController {
       player.addEffect('RUSHED', 9000);
       ctx.floatText(player.x, player.y - 56, 'BLOOD RUNE', 0xff5a5f, 14);
       ctx.status("Blood Rune: move fast and chain kills for extra momentum.");
-      const pool: EnemyTypeKey[] = ctx.currentFloor >= 5 ? ['FAST', 'DARK_ELF', 'SKELETON'] : ['GIANT_RAT', 'GIANT_SPIDER', 'BASIC'];
+      const pool: EnemyTypeKey[] = enemyPoolForFloor(ctx.currentFloor);
       this.spawnRoomEnemy(roomIdx, pool[Phaser.Math.Between(0, pool.length - 1)]);
     } else if (modifier === 'healing_font') {
       const heal = Math.ceil(player.stats.maxHp * 0.35);
       player.heal(heal);
-      if (player.stats.maxMana > 0) player.restoreMana(Math.ceil(player.stats.maxMana * 0.45));
       ctx.floatText(player.x, player.y - 56, 'FONT', 0x69f0ae, 14);
-      ctx.status("Healing Font: recovered HP and mana.");
+      ctx.status("Healing Font: recovered HP.");
     } else if (modifier === 'cursed_crypt') {
       player.addEffect('SHIELDED', 7000, 2);
-      this.spawnRoomEnemy(roomIdx, ctx.currentFloor >= 5 ? 'GHOST' : 'ZOMBIE', true);
+      const pool = enemyPoolForFloor(ctx.currentFloor);
+      const undead = pool.filter(k => MONSTERS[k].undead);
+      this.spawnRoomEnemy(roomIdx, (undead.length > 0 ? undead : pool)[Phaser.Math.Between(0, (undead.length > 0 ? undead : pool).length - 1)], true);
       ctx.floatText(player.x, player.y - 56, 'CURSED CRYPT', 0xce93d8, 14);
       ctx.status("Cursed Crypt: a champion rises, but clearing it pays bonus XP.");
     } else if (modifier === 'gilded_cache') {
@@ -533,16 +537,12 @@ export class RoomEventController {
 
   private spawnRoomEnemy(roomIdx: number, type: EnemyTypeKey, elite = false) {
     const ctx = this.ctx;
-    const scene = ctx.scene;
     const room = ctx.dungeon.rooms[roomIdx];
     if (!room || !ctx.enemyGroup) return;
     const tx = Phaser.Math.Between(room.x + 1, room.x + room.w - 2);
     const ty = Phaser.Math.Between(room.y + 1, room.y + room.h - 2);
-    const enemy = new Enemy(scene, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, type, elite);
+    const enemy = ctx.combat.addEnemy(type, tx, ty, elite);
     (enemy as Enemy & { _roomIdx?: number })._roomIdx = roomIdx;
-    ctx.enemies.push(enemy);
-    ctx.enemyGroup.add(enemy);
-    scene.physics.add.collider(enemy, ctx.wallGroup);
     ctx.floatText(enemy.x, enemy.y - 24, elite ? 'CHAMPION!' : 'JOINED!', elite ? 0xffd166 : 0xff5a5f, elite ? 13 : 10);
   }
 

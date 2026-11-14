@@ -1,59 +1,211 @@
 import * as Phaser from "phaser";
-import {
-  TILE_SIZE, COLORS, ArmorTrait, EquipmentTrait, WeaponTrait, abilityMod,
-} from "../../constants";
-import { onChestOpened, InventoryItem } from "../../systems/QuestSystem";
-import { Enemy } from "../../entities/Enemy";
-import { TreasureChest } from "../../entities/TreasureChest";
+import { TILE_SIZE, COLORS, abilityMod } from "../../constants";
+import { onChestOpened } from "../../systems/QuestSystem";
+import { TreasureChest, type ChestInteractResult } from "../../entities/TreasureChest";
+import type { Enemy } from "../../entities/Enemy";
 import type { GameContext } from "../../GameContext";
+import { mathRng, rollDice, thiefSkill } from "../../rules";
+import {
+  getDef, displayName, rarityColor, rollDrop, rollItem, makeItem,
+  type Drop, type EquipSlot, type ItemInstance, type UseEffect, type ItemDef,
+} from "../../items";
+import {
+  HEALING_POTION_DICE, HEALING_POTION_BONUS, foeTagsFor,
+} from "./AdndCombat";
 
-export type LootLike = { type: string; label: string; bonus?: number; trait?: EquipmentTrait; statKey?: string; value?: number };
+/** One thing lying on the floor: an item stack, a pile of gold, or the legacy cursed shrine. */
+interface GroundEntry {
+  sprite: Phaser.GameObjects.Sprite;
+  label?: Phaser.GameObjects.Text;
+  item?: ItemInstance;
+  gold?: number;
+  /** The old floor-item spawn key, so a picked-up spawn stays gone when the floor is revisited. */
+  spawnKey?: string;
+  legacyType?: string;
+  /** Dropped by the player: do not walk-pick it back up until they step off the tile. */
+  needsLeave?: boolean;
+  fullWarned?: boolean;
+}
+
+const PICKUP_RANGE = TILE_SIZE * 0.8;
+const GOLD_MAGNET = TILE_SIZE * 1.5;
+/** Reach of a thrown flask of holy water. */
+const THROW_RANGE = 224;
 
 /**
- * Items on the floor, chests, applying loot to the player, the legacy inventory list, and potions (F/M).
- * The new `player.inventory` (items module) is not wired in here yet.
+ * Items on the floor (all of it from `src/game/items`), chests, picking things up, and using or moving what is
+ * in the inventory: belt, potions (F), equip, unequip, drop.
  */
 export class LootController {
-  private items: Phaser.GameObjects.Sprite[] = [];
+  private ground: GroundEntry[] = [];
   private chests: TreasureChest[] = [];
 
   private _eKey?: Phaser.Input.Keyboard.Key;
   private _fKey?: Phaser.Input.Keyboard.Key;
-  private _mKey?: Phaser.Input.Keyboard.Key;
 
-  constructor(private ctx: GameContext) {}
+  constructor(private ctx: GameContext) {
+    // The optional members other lanes call through the context.
+    ctx.useBelt = (i: number) => this.useBelt(i);
+    ctx.dropItem = (id: string) => this.dropItem(id);
+    ctx.equipItem = (id: string) => this.equipItem(id);
+    ctx.unequipSlot = (slot: EquipSlot) => this.unequipSlot(slot);
+  }
 
-  /** Chest interaction, floor pickup, potion keys: the same three calls in the same order as before. */
+  /** Chest interaction, floor pickup, potion key. */
   update() {
     this.checkChestInteraction();
     this.checkItemPickup();
     this.checkPotionInput();
   }
 
-  // ── Items ─────────────────────────────────────────────────────────────────
+  // ── Placing things on the floor ──────────────────────────────────────────
+
+  private textureFor(item: ItemInstance): string {
+    const scene = this.ctx.scene;
+    const def = getDef(item.defKey);
+    if (scene.textures.exists(def.icon)) return def.icon;
+    switch (def.kind) {
+      case 'weapon': return 'item_weapon';
+      case 'armor': case 'shield': return 'item_armor';
+      case 'consumable': return def.use?.type === 'heal' ? 'item_health_potion' : 'item_scroll';
+      case 'treasure': return 'item_gold';
+      default: return 'item_xp_orb';
+    }
+  }
+
+  private makeLabel(x: number, y: number, text: string, color: number): Phaser.GameObjects.Text {
+    return this.ctx.scene.add.text(x, y + 14, text, {
+      fontSize: '9px',
+      color: `#${color.toString(16).padStart(6, '0')}`,
+      fontFamily: 'monospace',
+      stroke: '#000',
+      strokeThickness: 2,
+    }).setOrigin(0.5, 0).setDepth(6);
+  }
+
+  private addBob(sprite: Phaser.GameObjects.Sprite, y: number) {
+    this.ctx.scene.tweens.add({
+      targets: sprite, y: y - 4, duration: 1000, yoyo: true, repeat: -1, ease: "Sine.easeInOut",
+    });
+  }
+
+  /** Lay an item on the floor at a world position. */
+  placeItem(item: ItemInstance, x: number, y: number, extra: Partial<GroundEntry> = {}): GroundEntry {
+    const scene = this.ctx.scene;
+    const sprite = scene.add.sprite(x, y, this.textureFor(item)).setDepth(3);
+    sprite.setDisplaySize(TILE_SIZE - 6, TILE_SIZE - 6);
+    const label = this.makeLabel(x, y, displayName(item, { quantity: true }), rarityColor(item));
+    this.addBob(sprite, y);
+    const entry: GroundEntry = { sprite, label, item, ...extra };
+    this.ground.push(entry);
+    return entry;
+  }
+
+  /** Lay gold on the floor; walking near it picks it up. */
+  placeGold(amount: number, x: number, y: number): GroundEntry {
+    const scene = this.ctx.scene;
+    const tex = scene.textures.exists('item_gold') ? 'item_gold' : 'item_gem';
+    const sprite = scene.add.sprite(x, y, tex).setDepth(3);
+    sprite.setDisplaySize(TILE_SIZE - 10, TILE_SIZE - 10);
+    const label = this.makeLabel(x, y, `${amount} gp`, COLORS.GOLD_TEXT);
+    this.addBob(sprite, y);
+    const entry: GroundEntry = { sprite, label, gold: amount };
+    this.ground.push(entry);
+    return entry;
+  }
+
+  /** Put a whole drop on the floor around a point, items scattered on nearby walkable tiles. */
+  scatterDrop(drop: Drop, x: number, y: number) {
+    const ctx = this.ctx;
+    if (drop.gold > 0) this.placeGold(drop.gold, x, y);
+    const ptx = Math.floor(x / TILE_SIZE);
+    const pty = Math.floor(y / TILE_SIZE);
+    const spots: Array<[number, number]> = [[ptx, pty]];
+    for (let r = 1; r <= 2; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) === r && ctx.isWalkable(ptx + dx, pty + dy)) spots.push([ptx + dx, pty + dy]);
+        }
+      }
+    }
+    drop.items.forEach((item, i) => {
+      const [tx, ty] = spots[i % spots.length];
+      this.placeItem(item, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2);
+    });
+  }
+
+  /** A monster died: roll its drop and leave it where it fell. */
+  dropFromMonster(enemy: Enemy) {
+    const ctx = this.ctx;
+    const def = enemy.def;
+    const drop = rollDrop({ type: 'monster', hd: def.hd, boss: def.boss }, ctx.currentFloor, mathRng);
+    if (enemy.isElite && !def.boss) drop.items.push(rollItem({ floor: ctx.currentFloor, rarityBias: 3 }, mathRng));
+    if (drop.gold <= 0 && drop.items.length === 0) return;
+    this.scatterDrop(drop, enemy.x, enemy.y);
+  }
+
+  /** Detect Magic: pulse every enchanted item on the floor within range. Returns how many. */
+  pulseMagicItems(radiusPx: number): number {
+    const p = this.ctx.player;
+    let n = 0;
+    for (const g of this.ground) {
+      const item = g.item;
+      if (!item || !g.sprite.active) continue;
+      if (item.rarity === 'common' && !item.cursed && item.affixes.length === 0 && item.plus === 0) continue;
+      if (Phaser.Math.Distance.Between(p.x, p.y, g.sprite.x, g.sprite.y) > radiusPx) continue;
+      n++;
+      this.ctx.scene.tweens.add({ targets: g.sprite, scaleX: g.sprite.scaleX * 1.5, scaleY: g.sprite.scaleY * 1.5, duration: 280, yoyo: true, repeat: 5 });
+    }
+    return n;
+  }
+
+  /** Put an item (by catalog key) on the floor at a tile. Used by the mechanism lane's `grant` effect. */
+  placeDef(defKey: string, tx: number, ty: number, quantity = 1): ItemInstance {
+    const item = makeItem(defKey, mathRng, quantity);
+    this.placeItem(item, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2);
+    return item;
+  }
+
+  /** Straight into the pack if it fits, else onto the floor at the player's feet. */
+  giveItem(defKey: string, quantity = 1): ItemInstance {
+    const ctx = this.ctx;
+    const item = makeItem(defKey, mathRng, quantity);
+    const r = ctx.player.inventory.add(item);
+    if (r.ok) {
+      this.afterInventoryChange();
+    } else {
+      this.placeItem(item, ctx.player.x, ctx.player.y);
+      ctx.status("Your pack is full; it falls at your feet.");
+    }
+    return item;
+  }
+
+  // ── Floor spawns from the dungeon generator ──────────────────────────────
 
   spawnItems() {
-    const scene = this.ctx.scene;
-    for (const spawn of this.ctx.dungeon.items) {
+    const ctx = this.ctx;
+    const scene = ctx.scene;
+    for (const spawn of ctx.dungeon.items) {
       const key = `${spawn.tx},${spawn.ty}`;
-      if (this.ctx.persist.pickedItemKeys.has(key)) continue; // already picked in prior session
+      if (ctx.persist.pickedItemKeys.has(key)) continue; // already picked in prior session
 
       const ix = spawn.tx * TILE_SIZE + TILE_SIZE / 2;
       const iy = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
-      const textureKey = spawn.type === 'CURSED_SHRINE' ? 'decal_shrine' : `item_${spawn.type.toLowerCase()}`;
-      const sprite = scene.add.sprite(ix, iy, textureKey).setDepth(3);
-      (sprite as Phaser.GameObjects.Sprite & { itemType: string; spawnKey: string }).itemType = spawn.type;
-      (sprite as Phaser.GameObjects.Sprite & { itemType: string; spawnKey: string }).spawnKey = key;
-      this.items.push(sprite);
 
-      scene.tweens.add({
-        targets: sprite,
-        y: iy - 5,
-        duration: 1000,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
+      if (spawn.type === 'CURSED_SHRINE') {
+        const sprite = scene.add.sprite(ix, iy, 'decal_shrine').setDepth(3);
+        this.addBob(sprite, iy);
+        this.ground.push({ sprite, spawnKey: key, legacyType: 'CURSED_SHRINE' });
+        continue;
+      }
+
+      // The old pickups become real items: potions, weapons, armor, and treasure in place of XP orbs.
+      let item: ItemInstance;
+      if (spawn.type === 'HEALTH_POTION') item = makeItem('healing_potion', mathRng);
+      else if (spawn.type === 'WEAPON') item = rollItem({ floor: ctx.currentFloor, kind: 'weapon' }, mathRng);
+      else if (spawn.type === 'ARMOR') item = rollItem({ floor: ctx.currentFloor, kind: 'armor' }, mathRng);
+      else item = rollItem({ floor: ctx.currentFloor, kind: 'treasure' }, mathRng);
+      this.placeItem(item, ix, iy, { spawnKey: key });
     }
   }
 
@@ -73,12 +225,8 @@ export class LootController {
 
       if (spawn.isMimic) {
         chest.onMimicReveal = (mx, my) => {
-          const enemy = new Enemy(scene, mx, my, 'MIMIC');
-          ctx.enemies.push(enemy);
-          ctx.enemyGroup.add(enemy);
-          scene.physics.add.collider(enemy, ctx.wallGroup);
-          const body = enemy.body as Phaser.Physics.Arcade.Body;
-          body.setVelocity(50, 50);
+          const enemy = ctx.combat.addEnemy('MIMIC', Math.floor(mx / TILE_SIZE), Math.floor(my / TILE_SIZE));
+          enemy.revealMimic();
           ctx.floatText(mx, my - 30, 'MIMIC!', 0xffd700, 16);
           scene.cameras.main.shake(120, 0.008);
         };
@@ -88,7 +236,21 @@ export class LootController {
     }
   }
 
-  // ── Chest Interaction ─────────────────────────────────────────────────────
+  /** Knock: spring the nearest closed chest within `rangePx` of a point. Returns true if one opened. */
+  knockChestNear(x: number, y: number, rangePx: number): boolean {
+    let best: TreasureChest | null = null;
+    let bestD = rangePx;
+    for (const chest of this.chests) {
+      if (!chest.active || chest.chestState === 'open') continue;
+      const d = Phaser.Math.Distance.Between(x, y, chest.x, chest.y);
+      if (d <= bestD) { bestD = d; best = chest; }
+    }
+    if (!best) return false;
+    const result = best.forceOpen(this.ctx.currentFloor);
+    if (!result) return false;
+    this.finishChestOpen(best, result);
+    return true;
+  }
 
   private checkChestInteraction() {
     const ctx = this.ctx;
@@ -107,7 +269,8 @@ export class LootController {
       chest.setPromptVisible(inRange);
 
       if (inRange && Phaser.Input.Keyboard.JustDown(this._eKey)) {
-        const result = chest.tryOpen(s.classKey, abilityMod(s.str), abilityMod(s.dex), s.level, ctx.currentFloor);
+        const openPct = thiefSkill(s.classKey, s.level, 'openLocks') + (player.inventory.has('thieves_tools') ? 10 : 0);
+        const result = chest.tryOpen(s.classKey, abilityMod(s.str), abilityMod(s.dex), s.level, ctx.currentFloor, openPct);
         if (result.message) ctx.status(result.message);
 
         if (result.trapTriggered) {
@@ -116,78 +279,39 @@ export class LootController {
           ctx.traps.triggerTrap(result.trapTriggered, tx, ty, `${tx},${ty}`);
         }
 
-        if (result.opened && result.loot) {
-          ctx.bus.emit('chest_open');
-          // Record chest as opened for persistence
-          const chestTx = Math.round((chest.x - TILE_SIZE / 2) / TILE_SIZE);
-          const chestTy = Math.round((chest.y - TILE_SIZE / 2) / TILE_SIZE);
-          ctx.persist.openedChestKeys.add(`${chestTx},${chestTy}`);
-          this.applyChestObjectiveProgress(chestTx, chestTy);
-
-          // Quest progress: chest opened
-          if (player.stats.activeQuests) {
-            onChestOpened(player.stats.activeQuests);
-          }
-
-          const { gold, items } = result.loot;
-          if (gold > 0) {
-            const paidGold = ctx.hasRelic('chest_contract') ? gold * 2 : gold;
-            ctx.addGold(paidGold);
-            if (ctx.hasRelic('chest_contract')) {
-              player.takeDamage(Math.max(1, Math.floor(player.stats.maxHp * 0.04)), true);
-              ctx.floatText(chest.x, chest.y - 38, 'PACT PAID', 0xce93d8, 11);
-            }
-            ctx.floatText(chest.x, chest.y - 20, `+${paidGold} gold`, COLORS.GOLD_TEXT);
-          }
-          for (const lootItem of items) {
-            this.applyLootItem(lootItem);
-            ctx.bus.emit('item_pickup', { type: lootItem.type });
-          }
-          ctx.emitHUD();
-        }
+        if (result.opened && result.loot) this.finishChestOpen(chest, result);
       }
     }
   }
 
-  private applyLootItem(item: LootLike) {
+  private finishChestOpen(chest: TreasureChest, result: ChestInteractResult) {
     const ctx = this.ctx;
     const player = ctx.player;
-    const s = player.stats;
-    switch (item.type) {
-      case 'HEALTH_POTION': player.heal(item.value ?? 30); ctx.status(`Found: ${item.label}`); break;
-      case 'XP_ORB': player.gainXP(item.value ?? 40); ctx.status(`Found: ${item.label}`); break;
-      case 'WEAPON':
-        s.weaponBonus += item.bonus ?? 1; s.attack += item.bonus ?? 1;
-        s.equippedWeaponLabel = item.label;
-        s.weaponTrait = item.trait as WeaponTrait | undefined;
-        ctx.status(`Equipped: ${item.label} (+${item.bonus} ATK${this.describeTrait(item.trait)})`);
-        this.trackInventory(item, true);
-        break;
-      case 'ARMOR':
-        s.armorBonus += item.bonus ?? 1; s.defense += item.bonus ?? 1;
-        s.equippedArmorLabel = item.label;
-        s.armorTrait = item.trait as ArmorTrait | undefined;
-        player.refreshArmorWard();
-        ctx.status(`Equipped: ${item.label} (+${item.bonus} DEF${this.describeTrait(item.trait)})`);
-        this.trackInventory(item, true);
-        break;
-      case 'STAT_TOME':
-        if (item.statKey) {
-          const k = item.statKey as keyof typeof s;
-          if (typeof s[k] === 'number') {
-            (s as unknown as Record<string, number>)[item.statKey] += 1;
-            player.recomputeDerived();
-            ctx.status(`Read: ${item.label} (+1 ${item.statKey.toUpperCase()})`);
-          }
-        }
-        this.trackInventory(item, false);
-        break;
-      case 'SCROLL':
-        ctx.status(`Found scroll: ${item.label}`);
-        this.trackInventory(item, false);
-        break;
+    if (!result.opened || !result.loot) return;
+    ctx.bus.emit('chest_open');
+    // Record chest as opened for persistence
+    const chestTx = Math.round((chest.x - TILE_SIZE / 2) / TILE_SIZE);
+    const chestTy = Math.round((chest.y - TILE_SIZE / 2) / TILE_SIZE);
+    ctx.persist.openedChestKeys.add(`${chestTx},${chestTy}`);
+    this.applyChestObjectiveProgress(chestTx, chestTy);
+
+    // Quest progress: chest opened
+    if (player.stats.activeQuests) onChestOpened(player.stats.activeQuests);
+
+    const { gold, items } = result.loot;
+    let paid = 0;
+    if (gold > 0) {
+      paid = ctx.hasRelic('chest_contract') ? gold * 2 : gold;
+      ctx.addGold(paid);
+      if (ctx.hasRelic('chest_contract')) {
+        player.takeDamage(Math.max(1, Math.floor(player.stats.maxHp * 0.04)));
+        ctx.floatText(chest.x, chest.y - 38, 'PACT PAID', 0xce93d8, 11);
+      }
+      ctx.floatText(chest.x, chest.y - 20, `+${paid} gold`, COLORS.GOLD_TEXT);
     }
-    ctx.floatText(player.x, player.y - 20, item.label, COLORS.GOLD_TEXT, 11);
+    // The items spill onto the floor around the chest; walk over them or press E.
+    this.scatterDrop({ gold: 0, items }, chest.x, chest.y);
+    this.afterInventoryChange();
   }
 
   private applyChestObjectiveProgress(tx: number, ty: number) {
@@ -202,139 +326,253 @@ export class LootController {
     if (ctx.run.floorObjectiveProgress >= objective.targetCount) ctx.rooms.completeFloorObjective();
   }
 
-  private describeTrait(trait?: EquipmentTrait) {
-    if (!trait) return '';
-    const labels: Record<EquipmentTrait, string> = {
-      cleaving: ', cleave on kill',
-      quick: ', faster swings',
-      vampiric: ', heal on kill',
-      arcane: ', mana on kill',
-      light: ', faster movement',
-      reinforced: ', -1 damage taken',
-      warded: ', first hit per room reduced',
-    };
-    return labels[trait];
-  }
-
-  /** Records an item in the legacy `stats.inventory` list (capped at 100). Also used by boons. */
-  trackInventory(item: { type: string; label: string; bonus?: number; trait?: EquipmentTrait }, equipped: boolean) {
-    const s = this.ctx.player.stats;
-    if (!s.inventory) s.inventory = [];
-    // Un-equip previous item of same type
-    if (equipped) {
-      const itemType = item.type as InventoryItem['type'];
-      for (const inv of s.inventory) {
-        if (inv.type === itemType && inv.equipped) inv.equipped = false;
-      }
-    }
-    const typeMap: Record<string, InventoryItem['type']> = {
-      'WEAPON': 'WEAPON', 'ARMOR': 'ARMOR', 'SCROLL': 'SCROLL', 'STAT_TOME': 'STAT_TOME',
-    };
-    s.inventory.push({
-      id: `inv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      type: typeMap[item.type] ?? 'CONSUMABLE',
-      label: item.label,
-      bonus: item.bonus,
-      equipped,
-      floorFound: this.ctx.currentFloor,
-      timestamp: Date.now(),
-    });
-    // Cap at 100
-    if (s.inventory.length > 100) s.inventory = s.inventory.slice(-100);
-  }
-
-  // ── Items ─────────────────────────────────────────────────────────────────
+  // ── Picking up ────────────────────────────────────────────────────────────
 
   private checkItemPickup() {
-    const player = this.ctx.player;
-    const range = TILE_SIZE * 0.8;
-    for (let i = this.items.length - 1; i >= 0; i--) {
-      const item = this.items[i];
-      const dx = player.x - item.x;
-      const dy = player.y - item.y;
-      if (Math.sqrt(dx * dx + dy * dy) < range) {
-        const typed = item as Phaser.GameObjects.Sprite & { itemType: string; spawnKey?: string };
-        if (typed.spawnKey) this.ctx.persist.pickedItemKeys.add(typed.spawnKey);
-        this.applyItem(typed.itemType);
-        this.ctx.bus.emit('item_pickup', { type: typed.itemType });
-        item.destroy();
-        this.items.splice(i, 1);
+    const ctx = this.ctx;
+    const player = ctx.player;
+    if (!this._eKey) this._eKey = ctx.scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    const pressed = Phaser.Input.Keyboard.JustDown(this._eKey);
+    let pressedUsed = false;
+
+    for (let i = this.ground.length - 1; i >= 0; i--) {
+      const g = this.ground[i];
+      if (!g.sprite.active) { this.ground.splice(i, 1); continue; }
+      const d = Phaser.Math.Distance.Between(player.x, player.y, g.sprite.x, g.sprite.y);
+
+      if (g.needsLeave && d > TILE_SIZE * 1.0) g.needsLeave = false;
+      if (g.fullWarned && d > TILE_SIZE * 1.6) g.fullWarned = false;
+
+      const walkOver = d < (g.gold !== undefined ? GOLD_MAGNET : PICKUP_RANGE) && !g.needsLeave;
+      const press = pressed && !pressedUsed && d < TILE_SIZE * 1.0;
+      if (!walkOver && !press) continue;
+
+      if (this.pickUp(g)) {
+        if (press) pressedUsed = true;
+        this.ground.splice(i, 1);
       }
     }
   }
 
-  private applyItem(type: string) {
+  /** Try to take a floor entry. Returns true when it is gone from the floor. */
+  private pickUp(g: GroundEntry): boolean {
     const ctx = this.ctx;
     const player = ctx.player;
-    switch (type) {
-      case "CURSED_SHRINE": ctx.rooms.showCursedShrine(); break;
-      case "HEALTH_POTION": player.heal(30); ctx.status("Health Potion +30 HP"); break;
-      case "WEAPON":
-        this.applyLootItem(this.rollFloorEquipment('WEAPON'));
-        ctx.floatText(player.x, player.y - 30, "WEAPON", COLORS.WEAPON);
-        ctx.emitHUD(); break;
-      case "ARMOR":
-        this.applyLootItem(this.rollFloorEquipment('ARMOR'));
-        ctx.floatText(player.x, player.y - 30, "ARMOR", COLORS.ARMOR);
-        ctx.emitHUD(); break;
-      case "XP_ORB": player.gainXP(40); ctx.status("XP Orb +40 XP"); break;
+
+    if (g.legacyType === 'CURSED_SHRINE') {
+      if (g.spawnKey) ctx.persist.pickedItemKeys.add(g.spawnKey);
+      ctx.rooms.showCursedShrine();
+      g.sprite.destroy();
+      return true;
     }
+
+    if (g.gold !== undefined) {
+      ctx.addGold(g.gold);
+      ctx.floatText(player.x, player.y - 24, `+${g.gold} gp`, COLORS.GOLD_TEXT, 11);
+      this.removeEntry(g);
+      this.afterInventoryChange();
+      return true;
+    }
+
+    const item = g.item;
+    if (!item) { this.removeEntry(g); return true; }
+    const r = player.inventory.add(item);
+    if (!r.ok) {
+      if (!g.fullWarned) {
+        g.fullWarned = true;
+        ctx.status("Your pack is full.");
+        ctx.floatText(g.sprite.x, g.sprite.y - 22, 'pack full', 0xff8a65, 10);
+      }
+      return false;
+    }
+    if (g.spawnKey) ctx.persist.pickedItemKeys.add(g.spawnKey);
+    ctx.status(`Picked up ${displayName(item, { quantity: true })}.`);
+    ctx.floatText(player.x, player.y - 24, displayName(item), rarityColor(item), 11);
+    ctx.bus.emit('item_pickup', { type: item.defKey });
+    this.removeEntry(g);
+    this.afterInventoryChange();
+    return true;
   }
 
-  private rollFloorEquipment(type: 'WEAPON' | 'ARMOR'): LootLike {
-    if (type === 'WEAPON') {
-      const weapons: LootLike[] = [
-        { type, label: 'Scout Dagger +2 [Quick]', bonus: 2, trait: 'quick' },
-        { type, label: 'Hungry Mace +2 [Drain]', bonus: 2, trait: 'vampiric' },
-        { type, label: 'Notched Axe +2 [Cleave]', bonus: 2, trait: 'cleaving' },
-        { type, label: 'Runed Staff +2 [Arcane]', bonus: 2, trait: 'arcane' },
-      ];
-      return weapons[Phaser.Math.Between(0, weapons.length - 1)];
-    }
-    const armors: LootLike[] = [
-      { type, label: 'Traveler Leather +1 [Light]', bonus: 1, trait: 'light' },
-      { type, label: 'Guard Mail +1 [Guard]', bonus: 1, trait: 'reinforced' },
-      { type, label: 'Warded Scale +1 [Ward]', bonus: 1, trait: 'warded' },
-    ];
-    return armors[Phaser.Math.Between(0, armors.length - 1)];
+  private removeEntry(g: GroundEntry) {
+    g.label?.destroy();
+    g.sprite.destroy();
   }
 
-  // ── Potions ────────────────────────────────────────────────────────────────
+  /** After anything changed the pack, belt, body or gold: refresh derived numbers and the HUD. */
+  private afterInventoryChange() {
+    this.ctx.player.recomputeDerived();
+    this.ctx.emitHUD();
+  }
 
+  // ── Equip, unequip, drop ──────────────────────────────────────────────────
+
+  equipItem(itemId: string) {
+    const ctx = this.ctx;
+    const inv = ctx.player.inventory;
+    const r = inv.equip(itemId);
+    if (!r.ok) { ctx.status(r.message); return; }
+    const f = inv.find(itemId);
+    const name = f ? displayName(f.item) : 'item';
+    ctx.status(r.curseRevealed ? `You equip ${name}. It is cursed!` : `Equipped ${name}.`);
+    this.afterInventoryChange();
+  }
+
+  unequipSlot(slot: EquipSlot) {
+    const ctx = this.ctx;
+    const r = ctx.player.inventory.unequip(slot);
+    if (!r.ok) { ctx.status(r.message); return; }
+    ctx.status(`Took off ${displayName(r.item)}.`);
+    this.afterInventoryChange();
+  }
+
+  /** Put an item on the player's tile. It will not jump back into the pack until the player steps away. */
+  dropItem(itemId: string) {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    const r = player.inventory.remove(itemId);
+    if (!r.ok) { ctx.status(r.message); return; }
+    const tx = Math.floor(player.x / TILE_SIZE);
+    const ty = Math.floor(player.y / TILE_SIZE);
+    this.placeItem(r.item, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, { needsLeave: true });
+    ctx.status(`Dropped ${displayName(r.item, { quantity: true })}.`);
+    ctx.bus.emit('item_dropped', { itemId: r.item.id, defKey: r.item.defKey, tx, ty });
+    this.afterInventoryChange();
+  }
+
+  // ── Using consumables ─────────────────────────────────────────────────────
+
+  /** Use the consumable on belt slot `index` (0 to 3). */
+  useBelt(index: number) {
+    const ctx = this.ctx;
+    const inv = ctx.player.inventory;
+    const it = inv.belt[index];
+    if (!it) { ctx.status(`Belt slot ${index + 1} is empty.`); return; }
+    const def = getDef(it.defKey);
+    if (!def.use) { ctx.status(`${def.name} cannot be used.`); return; }
+    if (!inv.canUse(def)) { ctx.status(`A ${inv.classKey} cannot use ${def.name}.`); return; }
+    if (!this.applyUse(def.use, def)) return; // refused: nothing is spent
+    inv.useFromBelt(index);
+    this.afterInventoryChange();
+  }
+
+  /** F key: the first healing potion on the belt, else one from the pack. */
   private checkPotionInput() {
     const ctx = this.ctx;
-    const scene = ctx.scene;
+    if (!this._fKey) this._fKey = ctx.scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    if (!Phaser.Input.Keyboard.JustDown(this._fKey)) return;
+
+    const inv = ctx.player.inventory;
+    const beltIdx = inv.belt.findIndex(it => it?.defKey === 'healing_potion');
+    if (beltIdx >= 0) { this.useBelt(beltIdx); return; }
+    const def = getDef('healing_potion');
+    if (inv.count('healing_potion') <= 0 || !def.use) { ctx.status("No healing potions."); return; }
+    if (!this.applyUse(def.use, def)) return;
+    inv.consume('healing_potion', 1);
+    this.afterInventoryChange();
+  }
+
+  /**
+   * Do what a consumable does. Returns false (and says why) when it cannot be used right now, so the caller
+   * does not spend it. Heal potions are 2d4+2 whatever the catalog says.
+   */
+  private applyUse(effect: UseEffect, def: ItemDef): boolean {
+    const ctx = this.ctx;
     const player = ctx.player;
-    if (!this._fKey) this._fKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
-    if (!this._mKey) this._mKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.M);
+    const inv = player.inventory;
+    const s = player.stats;
 
-    if (Phaser.Input.Keyboard.JustDown(this._fKey)) {
-      if (player.stats.potions > 0) {
-        player.stats.potions--;
-        player.heal(50);
+    switch (effect.type) {
+      case 'heal': {
+        if (s.hp >= s.maxHp) { ctx.status("You are already unhurt."); return false; }
+        const isBasic = def.key === 'healing_potion';
+        const amount = isBasic
+          ? rollDice(mathRng, `${HEALING_POTION_DICE}+${HEALING_POTION_BONUS}`)
+          : rollDice(mathRng, effect.dice) + (effect.bonus ?? 0);
+        player.heal(amount);
         if (ctx.hasRelic('swift_vial')) player.addEffect('RUSHED', 4500);
-        ctx.floatText(player.x, player.y - 30, 'Potion! +50 HP', COLORS.HEAL_TEXT, 12);
-        ctx.status(`Used Health Potion (${player.stats.potions} left)`);
-        ctx.emitHUD();
-      } else { ctx.status("No potions left!"); }
+        ctx.floatText(player.x, player.y - 30, `${def.name}! +${amount} HP`, COLORS.HEAL_TEXT, 12);
+        ctx.status(`You drink the ${def.name}.`);
+        return true;
+      }
+      case 'cure_poison': {
+        if (!player.hasEffect('POISONED')) { ctx.status("You are not poisoned."); return false; }
+        player.removeEffect('POISONED');
+        ctx.floatText(player.x, player.y - 30, 'Cured', COLORS.HEAL_TEXT, 12);
+        return true;
+      }
+      case 'haste': {
+        player.addEffect('RUSHED', effect.durationSec * 1000, 1 + effect.pct / 100);
+        ctx.floatText(player.x, player.y - 30, 'HASTE!', 0xffd166, 12);
+        return true;
+      }
+      case 'recall': {
+        ctx.status("The scroll flares. The tavern's smoke curls around you.");
+        ctx.floor.recallToTavern();
+        return true;
+      }
+      case 'identify': {
+        const target = inv.items().find(i => !i.identified);
+        if (!target) { ctx.status("Nothing you carry needs identifying."); return false; }
+        inv.identify(target.id);
+        ctx.status(`Identified: ${displayName(target)}.`);
+        return true;
+      }
+      case 'remove_curse': {
+        const target = inv.items().find(i => i.cursed);
+        if (!target) { ctx.status("Nothing you carry is cursed."); return false; }
+        inv.removeCurse(target.id);
+        ctx.status(`The curse on ${displayName(target)} lifts. It still carries its penalties.`);
+        return true;
+      }
+      case 'light': {
+        player.lightBoost = { radius: effect.radius, ms: effect.durationSec * 1000 };
+        player.recomputeDerived();
+        ctx.floatText(player.x, player.y - 30, 'LIGHT', 0xfff59d, 12);
+        return true;
+      }
+      case 'cast':
+        return ctx.spells.castFromScroll(effect.spell);
+      case 'throw': {
+        const target = this.nearestEnemy(THROW_RANGE, effect.vs);
+        if (!target) { ctx.status(effect.vs ? "No undead in reach." : "Nothing to throw it at."); return false; }
+        const dmg = rollDice(mathRng, effect.dice);
+        const from = { x: player.x, y: player.y };
+        ctx.spells.spellSystem.flyOrb(from, { x: target.x, y: target.y }, 0x80d8ff, 180, () => {
+          if (!target.active || target.hp <= 0) return;
+          const dealt = ctx.combat.damageEnemy(target, dmg);
+          ctx.floatText(target.x, target.y - 20, `-${dealt}`, 0x80d8ff);
+          ctx.bus.emit('player_hit', { enemyKey: target.typeKey, damage: dealt, crit: false });
+        });
+        ctx.status(`You hurl the ${def.name}.`);
+        return true;
+      }
+      case 'eat': {
+        if (s.hp >= s.maxHp && !(s.drained && s.drained > 0)) { ctx.status("You are not hungry."); return false; }
+        player.heal(rollDice(mathRng, '1d3'));
+        ctx.status("You eat. It is bland and it helps a little.");
+        return true;
+      }
     }
+  }
 
-    if (Phaser.Input.Keyboard.JustDown(this._mKey)) {
-      if (player.stats.manaPotions > 0 && player.stats.maxMana > 0) {
-        player.stats.manaPotions--;
-        player.restoreMana(40);
-        if (ctx.hasRelic('swift_vial')) player.addEffect('RUSHED', 4500);
-        ctx.floatText(player.x, player.y - 30, '+40 Mana', COLORS.MANA_BAR, 12);
-        ctx.status(`Used Mana Potion (${player.stats.manaPotions} left)`);
-        ctx.emitHUD();
-      } else if (player.stats.maxMana === 0) {
-        ctx.status("Your class doesn't use mana!");
-      } else { ctx.status("No mana potions left!"); }
+  private nearestEnemy(range: number, vs?: 'undead' | 'giants' | 'spiders' | 'beasts' | 'demons'): Enemy | null {
+    const ctx = this.ctx;
+    let best: Enemy | null = null;
+    let bestD = range;
+    for (const e of ctx.enemies) {
+      if (!e.active || e.hp <= 0) continue;
+      if (e.isMimic && !e.mimicRevealed) continue;
+      if (vs && !foeTagsFor(e.typeKey, e.def).includes(vs)) continue;
+      const d = Phaser.Math.Distance.Between(ctx.player.x, ctx.player.y, e.x, e.y);
+      if (d <= bestD) { bestD = d; best = e; }
     }
+    return best;
   }
 
   destroy() {
-    this.items = [];
+    for (const g of this.ground) g.label?.destroy();
+    this.ground = [];
     this.chests = [];
   }
 }

@@ -49,7 +49,7 @@ describe("GameEventBus", () => {
     expect(bus.listenerCount()).toBe(0);
   });
   it("lists every event the contract names", () => {
-    expect(GAME_EVENT_NAMES).toHaveLength(21);
-    expect(new Set(GAME_EVENT_NAMES).size).toBe(21);
+    expect(GAME_EVENT_NAMES).toHaveLength(25);
+    expect(new Set(GAME_EVENT_NAMES).size).toBe(25);
   });
 });

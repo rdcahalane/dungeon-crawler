@@ -1,9 +1,12 @@
 import * as Phaser from "phaser";
 import {
   CHARACTER_CLASSES, ClassKey,
-  abilityMod, goodSave, poorSave, calcBAB,
+  abilityMod,
 } from "../constants";
 import { CharCreationData } from "../entities/Player";
+import { thac0For, saveTarget, hitDie, titleFor, spellSlots, SAVE_CATEGORIES } from "../rules";
+import { starterKit, displayName } from "../items";
+import { playerArmorClass, playerThac0, startingHp } from "./game/AdndCombat";
 
 type ScoreMethod = 'standard' | 'pointbuy' | 'roll';
 
@@ -12,11 +15,11 @@ const ABILITY_NAMES: (keyof CharCreationData)[] = ['str', 'dex', 'con', 'int', '
 const ABILITY_LABELS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 const ABILITY_DESCRIPTIONS = [
   'Strength — melee damage, bashing',
-  'Dexterity — AC, reflex, thieving',
-  'Constitution — HP, fort save',
-  'Intelligence — search, wizard power',
-  'Wisdom — cleric power, perception',
-  'Charisma — turn undead power',
+  'Dexterity — armor class, missiles, thieving',
+  'Constitution — hit points per level',
+  'Intelligence — wizard spells known',
+  'Wisdom — cleric bonus spells, saves',
+  'Charisma — reaction of strangers',
 ];
 
 const POINT_BUY_COSTS: Record<number, number> = {
@@ -134,29 +137,30 @@ export class CharacterSelectScene extends Phaser.Scene {
       }).setOrigin(0.5);
       this.container.add(nameText);
 
-      // Stats summary
-      const babStr = cls.babFormula === 'full' ? '+1/lvl' : cls.babFormula === 'threequarters' ? '+3/4' : '+1/2';
-      const hd = `d${cls.hitDie}`;
-      const saves = [
-        cls.fortGood ? 'Fort✓' : 'Fort',
-        cls.refGood ? 'Ref✓' : 'Ref',
-        cls.willGood ? 'Will✓' : 'Will',
-      ].join('  ');
-
+      // First-edition numbers: hit die, THAC0, the five saves, level title, starting kit.
+      const sv = (c: typeof SAVE_CATEGORIES[number]) => saveTarget(key, 1, c);
       const stats = [
-        `HD: ${hd}`,
-        `BAB: ${babStr}`,
-        saves,
+        `Hit die d${hitDie(key)}   THAC0 ${thac0For(key, 1)}`,
+        `Level 1: ${titleFor(key, 1)}`,
+        `Death ${sv('death')}  Petrify ${sv('petrify')}`,
+        `Wands ${sv('wands')}  Breath ${sv('breath')}`,
+        `Spells ${sv('spells')}`,
       ].join('\n');
 
-      const statsText = this.add.text(cx, cy - cardH / 2 + 70, stats, {
+      const statsText = this.add.text(cx, cy - cardH / 2 + 76, stats, {
         fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
         align: 'center', lineSpacing: 4,
       }).setOrigin(0.5);
       this.container.add(statsText);
 
-      // Gear
-      const gearText = this.add.text(cx, cy + 10, cls.startingEquipment, {
+      // Gear: the real starting kit
+      const kit = starterKit(key);
+      const slots = spellSlots(key, 1).reduce((a, b) => a + b, 0);
+      const gear = [
+        kit.equipped().filter(i => i.defKey !== 'torch').map(i => displayName(i)).join(', '),
+        `${kit.gold} gp${slots > 0 ? `, ${slots} spell slot${slots > 1 ? 's' : ''}` : ''}`,
+      ].join('\n');
+      const gearText = this.add.text(cx, cy + 22, gear, {
         fontSize: '10px', color: '#888888', fontFamily: 'monospace',
         align: 'center', wordWrap: { width: cardW - 16 },
       }).setOrigin(0.5);
@@ -553,40 +557,34 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     if (scores) {
       const { str, dex, con, int: INT, wis, cha } = scores;
-      const conMod = abilityMod(con);
-      const dexMod = abilityMod(dex);
-      const strMod = abilityMod(str);
-      const wisMod = abilityMod(wis);
-      const intMod = abilityMod(INT);
-
-      const hp = cls.baseHp + conMod * 6;
-      const bab = calcBAB(1, cls.babFormula);
-      const atk = bab + strMod + cls.baseAttackBonus;
-      const ac = 10 + dexMod + cls.baseArmorBonus;
-      const fort = cls.fortGood ? goodSave(1, conMod) : poorSave(1, conMod);
-      const ref = cls.refGood ? goodSave(1, dexMod) : poorSave(1, dexMod);
-      const will = cls.willGood ? goodSave(1, wisMod) : poorSave(1, wisMod);
-      const mana = cls.startingMana + (cls.key === 'wizard' ? intMod * 5 : cls.key === 'cleric' ? wisMod * 4 : 0);
+      const kit = starterKit(cls.key);
+      const sheet = { classKey: cls.key, level: 1, scores: { str, dex, con, int: INT, wis, cha }, inventory: kit };
+      const hp = startingHp(cls.key, con);
+      const ac = playerArmorClass(sheet);
+      const thac0 = playerThac0(sheet);
+      const sv = (c: typeof SAVE_CATEGORIES[number]) => saveTarget(cls.key, 1, c);
 
       lines.push(
-        `HP:   ${hp}`,
-        `AC:   ${ac}   ATK: +${atk}`,
-        `Fort: +${fort}`,
-        `Ref:  +${ref}`,
-        `Will: +${will}`,
+        `HP:    ${hp}   (d${hitDie(cls.key)} + CON + 4)`,
+        `AC:    ${ac}   THAC0: ${thac0}`,
+        `Level 1: ${titleFor(cls.key, 1)}`,
+        `Saves (roll d20 at or over):`,
+        `Death ${sv('death')}   Petrify ${sv('petrify')}   Wands ${sv('wands')}`,
+        `Breath ${sv('breath')}   Spells ${sv('spells')}`,
+        '',
+        `Kit: ${kit.equipped().filter(i => i.defKey !== 'torch').map(i => displayName(i)).join(', ')}`,
       );
-      if (mana > 0) lines.push(`Mana: ${mana}`);
       lines.push('', `STR ${str} DEX ${dex} CON ${con}`,
         `INT ${INT} WIS ${wis} CHA ${cha}`);
 
-      void intMod; void wisMod;
+      void abilityMod;
     } else {
       lines.push('(assign all scores', 'to see preview)');
     }
 
     const preview = this.add.text(x, y, lines.join('\n'), {
       fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
-      lineSpacing: 6,
+      lineSpacing: 6, wordWrap: { width: 400 },
     }).setOrigin(0.5);
     this.container.add(preview);
   }

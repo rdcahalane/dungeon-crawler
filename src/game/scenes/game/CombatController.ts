@@ -1,20 +1,45 @@
 import * as Phaser from "phaser";
 import type { PlayerStats, CharCreationData } from "../../entities/Player";
-import { TILE_SIZE, COLORS, ENEMY_TYPES, EnemyTypeKey, abilityMod } from "../../constants";
+import { TILE_SIZE, COLORS, ENEMY_TYPES, EnemyTypeKey } from "../../constants";
 import { onEnemyKilled } from "../../systems/QuestSystem";
 import { Player } from "../../entities/Player";
 import { Enemy } from "../../entities/Enemy";
 import type { GameContext } from "../../GameContext";
+import {
+  MONSTERS, WIZARD_DART, RANGE_PX, mathRng, rollDice, turnUndead, hasSpecial, isTurnable,
+} from "../../rules";
+import { equipmentBonuses, getDef } from "../../items";
+import {
+  resolvePlayerAttack, resolveMonsterRound, playerArmorClass, ignoresArmor, weaponProfile, enemyKeyIsMonster,
+  type MonsterRound, type PlayerAttackOutcome, type TargetInfo,
+} from "./AdndCombat";
+
+/** Cooldown between Turn Undead attempts (ms). */
+const TURN_COOLDOWN_MS = 4000;
+/** Reach of a fired weapon (bow, sling) in pixels. */
+const MISSILE_RANGE_PX = 224;
+
+interface EnemyBolt {
+  obj: Phaser.GameObjects.Rectangle;
+  vx: number; vy: number; life: number;
+  /** A weapon-style bolt rolls the monster's attacks when it lands; a spell bolt does fixed damage. */
+  kind: 'weapon' | 'spell';
+  enemy: Enemy;
+  spellDamage?: number;
+  spellSave?: boolean;
+}
 
 /**
- * Player and enemy spawning, the player's attack and cleave, kill momentum, enemy attacks and projectiles,
- * death effects, and Turn Undead.
+ * Player and enemy spawning, the player's swing (a d20 against armor class), monster attack rounds, death and
+ * loot on a kill, kill momentum, boss phases and Turn Undead. The arithmetic lives in `AdndCombat.ts`.
  */
 export class CombatController {
-  private enemyProjectiles: {
-    obj: Phaser.GameObjects.Rectangle;
-    vx: number; vy: number; dmg: number; life: number;
-  }[] = [];
+  private enemyProjectiles: EnemyBolt[] = [];
+  private turnCooldown = 0;
+  private _kingSlain = false;
+  private _hasKing = false;
+  private _gutterWarned = false;
+  private _relightTimer = 0;
 
   constructor(private ctx: GameContext) {}
 
@@ -42,6 +67,7 @@ export class CombatController {
         ctx.bus.emit('player_hurt', { damage: dmg });
       },
       onHeal: (amount) => {
+        if (amount <= 0) return;
         ctx.floatText(ctx.player.x, ctx.player.y - 20, `+${amount}`, COLORS.HEAL_TEXT);
         ctx.emitHUD();
         ctx.bus.emit('heal', { amount });
@@ -54,6 +80,7 @@ export class CombatController {
       onLevelUp: (level) => {
         ctx.floatText(ctx.player.x, ctx.player.y - 50, `LEVEL UP! ${level}`, 0xffd700, 18);
         scene.cameras.main.flash(200, 80, 80, 20);
+        ctx.status(`You are now level ${level}: ${ctx.player.stats.title ?? ''}.`);
         ctx.emitHUD();
         ctx.bus.emit('level_up', { level });
       },
@@ -61,6 +88,12 @@ export class CombatController {
     });
 
     scene.physics.add.collider(ctx.player, ctx.wallGroup);
+
+    // Light: hold a torch from the pack if nothing is burning.
+    const light = ctx.player.ensureLight();
+    if (light === 'equipped') ctx.status("You light a torch.");
+    else if (light === 'none' && !ctx.player.hasLight()) ctx.status("You have no light. Darkness presses in.");
+    ctx.player.recomputeDerived();
   }
 
   // ── Enemies ───────────────────────────────────────────────────────────────
@@ -72,30 +105,119 @@ export class CombatController {
     ctx.enemies.length = 0;
 
     for (let i = 0; i < ctx.dungeon.enemies.length; i++) {
-      if (ctx.persist.deadEnemyIndices.has(i)) continue; // skip dead enemies from prior session
+      if (ctx.persist.deadEnemyIndices.has(i)) continue; // already killed in a prior visit
 
       const spawn = ctx.dungeon.enemies[i];
-      const ex = spawn.tx * TILE_SIZE + TILE_SIZE / 2;
-      const ey = spawn.ty * TILE_SIZE + TILE_SIZE / 2;
-      const enemy = new Enemy(scene, ex, ey, spawn.type, !!spawn.elite);
+      const enemy = this.addEnemy(spawn.type, spawn.tx, spawn.ty, !!spawn.elite);
       (enemy as Enemy & { _spawnIdx: number })._spawnIdx = i;
       (enemy as Enemy & { _roomIdx?: number })._roomIdx = spawn.roomIdx;
-      ctx.enemies.push(enemy);
-      ctx.enemyGroup.add(enemy);
-      scene.physics.add.collider(enemy, ctx.wallGroup);
     }
+
+    // Monsters placed by name (the tomb's Hollow King). Their persistence indices follow the random spawns.
+    const markers = ctx.dungeon.spawnMarkers ?? [];
+    this._hasKing = false;
+    this._kingSlain = false;
+    markers.forEach((m, mi) => {
+      if (!enemyKeyIsMonster(m.monster)) return;
+      const idx = ctx.dungeon.enemies.length + mi;
+      const isKing = m.monster === 'HOLLOW_KING';
+      if (isKing) this._hasKing = true;
+      if (ctx.persist.deadEnemyIndices.has(idx)) {
+        if (isKing) this._kingSlain = true;
+        return;
+      }
+      const enemy = this.addEnemy(m.monster, m.tx, m.ty, false);
+      (enemy as Enemy & { _spawnIdx: number })._spawnIdx = idx;
+    });
 
     scene.physics.add.collider(ctx.player, ctx.enemyGroup);
     scene.physics.add.collider(ctx.enemyGroup, ctx.enemyGroup);
   }
 
+  /** Make a monster at a tile and register it with the floor. */
+  addEnemy(type: EnemyTypeKey, tx: number, ty: number, elite = false): Enemy {
+    const ctx = this.ctx;
+    const scene = ctx.scene;
+    const enemy = new Enemy(scene, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, type, elite);
+    ctx.enemies.push(enemy);
+    ctx.enemyGroup.add(enemy);
+    scene.physics.add.collider(enemy, ctx.wallGroup);
+    return enemy;
+  }
+
+  /** The tomb's final guardian is dead (or this floor never had one). Gates the way out of the tomb. */
+  get bossSlain(): boolean {
+    return !this._hasKing || this._kingSlain;
+  }
+
+  /** A monster wanders in from the dark, a few tiles from the player (rest interrupted). */
+  spawnWanderingMonster(): Enemy | null {
+    const ctx = this.ctx;
+    if (!ctx.enemyGroup) return null;
+    const pool = Object.values(MONSTERS).filter(
+      (m) => !m.boss && m.minFloor <= ctx.currentFloor && (m.maxFloor === undefined || ctx.currentFloor <= m.maxFloor) &&
+        m.key !== 'MIMIC' && (ctx.currentFloor > 1 || m.hd <= 1),
+    );
+    if (pool.length === 0) return null;
+    const def = pool[Math.floor(Math.random() * pool.length)];
+    const ptx = Math.floor(ctx.player.x / TILE_SIZE);
+    const pty = Math.floor(ctx.player.y / TILE_SIZE);
+    const spots: Array<[number, number]> = [];
+    for (let r = 3; r <= 5; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          if (ctx.isWalkable(ptx + dx, pty + dy)) spots.push([ptx + dx, pty + dy]);
+        }
+      }
+    }
+    if (spots.length === 0) return null;
+    const [tx, ty] = spots[Math.floor(Math.random() * spots.length)];
+    const enemy = this.addEnemy(def.key, tx, ty);
+    ctx.floatText(enemy.x, enemy.y - 24, 'WANDERING!', 0xff5a5f, 11);
+    return enemy;
+  }
+
   // ── Per-frame pieces (called by GameScene.update in the old order) ─────────
 
-  /** Kill-streak decay. */
+  /** Kill-streak decay, and the slow things that happen to a living adventurer (torch burning down). */
   tickKillStreak(delta: number) {
     const run = this.ctx.run;
     run.killStreakTimer = Math.max(0, run.killStreakTimer - delta);
     if (run.killStreakTimer <= 0) run.killStreak = 0;
+    this.turnCooldown = Math.max(0, this.turnCooldown - delta);
+    this.tickSurvival(delta);
+  }
+
+  private tickSurvival(delta: number) {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    const { burntOut } = player.burnLight(delta);
+    if (burntOut) {
+      ctx.bus.emit('torch_out');
+      const relit = player.ensureLight();
+      if (relit === 'equipped') {
+        ctx.status("Your torch gutters out. You light another.");
+        this._gutterWarned = false;
+      } else if (!this._gutterWarned) {
+        this._gutterWarned = true;
+        ctx.status("Your torch gutters out. You can see only the tile you stand on.");
+        ctx.floatText(player.x, player.y - 40, 'DARK', 0x888899, 12);
+      }
+    } else if (player.hasLight()) {
+      this._gutterWarned = false;
+      this._relightTimer = 0;
+    } else {
+      // In the dark: light a torch as soon as one turns up in the pack.
+      this._relightTimer += delta;
+      if (this._relightTimer >= 1000) {
+        this._relightTimer = 0;
+        if (player.ensureLight() === 'equipped') {
+          ctx.status("You light a torch.");
+          this._gutterWarned = false;
+        }
+      }
+    }
   }
 
   /** Player swing: the attack input check, then the hit resolution. */
@@ -105,7 +227,7 @@ export class CombatController {
     }
   }
 
-  /** Enemy AI update, melee and ranged attacks. */
+  /** Enemy AI update, melee rounds, ranged bolts, casting, summoning. */
   updateEnemies(delta: number) {
     const ctx = this.ctx;
     const player = ctx.player;
@@ -114,25 +236,162 @@ export class CombatController {
       if (!enemy.active) { ctx.enemies.splice(i, 1); continue; }
 
       enemy.update(delta, player.x, player.y);
+      const dist = Phaser.Math.Distance.Between(enemy.x, enemy.y, player.x, player.y);
+
+      const spell = enemy.takeSpellTurn(dist);
+      if (spell) this.monsterCastSpell(enemy, spell);
+
+      if (enemy.summonDue()) this.monsterSummon(enemy);
 
       if (enemy.canAttackPlayer(player.x, player.y)) {
-        const dmg = enemy.doAttack();
-        if (ENEMY_TYPES[enemy.typeKey].isRanged) {
-          this.spawnEnemyBolt(enemy.x, enemy.y, player.x, player.y, dmg, enemy.typeKey);
+        enemy.beginAttack();
+        if (enemy.isRanged) {
+          this.spawnEnemyBolt(enemy, player.x, player.y);
         } else {
-          player.takeDamage(dmg, enemy.ignoresArmor);
-          if (enemy.typeKey === 'GIANT_SPIDER') {
-            player.addEffect('SLOWED', 1600);
-            ctx.floatText(player.x, player.y - 36, 'WEBBED', 0x80cbc4, 11);
-          } else if (enemy.typeKey === 'TROLL' || enemy.typeKey === 'TANK') {
-            ctx.scene.cameras.main.shake(90, 0.006);
-            ctx.floatText(player.x, player.y - 36, 'SLAM', 0xffd166, 11);
-          } else if (enemy.typeKey === 'GHOST') {
-            ctx.floatText(player.x, player.y - 36, 'CHILL', 0x80cbc4, 11);
-          }
-          if (enemy.poisonDmg > 0) {
-            player.addEffect('POISONED', enemy.poisonDuration || 5000, enemy.poisonDmg);
-          }
+          const round = this.rollMonsterRound(enemy);
+          this.applyMonsterRound(enemy, round);
+        }
+      }
+    }
+  }
+
+  // ── Monster attacks ───────────────────────────────────────────────────────
+
+  private rollMonsterRound(enemy: Enemy): MonsterRound {
+    const sheet = this.ctx.player.sheet();
+    const ac = playerArmorClass(sheet, { ignoreArmor: ignoresArmor(enemy.def) });
+    return resolveMonsterRound(enemy.def, ac, mathRng, {
+      toHit: enemy.isElite ? 1 : 0,
+      damage: enemy.isElite ? 1 : 0,
+    });
+  }
+
+  /** Show the misses, hurt the player by the hits, then run the monster's specials. */
+  private applyMonsterRound(enemy: Enemy, round: MonsterRound) {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    if (round.hits === 0) {
+      ctx.floatText(player.x, player.y - 28, 'miss', 0x888899, 10);
+      return;
+    }
+    player.takeDamage(round.total);
+    if (player.stats.hp <= 0) return;
+    this.applyOnHitSpecials(enemy);
+    const b = equipmentBonuses(player.inventory);
+    if (b.thorns > 0 && !enemy.isRanged) this.damageEnemy(enemy, b.thorns, {});
+  }
+
+  private applyOnHitSpecials(enemy: Enemy) {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    const def = enemy.def;
+    const b = equipmentBonuses(player.inventory);
+
+    const poison = hasSpecial(def, 'poison');
+    if (poison && !b.resistPoison) {
+      const save = player.rollSave(poison.save);
+      if (!save.success) {
+        player.addEffect('POISONED', poison.durationMs, poison.dps);
+        ctx.floatText(player.x, player.y - 36, 'POISONED', 0x4caf50, 11);
+      } else {
+        ctx.floatText(player.x, player.y - 36, 'saved', 0x69f0ae, 10);
+      }
+    }
+    const para = hasSpecial(def, 'paralysis');
+    if (para) {
+      const save = player.rollSave(para.save);
+      if (!save.success) {
+        player.addEffect('HELD', para.durationMs);
+        ctx.floatText(player.x, player.y - 36, 'PARALYZED', 0xb0bec5, 12);
+        ctx.status(`The ${def.name} paralyzes you.`);
+      } else {
+        ctx.floatText(player.x, player.y - 36, 'resisted', 0x69f0ae, 10);
+      }
+    }
+    const drain = hasSpecial(def, 'drain');
+    if (drain) {
+      const saved = drain.save ? player.rollSave(drain.save).success : false;
+      if (!saved) {
+        const lost = player.drainMaxHp(drain.maxHpPerHit);
+        if (lost > 0) {
+          ctx.floatText(player.x, player.y - 36, `DRAINED -${lost}`, 0xb39ddb, 11);
+          ctx.status(`The ${def.name} drains your life. Rest to recover it.`);
+        }
+      }
+    }
+    for (const c of def.special ?? []) {
+      if (c.kind === 'corrode' && c.target === 'armor' && Math.random() * 100 < c.chancePct) {
+        this.corrodeItem(player.inventory.equipment.armor, 'armor');
+      }
+    }
+    if (hasSpecial(def, 'incorporeal')) ctx.floatText(player.x, player.y - 36, 'CHILL', 0x80cbc4, 11);
+    else if (enemy.typeKey === 'TROLL' || enemy.typeKey === 'TANK') {
+      ctx.scene.cameras.main.shake(90, 0.006);
+      ctx.floatText(player.x, player.y - 36, 'SLAM', 0xffd166, 11);
+    }
+  }
+
+  /** Acid eats a plus off a piece of gear (never below -3). */
+  private corrodeItem(item: { plus: number; defKey: string } | undefined, what: 'weapon' | 'armor') {
+    if (!item || item.plus <= -3) return;
+    item.plus -= 1;
+    this.ctx.status(`Your ${getDef(item.defKey).name} corrodes (${item.plus >= 0 ? '+' : ''}${item.plus}).`);
+    this.ctx.floatText(this.ctx.player.x, this.ctx.player.y - 44, `${what} corrodes`, 0x76ff03, 10);
+    this.ctx.player.recomputeDerived();
+    this.ctx.emitHUD();
+  }
+
+  private monsterCastSpell(enemy: Enemy, spell: string) {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    if (spell === 'hold_person') {
+      ctx.floatText(enemy.x, enemy.y - 26, 'HOLD', 0xb0bec5, 10);
+      ctx.scene.tweens.add({ targets: enemy, alpha: 0.5, duration: 80, yoyo: true });
+      const save = player.rollSave('spells');
+      if (!save.success) {
+        player.addEffect('HELD', enemy.def.boss ? 3000 : 2500);
+        ctx.floatText(player.x, player.y - 36, 'HELD', 0xb0bec5, 12);
+      } else {
+        ctx.floatText(player.x, player.y - 36, 'saved', 0x69f0ae, 10);
+      }
+      return;
+    }
+    // Missile or fireball: a bolt that does fixed damage on arrival.
+    const isFire = spell === 'fireball';
+    const dmg = isFire ? rollDice(mathRng, '3d6') : rollDice(mathRng, '1d4+1');
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const bolt = ctx.scene.add.rectangle(enemy.x, enemy.y, isFire ? 9 : 5, isFire ? 9 : 5, isFire ? 0xff6f00 : 0xffffff).setDepth(16);
+    this.enemyProjectiles.push({
+      obj: bolt, vx: (dx / len) * 260, vy: (dy / len) * 260, life: 1600, kind: 'spell', enemy,
+      spellDamage: dmg, spellSave: isFire,
+    });
+  }
+
+  private monsterSummon(boss: Enemy) {
+    const ctx = this.ctx;
+    const summon = hasSpecial(boss.def, 'summon');
+    if (!summon) return;
+    const alive = ctx.enemies.filter(e => e.active && e.summonedBy === boss).length;
+    if (alive >= summon.maxAlive) return;
+    this.summonAround(boss, summon.monster, 1);
+  }
+
+  private summonAround(boss: Enemy, monster: EnemyTypeKey, count: number) {
+    const ctx = this.ctx;
+    const btx = Math.floor(boss.x / TILE_SIZE);
+    const bty = Math.floor(boss.y / TILE_SIZE);
+    let placed = 0;
+    for (let r = 2; r <= 4 && placed < count; r++) {
+      for (let dy = -r; dy <= r && placed < count; dy++) {
+        for (let dx = -r; dx <= r && placed < count; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          if (!ctx.isWalkable(btx + dx, bty + dy) || Math.random() < 0.7) continue;
+          const e = this.addEnemy(monster, btx + dx, bty + dy);
+          e.summonedBy = boss;
+          ctx.floatText(e.x, e.y - 22, 'RISES', 0xce93d8, 10);
+          placed++;
         }
       }
     }
@@ -140,24 +399,50 @@ export class CombatController {
 
   // ── Turn Undead ────────────────────────────────────────────────────────────
 
+  /** T key: the cleric's turning table, by cleric level against each undead's hit dice. */
   doTurnUndead() {
     const ctx = this.ctx;
-    let count = 0;
-    for (const enemy of ctx.enemies) {
+    if (this.turnCooldown > 0) {
+      ctx.status("You have only just called on your faith. Wait a moment.");
+      return;
+    }
+    this.turnCooldown = TURN_COOLDOWN_MS;
+    const level = ctx.player.stats.level;
+    let turned = 0;
+    let destroyed = 0;
+    for (const enemy of [...ctx.enemies]) {
       if (!enemy.active || !enemy.isUndead) continue;
       const dx = enemy.x - ctx.player.x;
       const dy = enemy.y - ctx.player.y;
-      if (Math.sqrt(dx * dx + dy * dy) <= 200) {
-        const roll = Math.floor(Math.random() * 20) + 1 + abilityMod(ctx.player.stats.cha);
-        if (roll >= 10) { enemy.forceFleeFrom(ctx.player.x, ctx.player.y, 10000); count++; }
+      if (Math.sqrt(dx * dx + dy * dy) > 200) continue;
+      if (!isTurnable(enemy.def)) { ctx.floatText(enemy.x, enemy.y - 22, 'unmoved', 0x888899, 10); continue; }
+      const outcome = turnUndead(level, enemy.def.hd, mathRng);
+      if (outcome === 'destroyed') {
+        destroyed++;
+        enemy.hp = 0;
+        this.killEnemy(enemy);
+      } else if (outcome === 'turned') {
+        if (enemy.forceFleeFrom(ctx.player.x, ctx.player.y, 10000)) turned++;
       }
     }
-    ctx.floatText(ctx.player.x, ctx.player.y - 40, `Turn Undead! (${count} fled)`, 0xfff9c4, 14);
-    ctx.status(`Turn Undead — ${count} undead flee!`);
+    ctx.floatText(ctx.player.x, ctx.player.y - 40, `Turn Undead! ${turned} flee, ${destroyed} destroyed`, 0xfff9c4, 13);
+    ctx.status(turned + destroyed > 0
+      ? `You turn the dead: ${turned} flee, ${destroyed} crumble.`
+      : "The dead are not impressed.");
     ctx.bus.emit('spell_cast', { key: 'TURN_UNDEAD' });
   }
 
-  // ── Combat ────────────────────────────────────────────────────────────────
+  // ── The player's swing ────────────────────────────────────────────────────
+
+  private targetInfo(enemy: Enemy): TargetInfo {
+    return {
+      ac: enemy.ac,
+      def: enemy.def,
+      key: enemy.typeKey,
+      unaware: enemy.isUnaware,
+      helpless: enemy.isHelpless,
+    };
+  }
 
   private handlePlayerAttack() {
     const ctx = this.ctx;
@@ -166,65 +451,174 @@ export class CombatController {
     const attackBox = player.getAttackBox();
     this.spawnAttackArc();
     ctx.bus.emit('player_swing');
-    let hitCount = 0;
 
-    for (let i = ctx.enemies.length - 1; i >= 0; i--) {
-      const enemy = ctx.enemies[i];
-      if (!enemy.active) continue;
+    // Nearest enemy inside the swing box.
+    let target: Enemy | null = null;
+    let best = Infinity;
+    for (const enemy of ctx.enemies) {
+      if (!enemy.active || enemy.hp <= 0) continue;
+      if (enemy.isMimic && !enemy.mimicRevealed) continue;
+      if (!Phaser.Geom.Intersects.RectangleToRectangle(attackBox, enemy.getBounds())) continue;
+      const d = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
+      if (d < best) { best = d; target = enemy; }
+    }
 
-      const enemyBounds = enemy.getBounds();
-      if (!Phaser.Geom.Intersects.RectangleToRectangle(attackBox, enemyBounds)) continue;
+    const weapon = weaponProfile(player.inventory);
+    const wantsMissile = !target && (weapon.ranged || player.stats.classKey === 'wizard');
+    if (wantsMissile) {
+      this.fireMissile(weapon.ranged);
+      return;
+    }
 
-      const isSneakAttack = player.stats.classKey === 'thief' &&
-        !enemy.canAttackPlayer(player.x, player.y);
-      const dmg = player.getAttackDamage(isSneakAttack);
-      const dealt = enemy.takeDamage(dmg);
-      hitCount++;
-      ctx.bus.emit('player_hit', { enemyKey: enemy.typeKey, damage: dealt, crit: isSneakAttack });
+    if (!target) {
+      const fx = player.stats.facing.x || 0;
+      const fy = player.stats.facing.y || 1;
+      ctx.floatText(player.x + fx * 28, player.y + fy * 28, 'miss', 0x888899, 10);
+      ctx.bus.emit('player_miss');
+      return;
+    }
+
+    const outcome = resolvePlayerAttack(player.sheet(), this.targetInfo(target), mathRng, 'melee');
+    const killed = this.applyPlayerOutcome(target, outcome, 'melee');
+    if (outcome.kind === 'hit') {
       scene.cameras.main.shake(40, 0.0025);
-      scene.tweens.add({
-        targets: enemy,
-        scaleX: 1.15,
-        scaleY: 1.15,
-        duration: 60,
-        yoyo: true,
-      });
-      ctx.floatText(enemy.x, enemy.y - 20, `-${dealt}`, 0xffffff);
-      if (isSneakAttack) ctx.floatText(enemy.x, enemy.y - 36, 'SNEAK!', 0xffa726, 11);
+      scene.tweens.add({ targets: target, scaleX: 1.15, scaleY: 1.15, duration: 60, yoyo: true });
+    }
+    if (killed && player.stats.classKey === 'fighter') this.doCleave(target.x, target.y);
+  }
 
-      if (enemy.hp <= 0) {
-        if (this.tryEnemyReform(enemy)) continue;
-        player.gainXP(enemy.xp);
-        ctx.run.kills++;
-        ctx.rooms.recordRoomChallengeKill(enemy);
-        this.applyKillMomentum(enemy);
-        this.applyEquipmentKillEffects(enemy, i);
+  /** Shared by melee and missiles: show the result, emit events, hurt the monster. Returns true on a kill. */
+  private applyPlayerOutcome(enemy: Enemy, outcome: PlayerAttackOutcome, style: 'melee' | 'missile'): boolean {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    if (outcome.kind === 'immune') {
+      ctx.floatText(enemy.x, enemy.y - 20, 'no effect', 0xb0bec5, 11);
+      ctx.status("Your weapon passes through it. You need a magic weapon, or silver.");
+      ctx.bus.emit('player_miss');
+      return false;
+    }
+    if (outcome.kind === 'miss') {
+      ctx.floatText(enemy.x, enemy.y - 20, 'miss', 0x888899, 10);
+      ctx.bus.emit('player_miss');
+      return false;
+    }
+    const b = equipmentBonuses(player.inventory);
+    const dealt = this.damageEnemy(enemy, outcome.damage, {}, false);
+    ctx.bus.emit('player_hit', { enemyKey: enemy.typeKey, damage: dealt, crit: outcome.crit });
+    ctx.floatText(enemy.x, enemy.y - 20, `-${dealt}`, 0xffffff);
+    if (outcome.backstab) ctx.floatText(enemy.x, enemy.y - 36, 'BACKSTAB!', 0xffa726, 11);
+    else if (outcome.crit) ctx.floatText(enemy.x, enemy.y - 36, 'CRITICAL!', 0xffd166, 11);
 
-        // Quest progress: enemy kill
-        if (player.stats.activeQuests) {
-          onEnemyKilled(player.stats.activeQuests, enemy.typeKey);
+    if (b.lifeOnHit > 0) player.heal(b.lifeOnHit);
+    if (style === 'melee') {
+      for (const c of enemy.def.special ?? []) {
+        if (c.kind === 'corrode' && c.target === 'weapon' && Math.random() * 100 < c.chancePct) {
+          this.corrodeItem(player.inventory.equipment.weapon, 'weapon');
         }
+      }
+    }
+    if (enemy.hp <= 0) {
+      return this.killEnemy(enemy);
+    }
+    return false;
+  }
 
-        ctx.emitHUD();
+  /**
+   * Hurt a monster with damage that has already been decided (a hit, a spell, a thorn). Handles boss phases and,
+   * with `killIfDead` (the default), the kill itself. Returns the damage dealt.
+   */
+  damageEnemy(enemy: Enemy, amount: number, opts: { fire?: boolean; acid?: boolean } = {}, killIfDead = true): number {
+    const dealt = enemy.takeDamage(amount, opts);
+    const phase = enemy.hp > 0 ? enemy.checkPhase() : null;
+    if (phase) {
+      this.ctx.floatText(enemy.x, enemy.y - 44, phase.label, 0xff8a65, 12);
+      if (phase.message) this.ctx.status(phase.message);
+      this.ctx.scene.cameras.main.shake(220, 0.01);
+      if (phase.summon) this.summonAround(enemy, phase.summon as EnemyTypeKey, phase.summonCount ?? 1);
+    }
+    if (killIfDead && enemy.hp <= 0) this.killEnemy(enemy);
+    return dealt;
+  }
 
-        // Record death for persistence
-        const spawnIdx = (enemy as Enemy & { _spawnIdx?: number })._spawnIdx;
-        if (typeof spawnIdx === 'number') ctx.persist.deadEnemyIndices.add(spawnIdx);
+  /** XP, gold, drops, quests, persistence. Returns true if the monster is gone for good (skeletons may reform). */
+  killEnemy(enemy: Enemy): boolean {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    if (!enemy.active) return true;
+    if (this.tryEnemyReform(enemy)) return false;
 
-        if (player.stats.classKey === 'fighter') this.doCleave(enemy.x, enemy.y, i);
+    player.gainXP(enemy.xp);
+    ctx.run.kills++;
+    ctx.rooms.recordRoomChallengeKill(enemy);
+    this.applyKillMomentum(enemy);
 
-        this.spawnDeathEffect(enemy.x, enemy.y, enemy.typeKey);
-        enemy.destroy();
-        ctx.enemies.splice(i, 1);
+    if (player.stats.activeQuests) onEnemyKilled(player.stats.activeQuests, enemy.typeKey);
+
+    const spawnIdx = (enemy as Enemy & { _spawnIdx?: number })._spawnIdx;
+    if (typeof spawnIdx === 'number') ctx.persist.deadEnemyIndices.add(spawnIdx);
+
+    if (enemy.typeKey === 'HOLLOW_KING') {
+      this._kingSlain = true;
+      ctx.status("The Hollow King falls. The way out opens.");
+      ctx.scene.cameras.main.flash(500, 255, 213, 79);
+    }
+    // Things a boss summoned crumble with it.
+    if (enemy.def.boss) {
+      for (const e of [...ctx.enemies]) {
+        if (e.summonedBy === enemy && e.active && e !== enemy) { e.hp = 0; this.finishSummoned(e); }
       }
     }
 
-    if (hitCount === 0) {
-      const fx = player.stats.facing.x || 0;
-      const fy = player.stats.facing.y || 1;
-      ctx.floatText(player.x + fx * 28, player.y + fy * 28, 'MISS', 0x888899, 10);
-      ctx.bus.emit('player_miss');
+    ctx.loot.dropFromMonster(enemy);
+    this.spawnDeathEffect(enemy.x, enemy.y, enemy.typeKey);
+    enemy.destroy();
+    const idx = ctx.enemies.indexOf(enemy);
+    if (idx >= 0) ctx.enemies.splice(idx, 1);
+    ctx.emitHUD();
+    return true;
+  }
+
+  private finishSummoned(e: Enemy) {
+    this.spawnDeathEffect(e.x, e.y, e.typeKey);
+    e.destroy();
+    const idx = this.ctx.enemies.indexOf(e);
+    if (idx >= 0) this.ctx.enemies.splice(idx, 1);
+  }
+
+  /** Missile attack: the wizard's dart, or a bow, sling or crossbow. */
+  private fireMissile(weaponIsRanged: boolean) {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    const range = weaponIsRanged ? MISSILE_RANGE_PX : RANGE_PX[WIZARD_DART.range];
+    const fx = player.stats.facing.x || 0;
+    const fy = player.stats.facing.y || 1;
+
+    let target: Enemy | null = null;
+    let bestScore = Infinity;
+    for (const enemy of ctx.enemies) {
+      if (!enemy.active || enemy.hp <= 0 || (enemy.isMimic && !enemy.mimicRevealed)) continue;
+      const dx = enemy.x - player.x;
+      const dy = enemy.y - player.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > range) continue;
+      const dot = (dx * fx + dy * fy) / ((d || 1) * (Math.sqrt(fx * fx + fy * fy) || 1));
+      // Prefer what you are facing; otherwise anything in range.
+      const score = d + (dot < 0.25 ? 1000 : 0);
+      if (score < bestScore) { bestScore = score; target = enemy; }
     }
+    if (!target) return; // nothing to shoot at: the swing is just a flourish
+
+    const dice = weaponIsRanged ? undefined : `${WIZARD_DART.dice[0]}d${WIZARD_DART.dice[1]}`;
+    if (!weaponIsRanged) player.setAttackCooldown(WIZARD_DART.cooldownMs);
+    const t = target;
+    ctx.scene.cameras.main.shake(20, 0.001);
+    const from = { x: player.x, y: player.y };
+    const dist = Phaser.Math.Distance.Between(from.x, from.y, t.x, t.y);
+    ctx.spells.spellSystem.flyOrb(from, { x: t.x, y: t.y }, weaponIsRanged ? 0xe0c080 : 0x80d8ff, Math.max(80, dist * 1.2), () => {
+      if (!t.active || t.hp <= 0) return;
+      const outcome = resolvePlayerAttack(ctx.player.sheet(), this.targetInfo(t), mathRng, 'missile', dice);
+      this.applyPlayerOutcome(t, outcome, 'missile');
+    }, 4);
   }
 
   private spawnAttackArc() {
@@ -257,8 +651,8 @@ export class CombatController {
     player.stats.runDeepestFloor = Math.max(player.stats.runDeepestFloor ?? 0, ctx.currentFloor);
 
     if (run.killStreak >= 3) {
-      const bonusGold = Math.min(25, run.killStreak * 2);
-      const bonusXP = Math.min(30, run.killStreak * 3);
+      const bonusGold = Math.min(10, run.killStreak);
+      const bonusXP = Math.min(5, run.killStreak - 2);
       ctx.addGold(bonusGold);
       player.gainXP(bonusXP);
       player.addEffect('RUSHED', Math.min(7000, 2200 + run.killStreak * 450));
@@ -268,16 +662,13 @@ export class CombatController {
     if (run.killStreak >= 5) {
       const hpGain = Math.max(1, Math.floor(player.stats.maxHp * 0.04));
       player.heal(hpGain);
-      if (player.stats.maxMana > 0) player.restoreMana(3);
       ctx.floatText(player.x, player.y - 70, 'ADRENALINE!', 0xffd166, 12);
     }
 
     if (enemy.isElite) {
       const trophyBonus = ctx.hasRelic('boss_trophy') ? 1.5 : 1;
-      const bonusGold = Math.floor((35 + ctx.currentFloor * 8) * trophyBonus);
-      const bonusXP = Math.floor((30 + ctx.currentFloor * 10) * trophyBonus);
+      const bonusGold = Math.floor((10 + ctx.currentFloor * 3) * trophyBonus);
       ctx.addGold(bonusGold);
-      player.gainXP(bonusXP);
       ctx.scene.cameras.main.flash(180, 255, 209, 102);
       ctx.floatText(enemy.x, enemy.y - 44, `CHAMPION +${bonusGold}g`, 0xffd166, 14);
     }
@@ -305,99 +696,35 @@ export class CombatController {
     return true;
   }
 
-  private applyEquipmentKillEffects(enemy: Enemy, killedIdx: number) {
-    const ctx = this.ctx;
-    const player = ctx.player;
-    const trait = player.stats.weaponTrait;
-    if (trait === 'vampiric') {
-      const heal = Math.max(2, Math.floor(player.stats.maxHp * 0.04));
-      player.heal(heal);
-      ctx.floatText(player.x, player.y - 62, `DRAIN +${heal}`, COLORS.HEAL_TEXT, 11);
-    } else if (trait === 'arcane' && player.stats.maxMana > 0) {
-      player.restoreMana(5);
-      ctx.floatText(player.x, player.y - 62, '+5 MANA', COLORS.MANA_BAR, 11);
-    } else if (trait === 'cleaving' && player.stats.classKey !== 'fighter') {
-      this.doTraitCleave(enemy.x, enemy.y, killedIdx);
-    }
-  }
-
-  private doCleave(killedX: number, killedY: number, killedIdx: number) {
+  /** Fighter cleave: after a kill, one more swing (a real attack roll) at a neighbour. */
+  private doCleave(killedX: number, killedY: number) {
     const ctx = this.ctx;
     const range = TILE_SIZE * 2;
-    for (let j = ctx.enemies.length - 1; j >= 0; j--) {
-      if (j === killedIdx) continue;
-      const target = ctx.enemies[j];
-      if (!target.active) continue;
-      const dx = target.x - killedX;
-      const dy = target.y - killedY;
-      if (Math.sqrt(dx * dx + dy * dy) <= range) {
-        const dealt = target.takeDamage(ctx.player.getAttackDamage(false));
-        ctx.bus.emit('player_hit', { enemyKey: target.typeKey, damage: dealt, crit: false });
-        ctx.floatText(target.x, target.y - 20, `CLEAVE -${dealt}`, COLORS.ENEMY_BASIC, 12);
-        if (target.hp <= 0) {
-          if (this.tryEnemyReform(target)) break;
-          ctx.player.gainXP(target.xp);
-          ctx.run.kills++;
-          ctx.rooms.recordRoomChallengeKill(target);
-          this.applyKillMomentum(target);
-          if (ctx.player.stats.activeQuests) {
-            onEnemyKilled(ctx.player.stats.activeQuests, target.typeKey);
-          }
-          const idx = (target as Enemy & { _spawnIdx?: number })._spawnIdx;
-          if (typeof idx === 'number') ctx.persist.deadEnemyIndices.add(idx);
-          this.spawnDeathEffect(target.x, target.y, target.typeKey);
-          target.destroy();
-          ctx.enemies.splice(j, 1);
-        }
-        break;
-      }
-    }
-  }
-
-  private doTraitCleave(killedX: number, killedY: number, killedIdx: number) {
-    const ctx = this.ctx;
-    const range = TILE_SIZE * 1.75;
-    const cleaveDamage = Math.max(4, Math.floor(ctx.player.getAttackDamage(false) * 0.55));
-    for (let j = ctx.enemies.length - 1; j >= 0; j--) {
-      if (j === killedIdx) continue;
-      const target = ctx.enemies[j];
-      if (!target.active) continue;
-      const dx = target.x - killedX;
-      const dy = target.y - killedY;
-      if (Math.sqrt(dx * dx + dy * dy) > range) continue;
-
-      const dealt = target.takeDamage(cleaveDamage);
-      ctx.bus.emit('player_hit', { enemyKey: target.typeKey, damage: dealt, crit: false });
-      ctx.floatText(target.x, target.y - 20, `RIPOSTE -${dealt}`, 0xffa726, 11);
-      if (target.hp <= 0) {
-        if (this.tryEnemyReform(target)) break;
-        ctx.player.gainXP(target.xp);
-        ctx.run.kills++;
-        ctx.rooms.recordRoomChallengeKill(target);
-        this.applyKillMomentum(target);
-        if (ctx.player.stats.activeQuests) {
-          onEnemyKilled(ctx.player.stats.activeQuests, target.typeKey);
-        }
-        const idx = (target as Enemy & { _spawnIdx?: number })._spawnIdx;
-        if (typeof idx === 'number') ctx.persist.deadEnemyIndices.add(idx);
-        this.spawnDeathEffect(target.x, target.y, target.typeKey);
-        target.destroy();
-        ctx.enemies.splice(j, 1);
-      }
+    for (const target of [...ctx.enemies]) {
+      if (!target.active || target.hp <= 0) continue;
+      if (target.isMimic && !target.mimicRevealed) continue;
+      const d = Phaser.Math.Distance.Between(target.x, target.y, killedX, killedY);
+      if (d > range) continue;
+      const outcome = resolvePlayerAttack(ctx.player.sheet(), this.targetInfo(target), mathRng, 'melee');
+      if (outcome.kind === 'hit') ctx.floatText(target.x, target.y - 34, 'CLEAVE', 0xe53935, 11);
+      this.applyPlayerOutcome(target, outcome, 'melee');
       break;
     }
   }
 
-  private spawnEnemyBolt(fromX: number, fromY: number, toX: number, toY: number, dmg: number, typeKey: EnemyTypeKey) {
-    const dx = toX - fromX;
-    const dy = toY - fromY;
+  // ── Enemy projectiles ─────────────────────────────────────────────────────
+
+  private spawnEnemyBolt(enemy: Enemy, toX: number, toY: number) {
+    const dx = toX - enemy.x;
+    const dy = toY - enemy.y;
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const bolt = this.ctx.scene.add.rectangle(fromX, fromY, 5, 5, ENEMY_TYPES[typeKey].color).setDepth(16);
-    this.enemyProjectiles.push({ obj: bolt, vx: (dx / len) * 300, vy: (dy / len) * 300, dmg, life: 1500 });
+    const bolt = this.ctx.scene.add.rectangle(enemy.x, enemy.y, 5, 5, ENEMY_TYPES[enemy.typeKey].color).setDepth(16);
+    this.enemyProjectiles.push({ obj: bolt, vx: (dx / len) * 300, vy: (dy / len) * 300, life: 1500, kind: 'weapon', enemy });
   }
 
   updateEnemyProjectiles(delta: number) {
-    const player = this.ctx.player;
+    const ctx = this.ctx;
+    const player = ctx.player;
     const dt = delta / 1000;
     for (let i = this.enemyProjectiles.length - 1; i >= 0; i--) {
       const proj = this.enemyProjectiles[i];
@@ -408,9 +735,18 @@ export class CombatController {
       const dx = proj.obj.x - player.x;
       const dy = proj.obj.y - player.y;
       if (Math.sqrt(dx * dx + dy * dy) < 20) {
-        player.takeDamage(proj.dmg, false);
         proj.obj.destroy();
         this.enemyProjectiles.splice(i, 1);
+        if (proj.kind === 'spell') {
+          let dmg = proj.spellDamage ?? 1;
+          if (proj.spellSave) {
+            if (player.rollSave('spells').success) dmg = Math.max(1, Math.floor(dmg / 2));
+          }
+          player.takeDamage(dmg);
+        } else if (proj.enemy.active) {
+          const round = this.rollMonsterRound(proj.enemy);
+          this.applyMonsterRound(proj.enemy, round);
+        }
       }
     }
   }

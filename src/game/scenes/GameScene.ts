@@ -19,6 +19,7 @@ import { SpellInputController } from "./game/SpellInputController";
 import { FloatingTextController } from "./game/FloatingText";
 import { MechanismController } from "./game/MechanismController";
 import { InputController } from "./game/InputController";
+import { buildHudExtras } from "./game/AdndHud";
 
 interface GameSceneInit {
   floor?: number;
@@ -228,6 +229,8 @@ export class GameScene extends Phaser.Scene {
     const s = ctx.player.stats;
     const spellHotkeyMap = ctx.spells.spellHotkeyMap;
     this.events.emit("hud:update", {
+      // B2: first-edition numbers (spellSlots, thac0, ac, saves, torchSeconds, title, gold), see AdndHud.ts.
+      ...buildHudExtras(s, ctx.player.inventory, ctx.player.spellbook),
       hp: s.hp, maxHp: s.maxHp,
       attack: s.attack, defense: s.defense,
       level: s.level, xp: s.xp, xpToNext: s.xpToNext,
