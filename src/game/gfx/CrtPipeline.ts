@@ -22,7 +22,7 @@ vec2 barrel(vec2 uv, float k) {
 }
 
 void main() {
-  float k = 0.05 * intensity;
+  float k = 0.03 * intensity;
   vec2 uv = barrel(outTexCoord, k);
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     gl_FragColor = vec4(0.0);
@@ -35,14 +35,14 @@ void main() {
   vec3 right = texture2D(uMainSampler, uv + px * 1.5).rgb;
   // mild colour bleed: red leans left, blue leans right, then a soft horizontal blend
   vec3 bleed = vec3(left.r, centre.g, right.b);
-  vec3 col = mix(centre, bleed, 0.55 * intensity);
+  vec3 col = mix(centre, bleed, 0.35 * intensity);
   col = mix(col, (left + centre * 2.0 + right) * 0.25, 0.25 * intensity);
   // scanlines: one dark line every two rows
   float s = 0.5 + 0.5 * sin(uv.y * resolution.y * 3.14159265);
-  col *= 1.0 - 0.3 * intensity * (1.0 - s);
+  col *= 1.0 - 0.22 * intensity * (1.0 - s);
   // vignette
   float d = length((outTexCoord - 0.5) * vec2(1.0, 0.85));
-  col *= 1.0 - 0.65 * intensity * smoothstep(0.32, 0.85, d);
+  col *= 1.0 - 0.35 * intensity * smoothstep(0.45, 0.9, d);
   // keep brightness roughly level after the scanline dimming
   col *= 1.0 + 0.1 * intensity;
   // keep the source alpha so overlay scenes (the HUD) stay see-through; colour is premultiplied
