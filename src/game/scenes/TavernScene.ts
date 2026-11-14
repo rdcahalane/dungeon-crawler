@@ -19,6 +19,10 @@ const W = TILE.WALL;
 const F = TILE.FLOOR;
 const S = TILE.STAIRS;
 
+const BAR_X0 = 10;
+const BAR_X1 = 16;
+const TABLE_COLS = [2, 6, 10, 18, 22];
+
 function buildTavernTiles(): number[][] {
   const tiles: number[][] = Array.from({ length: TAVERN_H }, () => Array(TAVERN_W).fill(F));
 
@@ -32,15 +36,14 @@ function buildTavernTiles(): number[][] {
     tiles[y][TAVERN_W - 1] = W;
   }
 
-  // Bar counter (rows 2-4, cols 2-8) - impassable
-  for (let x = 2; x <= 8; x++) for (let y = 2; y <= 3; y++) tiles[y][x] = W;
+  // Bar counter (rows 2-3, cols 10-16) - impassable. Top middle, clear of the HUD panels in both top corners.
+  for (let x = BAR_X0; x <= BAR_X1; x++) for (let y = 2; y <= 3; y++) tiles[y][x] = W;
 
   // Notice board area (rows 2-3, cols 20-26) - impassable
   for (let x = 20; x <= 26; x++) for (let y = 2; y <= 3; y++) tiles[y][x] = W;
 
-  // Tables (rows 6-7)
-  const tableCols = [2, 6, 12, 17, 22];
-  for (const cx of tableCols) {
+  // Tables (rows 6-7). The lane in cols 12-17 stays open so the way from the portal to the bar is clear.
+  for (const cx of TABLE_COLS) {
     tiles[6][cx] = W; tiles[6][cx + 1] = W;
     tiles[7][cx] = W; tiles[7][cx + 1] = W;
   }
@@ -58,16 +61,16 @@ const TAVERN_TILES = buildTavernTiles();
 
 // Track special wall tiles for distinct rendering
 const BAR_TILES = new Set<string>();
-for (let x = 2; x <= 8; x++) for (let y = 2; y <= 3; y++) BAR_TILES.add(`${x},${y}`);
+for (let x = BAR_X0; x <= BAR_X1; x++) for (let y = 2; y <= 3; y++) BAR_TILES.add(`${x},${y}`);
 
 const TABLE_TILES = new Set<string>();
-for (const cx of [2, 6, 12, 17, 22]) {
+for (const cx of TABLE_COLS) {
   TABLE_TILES.add(`${cx},6`); TABLE_TILES.add(`${cx + 1},6`);
   TABLE_TILES.add(`${cx},7`); TABLE_TILES.add(`${cx + 1},7`);
 }
 
 // NPC positions
-const INNKEEPER_POS = { tx: 5, ty: 1 };     // behind the bar counter
+const INNKEEPER_POS = { tx: 13, ty: 1 };    // behind the bar counter, top middle
 const NOTICE_BOARD_POS = { tx: 23, ty: 5 };  // in front of notice board
 // Quest board state (rendered dynamically from QuestSystem)
 let _boardQuests: Quest[] = [];
@@ -200,9 +203,8 @@ export class TavernScene extends Phaser.Scene {
   private showRunSummary() {
     const s = this.playerStats;
     const gold = s.runGoldEarned ?? 0;
-    const streak = s.runBestStreak ?? 0;
     const floor = s.runDeepestFloor ?? 0;
-    if (gold <= 0 && streak <= 0 && floor <= 0) return;
+    if (gold <= 0 && floor <= 0) return;
 
     const W = this.scale.width;
     const H = this.scale.height;
@@ -211,11 +213,11 @@ export class TavernScene extends Phaser.Scene {
     popup.add(uiText(this, 0, -36, 'DELVE SUMMARY', { size: 16, color: COL.gold, originX: 0.5, originY: 0.5 }));
     popup.add(uiText(this, 0, -14, [
       `DEEPEST FLOOR ${floor}   GOLD ${gold}G`,
-      `BEST STREAK X${streak}   RELICS ${s.relics?.length ?? 0}`,
+      `RELICS ${s.relics?.length ?? 0}`,
     ].join('\n'), { size: 16, color: COL.silver, originX: 0.5, originY: 0, center: true }));
 
     s.runGoldEarned = 0;
-    s.runBestStreak = 0;
+    s.runBestStreak = 0; // still tracked by combat; no longer shown
     s.runDeepestFloor = 0;
 
     this.tweens.add({
@@ -261,7 +263,7 @@ export class TavernScene extends Phaser.Scene {
 
     // Atmospheric: add a few candle glow sprites
     const candlePositions = [
-      { tx: 5, ty: 1 }, { tx: 10, ty: 1 }, { tx: 18, ty: 1 }, { tx: 24, ty: 1 },
+      { tx: 3, ty: 1 }, { tx: 8, ty: 1 }, { tx: 18, ty: 1 }, { tx: 24, ty: 1 },
     ];
     for (const pos of candlePositions) {
       const cx = pos.tx * TILE_SIZE + TILE_SIZE / 2;
@@ -374,14 +376,14 @@ export class TavernScene extends Phaser.Scene {
 
   private spawnDecor() {
     // Barrels behind bar (row 1, flanking the innkeeper)
-    for (const btx of [2, 3, 7, 8]) {
+    for (const btx of [10, 11, 15, 16]) {
       const bx = btx * TILE_SIZE + TILE_SIZE / 2;
       const by = 1 * TILE_SIZE + TILE_SIZE / 2;
       this.add.image(bx, by, "tavern_barrel").setDepth(3);
     }
 
     // Warm glow behind the bar area
-    const barGlowX = 5 * TILE_SIZE + TILE_SIZE / 2;
+    const barGlowX = INNKEEPER_POS.tx * TILE_SIZE + TILE_SIZE / 2;
     const barGlowY = 1 * TILE_SIZE + TILE_SIZE / 2;
     const barGlow = this.add.image(barGlowX, barGlowY, "torch_glow")
       .setBlendMode(Phaser.BlendModes.ADD)

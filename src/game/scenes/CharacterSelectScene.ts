@@ -7,7 +7,7 @@ import { ChargenSession, CHARGEN_ORDER, reportScores, xpBonusLabel } from "../ru
 import { starterKit, displayName } from "../items";
 import { playerArmorClass, playerThac0, startingHp } from "./game/AdndCombat";
 import { CLASS_COL, COL, flatPanel, uiText } from "../gfx/retroUi";
-import { wrap } from "./ui/theme";
+import { LINE, wrap } from "./ui/theme";
 import { Sfx } from "../audio/Sfx";
 
 const ABILITY_DESCRIPTIONS: Record<AbilityKey, string> = {
@@ -142,10 +142,10 @@ export class CharacterSelectScene extends Phaser.Scene {
       this.container.add(bg);
 
       // The class sprite, 3x (the sprite is 32px, so 96px on screen, nearest-neighbour).
-      const sprite = this.add.image(cx, cy - cardH / 2 + 62, `player_${key}`).setScale(3);
+      const sprite = this.add.image(cx, cy - cardH / 2 + 54, `player_${key}`).setScale(3);
       this.container.add(sprite);
 
-      this.container.add(uiText(this, cx, cy - cardH / 2 + 124, cls.name.toUpperCase(), {
+      this.container.add(uiText(this, cx, cy - cardH / 2 + 106, cls.name.toUpperCase(), {
         size: 24, color: tone, originX: 0.5,
       }));
 
@@ -158,19 +158,13 @@ export class CharacterSelectScene extends Phaser.Scene {
         `DEATH SAVE ${saveTarget(key, 1, 'death')}`,
         `${kit.gold} GP${slots > 0 ? `  ${slots} SLOT${slots > 1 ? 'S' : ''}` : ''}`,
       ];
-      this.container.add(uiText(this, cx, cy - cardH / 2 + 158, lines.join('\n'), {
-        size: 16, color: COL.silver, originX: 0.5, center: true,
-      }));
+      this._lines(cx, cy - cardH / 2 + 142, lines, COL.silver, true);
 
       const gear = kit.equipped().filter(it => it.defKey !== 'torch').map(it => displayName(it)).join(', ');
-      this.container.add(uiText(this, cx, cy - cardH / 2 + 246, wrap(gear.toUpperCase(), 16).slice(0, 3).join('\n'), {
-        size: 16, color: COL.grey, originX: 0.5, center: true,
-      }));
+      this._lines(cx, cy - cardH / 2 + 226, wrap(gear.toUpperCase(), 16).slice(0, 4), COL.grey, true);
 
       // Class ability
-      this.container.add(uiText(this, cx, cy - cardH / 2 + 312, wrap(cls.classAbility.toUpperCase(), 16).slice(0, 7).join('\n'), {
-        size: 16, color: COL.cream, originX: 0.5, center: true,
-      }));
+      this._lines(cx, cy - cardH / 2 + 316, wrap(cls.classAbility.toUpperCase(), 16).slice(0, 6), COL.cream, true);
 
       bg.on('pointerover', () => { if (!isSelected) bg.setFillStyle(COL.dusk); });
       bg.on('pointerout', () => { if (!isSelected) bg.setFillStyle(bgColor); });
@@ -188,6 +182,13 @@ export class CharacterSelectScene extends Phaser.Scene {
       this.renderStep();
     });
     this.container.add([nextBtn.bg, nextBtn.text]);
+  }
+
+  /** A block of text, one 16px line per label at the standard 18px pitch (a single bitmap text stacks lines at 16). */
+  private _lines(x: number, y: number, lines: string[], color: number, centre: boolean) {
+    lines.forEach((line, i) => {
+      this.container.add(uiText(this, x, y + i * LINE, line, { size: 16, color, originX: centre ? 0.5 : 0 }));
+    });
   }
 
   /** Title and step line, centred at the top of every step. */
@@ -327,9 +328,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       this.container.add(uiText(this, x, y + 34 + i * 22, t, { size: 16, color }));
     });
     const gear = kit.equipped().filter(i => i.defKey !== 'torch').map(i => displayName(i)).join(', ');
-    this.container.add(uiText(this, x, y + 34 + lines.length * 22 + 10, `KIT: ${wrap(gear.toUpperCase(), 25).slice(0, 4).join('\n')}`, {
-      size: 16, color: COL.grey,
-    }));
+    this._lines(x, y + 34 + lines.length * 22 + 10, wrap(`KIT: ${gear.toUpperCase()}`, 25).slice(0, 4), COL.grey, false);
   }
 
   private renderNameInput() {
