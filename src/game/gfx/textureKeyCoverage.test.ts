@@ -36,6 +36,12 @@ const CALL_PATTERNS: RegExp[] = [
   /(["'])(mech_(?!sfx)[a-z0-9_]+)\1/g,
 ];
 
+/** `mech_*` literals that are event or source tags (trap types, id prefixes), not textures. */
+const NOT_TEXTURES = new Set([
+  "mech_dialog", "mech_damage", "mech_save_or_die", "mech_poison", "mech_slow",
+  "mech_curse", "mech_spawn", "mech_fall", "mech_item",
+]);
+
 interface Found {
   key: string;
   file: string;
@@ -68,7 +74,7 @@ describe("texture key coverage", () => {
   it("every literal texture key used in src/game is in RETRO_TEXTURE_KEYS", () => {
     const missing = found
       .filter((f) => !f.key.includes("${"))
-      .filter((f) => !KEYS.has(f.key))
+      .filter((f) => !KEYS.has(f.key) && !NOT_TEXTURES.has(f.key))
       .map((f) => `${f.key} (${f.file})`);
     expect([...new Set(missing)]).toEqual([]);
   });
