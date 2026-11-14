@@ -113,3 +113,16 @@ function applyEvent(state: MechState, ev: MechEvent, rng: Rng): MechEffect[];  /
 - Pure modules have vitest tests. Vaults have a solver test: the intended solution opens the way, and the careless path fires the trap.
 - No new runtime dependencies without saying why. No GitHub Actions.
 - Commit on the lane branch with a clear message. Stage files by name.
+
+## Wave D: play like early AD&D (2026-11-14, after eleven test plays)
+
+What the plays showed: the rules are first edition but the *pace* is still arcade. Fights are hold-to-attack, every
+monster charges to the death, timed "gambit" and "streak" bonuses reward rushing, death leaves no trace, and the
+character is handed to you finished. Wave D fixes that. Same gates and originality rule as above.
+
+| Lane | Owns | Delivers |
+|---|---|---|
+| D1 monsters | `rules/encounter.ts` (new), `entities/Enemy.ts`, `scenes/game/CombatController.ts`, `scenes/game/AdndCombat.ts`, `scenes/game/WanderController.ts` (new) | **Morale**: 2d6 against the bestiary `morale` when a monster first drops under half hit points and when an ally dies in sight; failure means it flees (and may come back). Undead, oozes and the boss never check. **Reaction**: intelligent monsters roll 2d6 plus the Charisma adjustment on first sight: hostile, wary (holds its ground until you close or strike) or afraid. **Surprise**: 2 in 6 that a monster is caught flat for a moment on first contact. **Wandering monsters**: a turn clock; every game turn 1 in 6 that something comes looking, more when you make noise (fighting, forcing, falling). Monsters stop beside the player, never inside the sprite. |
+| D2 treasure and death | `scenes/game/FloorController.ts`, `scenes/game/LootController.ts`, `scenes/game/RoomEventController.ts`, `scenes/GameOverScene.ts`, `scenes/MainMenuScene.ts`, `systems/Graveyard.ts` (new), `world/rumors.ts` (new), `scenes/TavernScene.ts` (rumor option only) | **Treasure is experience**: 1 XP per gold piece carried out. **Cause of death** tracked and an epitaph on the death screen. **Hall of the Fallen**: the last 20 dead, kept on the device, shown from the title screen. **Bones**: the next character finds the body on that floor with its gold. **Rumours** at the inn, true and false, about what lies below. The timed rush bonuses (gambit, streak, Blood Rune) go behind `ARCADE_ROOM_EVENTS = false`. Stairs ask before taking you; R away from a camp says why not. |
+| D3 the character and the party | `scenes/CharacterSelectScene.ts`, `rules/abilities.ts`, `rules/chargen.ts` (new), `entities/Hireling.ts` (new), `scenes/game/PartyController.ts` (new), `scenes/ui/HirePanel.ts` (new), `scenes/TavernScene.ts` (hire option only) | **Rolled abilities**: 4d6 drop the lowest, six times, rerolls allowed, modifiers shown, 10% XP bonus for a prime requisite of 16 or more. **Hirelings** from the tavern: a torchbearer (carries the light so you can use a shield) and a man-at-arms (fights beside you, has hit points and morale, can die, wants his pay). |
+| D4 hands | `scenes/game/TrapController.ts`, `scenes/game/InputController.ts`, `scenes/game/MechVerbs.ts`, `scenes/ui/HudWidgets.ts`, `scenes/PreloadScene.ts` | Disarm moves off D (it is also walk right). The pole probes the way you last walked, including after click-to-move. Objective text fits its panel. `?quick=fighter&floor=5&level=4` for testing. |
