@@ -27,7 +27,7 @@ export type RoomKind =
   | "normal" | "trap_corridor" | "monster_closet" | "vault" | "quest_special"
   | "healing_font" | "cursed_crypt" | "gilded_cache" | "stairs_down" | "stairs_up";
 
-/** Floor themes from `getFloorThemeIdx`: 0 upper halls (1-3), 1 flooded or earthen (4-6), 2 old crypts (7-9), 3 deep (10-12). */
+/** Floor themes from `getFloorThemeIdx`: 0 upper halls (1-3), 1 dry cave (4-6), 2 cold dressed stone (7-9), 3 the violet deep (10-12). */
 export type ThemeIdx = 0 | 1 | 2 | 3;
 
 /** Spoken when the character first arrives on a floor (1 to 13). */
