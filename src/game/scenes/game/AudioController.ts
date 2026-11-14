@@ -59,7 +59,12 @@ function subscribe(bus: GameEventBus): void {
     const key = p?.key ? mechSfx(p.key) : null;
     if (key) Sfx.play(key);
   });
-  bus.on("floor_enter", (p) => Sfx.music(bedForFloor(p?.floor ?? 1)));
+  bus.on("floor_enter", (p) => { Sfx.boss(false); Sfx.music(bedForFloor(p?.floor ?? 1)); });
+  // Combat layer: each blow or hostile sighting keeps it up for a few seconds. The king's fight swaps in the boss bed.
+  bus.on("player_hit", (p) => { Sfx.combatPulse(); if (p?.enemyKey === "HOLLOW_KING") Sfx.boss(true); });
+  bus.on("player_hurt", () => Sfx.combatPulse());
+  bus.on("monster_reaction", (p) => { if (p?.reaction === "hostile") Sfx.combatPulse(); if (p?.enemyKey === "HOLLOW_KING") Sfx.boss(true); });
+  bus.on("enemy_death", (p) => { if (p?.enemyKey === "HOLLOW_KING") Sfx.boss(false); });
 }
 
 const attached = new WeakSet<Phaser.Game>();

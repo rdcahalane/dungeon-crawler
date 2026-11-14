@@ -149,14 +149,16 @@ export class GalleryScene extends Phaser.Scene {
     });
 
     retroText(this, 8, 566, "MUSIC", { size: 8, color: GOLD });
-    MUSIC_BEDS.forEach((bed, i) => {
-      this.button(64 + i * 90, 566, bed, () => this.setBed(bed));
+    // Two rows of five: eight beds plus stop, with the "now:" label clear to the right.
+    [...MUSIC_BEDS, "stop" as const].forEach((bed, i) => {
+      const x = 64 + (i % 5) * 112;
+      const y = 566 + Math.floor(i / 5) * 12;
+      this.button(x, y, bed, () => this.setBed(bed === "stop" ? null : bed));
     });
-    this.button(64 + MUSIC_BEDS.length * 90, 566, "stop", () => this.setBed(null));
-    this.bedLabel = retroText(this, 400, 566, "", { size: 8, color: DIM });
+    this.bedLabel = retroText(this, 640, 566, "", { size: 8, color: DIM });
 
-    this.crtLabel = this.button(8, 588, "", () => this.doToggleCrt());
-    this.muteLabel = this.button(200, 588, "", () => this.doToggleMute());
+    this.crtLabel = this.button(8, 596, "", () => this.doToggleCrt());
+    this.muteLabel = this.button(200, 596, "", () => this.doToggleMute());
     this.status = retroText(this, 8, 612, "click a sprite to enlarge it", { size: 8, color: WHITE });
     retroText(this, 8, 624, "LEFT/RIGHT page   C crt   M mute   1-3 music   0 stop   F2 crt", { size: 8, color: DIM });
 
