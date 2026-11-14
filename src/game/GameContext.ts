@@ -87,8 +87,6 @@ export interface GameContext {
   dropItem?(itemId: string): void;
   equipItem?(itemId: string): void;
   unequipSlot?(slot: string): void;
-  /** True while a puzzle dialog is open: the HUD ignores mouse and hotkeys then. */
-  modalOpen?: boolean;
 
   // ── Controllers ──────────────────────────────────────────────────────────
   map: MapController;
