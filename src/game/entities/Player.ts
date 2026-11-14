@@ -560,7 +560,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (needsRecompute) this.recomputeDerived();
   }
 
+  /** Scene time until which a new paralysis cannot take hold (see `addEffect`). */
+  private heldImmuneUntil = 0;
+
   addEffect(key: StatusEffect['key'], duration: number, value?: number) {
+    // Paralysis cannot be renewed while it lasts, nor for a few seconds after it wears off. Without this one ghoul
+    // re-paralyzed a level-5 cleric on every hit until it died (test play, 2026-11-14).
+    if (key === 'HELD') {
+      const now = this.scene.time.now;
+      if (now < this.heldImmuneUntil) return;
+      this.heldImmuneUntil = now + duration + 6000;
+    }
     // Remove existing same effect
     this.stats.effects = this.stats.effects.filter(e => e.key !== key);
     this.stats.effects.push({ key, duration, value });

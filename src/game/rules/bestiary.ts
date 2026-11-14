@@ -198,7 +198,7 @@ export const MONSTERS: Record<MonsterKey, MonsterDef> = {
     ],
     speed: 90, aggroRange: 170, attackRange: 20, attackCooldownMs: 800,
     xp: 45, undead: true, morale: 12, minFloor: 5,
-    special: [{ kind: 'paralysis', save: 'death', durationMs: 4000 }],
+    special: [{ kind: 'paralysis', save: 'death', durationMs: 2500 }],
     textureKey: 'enemy_ghoul', size: 22,
   }),
   WIGHT: monster({
