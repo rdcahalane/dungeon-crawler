@@ -21,6 +21,7 @@ import { MechanismController } from "./game/MechanismController";
 import { InputController } from "./game/InputController";
 import { WanderController } from "./game/WanderController";
 import { PartyController } from "./game/PartyController";
+import { NarratorController } from "./game/NarratorController";
 import { buildHudExtras } from "./game/AdndHud";
 
 interface GameSceneInit {
@@ -156,6 +157,7 @@ export class GameScene extends Phaser.Scene {
     ctx.map.setupCamera();
     ctx.input.create();
     ctx.spells.create();
+    ctx.narrator.create();
 
     if (!this.scene.isActive("HUDScene")) {
       this.scene.launch("HUDScene");
@@ -229,9 +231,10 @@ export class GameScene extends Phaser.Scene {
     ctx.input = new InputController(ctx);
     ctx.wander = new WanderController(ctx);
     ctx.party = new PartyController(ctx);
+    ctx.narrator = new NarratorController(ctx);
     this.controllers = [
       ctx.text, ctx.map, ctx.mech, ctx.traps, ctx.combat, ctx.loot, ctx.rooms, ctx.floor, ctx.spells, ctx.input,
-      ctx.wander, ctx.party,
+      ctx.wander, ctx.party, ctx.narrator,
     ];
     return ctx;
   }
@@ -334,6 +337,7 @@ export class GameScene extends Phaser.Scene {
     ctx.rooms.update(curTx, curTy);
     ctx.floor.update();
 
+    ctx.narrator.update(delta);
     ctx.text.update(delta);
     ctx.spells.tick(delta);
 
