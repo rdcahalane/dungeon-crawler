@@ -6,7 +6,7 @@ import type { Enemy } from "../../entities/Enemy";
 import type { GameContext } from "../../GameContext";
 import { mathRng, rollDice, thiefSkill } from "../../rules";
 import {
-  getDef, displayName, rarityColor, rollDrop, rollItem, makeItem,
+  getDef, displayName, upgradeNote, rarityColor, rollDrop, rollItem, makeItem,
   type Drop, type EquipSlot, type ItemInstance, type UseEffect, type ItemDef,
 } from "../../items";
 import { packGroundItems, unpackGroundItems, type SavedGroundItem } from "./groundPersist";
@@ -504,7 +504,10 @@ export class LootController {
       return false;
     }
     if (g.spawnKey) ctx.persist.pickedItemKeys.add(g.spawnKey);
-    ctx.status(`Picked up ${displayName(item, { quantity: true })}.`);
+    // Say when it beats what is worn or wielded: a found suit of banded mail +2 used to look like any other pickup.
+    const better = upgradeNote(player.inventory, item);
+    ctx.status(better ? `Picked up ${displayName(item, { quantity: true })}: ${better}` : `Picked up ${displayName(item, { quantity: true })}.`);
+    if (better) ctx.floatText(player.x, player.y - 40, 'BETTER', 0x69f0ae, 11);
     ctx.floatText(player.x, player.y - 24, displayName(item), rarityColor(item), 11);
     ctx.bus.emit('item_pickup', { type: item.defKey });
     if (g.dropped) {
