@@ -4,6 +4,8 @@ import {
   FLOOR_ENEMY_POOLS, FLOOR_10_PLUS_POOL,
   TRAP_TYPES, TrapTypeKey, TrapSpawn, ChestSpawn, ChestTier,
 } from "../constants";
+import type { InscriptionSpawn, MechanismSpec } from "../world/types";
+import { stampVaults } from "../world/stamp";
 
 export interface Room {
   x: number;
@@ -59,6 +61,12 @@ export interface DungeonData {
   chests: ChestSpawn[];
   questRooms?: { tag: string; roomIdx: number; cx: number; cy: number }[];
   floorObjective?: FloorObjective;
+  // Tomb engine (src/game/world). All optional so old saves and old code paths are unaffected.
+  mechanisms?: MechanismSpec[];
+  inscriptions?: InscriptionSpawn[];
+  vaultIds?: string[];
+  /** Monsters placed by name (bestiary keys, or 'HOLLOW_KING') rather than by EnemyTypeKey. */
+  spawnMarkers?: { tx: number; ty: number; monster: string }[];
 }
 
 /**
@@ -73,6 +81,7 @@ export interface SerializedFloor {
   openedChestKeys: string[];         // "tx,ty" — chests opened
   pickedItemKeys: string[];          // "tx,ty" — floor items picked up
   revealedDoorKeys: string[];        // "tx,ty" — secret doors permanently revealed
+  mechStateJson?: string;            // serialize(MechState) from world/mechanisms, when the floor has mechanisms
 }
 
 function rng(min: number, max: number): number {
@@ -552,5 +561,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
           }
         : undefined;
 
-  return { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms, floorObjective };
+  const result: DungeonData = { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms, floorObjective };
+  stampVaults(result, floor, { next: () => Math.random() });
+  return result;
 }
