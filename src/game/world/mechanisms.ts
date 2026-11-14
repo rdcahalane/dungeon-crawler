@@ -491,11 +491,12 @@ function onStep(state: MechState, ev: Extract<MechEvent, { type: 'step' }>, effs
       case 'dart_wall':
         if (s.params.tripwire) fireDart(state, s, effs);
         break;
+      // Only a person's weight springs a room trap: a monster shambling over the stone or a coin dropped on it must not.
       case 'closing_walls':
-        startClosing(state, s, effs);
+        if (ev.weight === 'player') startClosing(state, s, effs);
         break;
       case 'gas_room':
-        startGas(state, s, effs);
+        if (ev.weight === 'player') startGas(state, s, effs);
         break;
       case 'one_way_door':
         if (ev.weight === 'player' && !r.on) {

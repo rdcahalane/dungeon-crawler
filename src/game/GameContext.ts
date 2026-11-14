@@ -77,6 +77,8 @@ export interface GameContext {
   isWalkable(tx: number, ty: number): boolean;
   addGold(amount: number): void;
   hasRelic(key: RelicKey): boolean;
+  /** True while an in-scene modal (inscription, riddle, offering) has taken the keyboard. Other input code should stand down. */
+  modalOpen?: boolean;
 
   // ── Controllers ──────────────────────────────────────────────────────────
   map: MapController;

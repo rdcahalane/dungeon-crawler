@@ -1,11 +1,17 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, TILE, TRAP_TYPES, TrapTypeKey } from "../../constants";
 import type { GameContext } from "../../GameContext";
+import { SEARCH_MS } from "./MechVerbs";
+
+/** Floors on which the legacy random tile traps deal half damage. */
+const TEACHING_FLOORS = 3;
 
 /**
  * The legacy random tile traps (reflex/fortitude save) and the legacy secret doors:
  * detect, search (G), disarm (D, thief), trigger, reveal.
- * The new authored mechanisms live in `MechanismController`, not here.
+ * The new authored mechanisms live in `MechanismController`, not here. The G key starts a timed search
+ * (`MechanismController.beginTimed`); when it finishes, the legacy search below and the authored `search`
+ * event both run for the tile the player stands on.
  */
 export class TrapController {
   // ── Trap detection ─────────────────────────────────────────────────────────
@@ -28,7 +34,7 @@ export class TrapController {
   /** Same order as the old update loop: detect, search key, disarm key, trigger, secret-door hover. */
   update(ptx: number, pty: number) {
     this.checkTrapDetection(ptx, pty);
-    this.checkSearchKey(ptx, pty);
+    this.checkSearchKey();
     this.checkDisarmKey(ptx, pty);
     this.checkTrapTriggering(ptx, pty);
     this.checkSecretDoors(ptx, pty);
@@ -71,12 +77,21 @@ export class TrapController {
     this.ctx.status(msg);
   }
 
-  /** G key: manual area search for traps AND secret doors. */
-  private checkSearchKey(ptx: number, pty: number) {
+  /** G key: a careful search takes about a second, then looks for legacy traps, secret doors and tomb mechanisms. */
+  private checkSearchKey() {
     const scene = this.ctx.scene;
     if (!this._gKey) this._gKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.G);
     if (!Phaser.Input.Keyboard.JustDown(this._gKey)) return;
+    this.ctx.mech.beginTimed('Searching', SEARCH_MS, () => {
+      const p = this.ctx.player;
+      if (p.stats.hp <= 0) return;
+      this.searchNow(Math.floor(p.x / TILE_SIZE), Math.floor(p.y / TILE_SIZE));
+      this.ctx.mech.searchHere();
+    });
+  }
 
+  /** The legacy search: area scan for traps AND secret doors around a tile. */
+  private searchNow(ptx: number, pty: number) {
     const searchBonus = this.ctx.player.stats.searchBonus;
     const roll = Math.floor(Math.random() * 20) + 1 + searchBonus;
     const trapDC = 12;
@@ -278,6 +293,8 @@ export class TrapController {
     if (def.damage[0] > 0) {
       let dmg = 0;
       for (let i = 0; i < def.damage[1]; i++) dmg += Math.floor(Math.random() * def.damage[0]) + 1;
+      // Teaching floors: the random tile traps hurt half as much on floors 1 to 3.
+      if (this.ctx.currentFloor <= TEACHING_FLOORS) dmg = Math.max(1, Math.floor(dmg / 2));
       player.takeDamage(dmg, false);
     }
     if (def.effect === 'POISONED') player.addEffect('POISONED', def.effectDuration ?? 5000, 3);

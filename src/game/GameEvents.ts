@@ -37,6 +37,13 @@ export interface GameEventMap {
   ui_open: { panel: string };
   ui_close: { panel: string };
   status: { text: string };
+  /** Optional additions (mechanism lane). Not part of GAME_EVENT_NAMES, which lists the original contract. */
+  /** Another lane emits this when the player drops an item on a tile; the mechanism engine treats it as an item step. */
+  item_dropped: { itemId: string; defKey: string; tx: number; ty: number };
+  /** Another lane emits this when an item is picked up from a tile; the mechanism engine treats it as a leave. */
+  item_picked: { defKey: string; tx: number; ty: number };
+  /** A tomb mechanism asks for a named sound effect (`lever`, `trap`, `portcullis_up`...). The audio lane maps keys. */
+  mech_sfx: { key: string };
 }
 
 export type GameEventName = keyof GameEventMap;
