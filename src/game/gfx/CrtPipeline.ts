@@ -25,11 +25,12 @@ void main() {
   float k = 0.05 * intensity;
   vec2 uv = barrel(outTexCoord, k);
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    gl_FragColor = vec4(0.0);
     return;
   }
   vec2 px = vec2(1.0 / resolution.x, 0.0);
-  vec3 centre = texture2D(uMainSampler, uv).rgb;
+  vec4 centre4 = texture2D(uMainSampler, uv);
+  vec3 centre = centre4.rgb;
   vec3 left = texture2D(uMainSampler, uv - px * 1.5).rgb;
   vec3 right = texture2D(uMainSampler, uv + px * 1.5).rgb;
   // mild colour bleed: red leans left, blue leans right, then a soft horizontal blend
@@ -44,7 +45,9 @@ void main() {
   col *= 1.0 - 0.65 * intensity * smoothstep(0.32, 0.85, d);
   // keep brightness roughly level after the scanline dimming
   col *= 1.0 + 0.1 * intensity;
-  gl_FragColor = vec4(col, 1.0);
+  // keep the source alpha so overlay scenes (the HUD) stay see-through; colour is premultiplied
+  col = min(col, vec3(centre4.a));
+  gl_FragColor = vec4(col, centre4.a);
 }
 `;
 
@@ -66,6 +69,15 @@ function webglRenderer(scene: Phaser.Scene): Phaser.Renderer.WebGL.WebGLRenderer
   const game = scene.game;
   if (!game || game.renderer?.type !== Phaser.WEBGL) return null;
   return game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
+}
+
+/** Register the CRT post pipeline with the game's renderer (WebGL only). Returns false on Canvas. */
+export function registerCrtPipeline(game: Phaser.Game): boolean {
+  if (game.renderer?.type !== Phaser.WEBGL) return false;
+  const renderer = game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
+  if (!renderer.pipelines) return false;
+  renderer.pipelines.addPostPipeline(CRT_KEY, CrtPipeline);
+  return true;
 }
 
 /** True when the CRT is applied to the scene's main camera. */

@@ -93,19 +93,14 @@ describe("texture coverage", () => {
     }
   });
 
-  it("legacy list equals what PreloadScene.ts actually generates", () => {
+  it("PreloadScene draws the retro set instead of its own textures", () => {
     const src = readFileSync(resolve(__dirname, "../scenes/PreloadScene.ts"), "utf8");
-    const found = new Set<string>();
-    for (const m of src.matchAll(/generateTexture\(\s*"([a-z0-9_]+)"/g)) found.add(m[1]);
-    for (const m of src.matchAll(/makeChest\([^)]*"([a-z0-9_]+)"\)/g)) found.add(m[1]);
-    expect(src).toContain("floor_${idx}");
-    expect(src).toContain("wall_${idx}");
-    for (let i = 0; i < THEME_COUNT; i++) {
-      found.add(`floor_${i}`);
-      found.add(`wall_${i}`);
-    }
+    expect(src).toContain("registerRetroTextures(this)");
+    expect(src).toContain("registerRetroFont(this)");
+    expect(src).not.toContain("generateTexture(");
     expect(FLOOR_THEMES.length).toBe(THEME_COUNT);
-    expect(new Set(LEGACY_TEXTURE_KEYS)).toEqual(found);
+    // every legacy key (the set the old PreloadScene drew) still has a sprite definition
+    for (const k of LEGACY_TEXTURE_KEYS) expect(SPRITES[k], `${k} has no sprite`).toBeDefined();
   });
 
   it("gives every creature a distinct second walk frame", () => {

@@ -6,8 +6,10 @@ import {
   Quest, generateQuestBoard, applyQuestReward, getActiveSpecialRoomTags,
   RARITY_COLORS, RARITY_LABELS,
 } from "../systems/QuestSystem";
+import { Sfx } from "../audio/Sfx";
+import { COL, asciiOnly, flatPanel, retroButton, tagText, uiText } from "../gfx/retroUi";
 
-// ── Tavern tilemap ────────────────────────────────────────────────────────────
+// -- Tavern tilemap ------------------------------------------------------------
 // W=wall  F=floor  S=stairs-down (dungeon portal)
 const W = TILE.WALL;
 const F = TILE.FLOOR;
@@ -26,10 +28,10 @@ function buildTavernTiles(): number[][] {
     tiles[y][TAVERN_W - 1] = W;
   }
 
-  // Bar counter (rows 2-4, cols 2-8) — impassable
+  // Bar counter (rows 2-4, cols 2-8) - impassable
   for (let x = 2; x <= 8; x++) for (let y = 2; y <= 3; y++) tiles[y][x] = W;
 
-  // Notice board area (rows 2-3, cols 20-26) — impassable
+  // Notice board area (rows 2-3, cols 20-26) - impassable
   for (let x = 20; x <= 26; x++) for (let y = 2; y <= 3; y++) tiles[y][x] = W;
 
   // Tables (rows 6-7)
@@ -39,7 +41,7 @@ function buildTavernTiles(): number[][] {
     tiles[7][cx] = W; tiles[7][cx + 1] = W;
   }
 
-  // Dungeon entrance — center bottom (rows 12-13, cols 12-15)
+  // Dungeon entrance - center bottom (rows 12-13, cols 12-15)
   for (let x = 12; x <= 15; x++) {
     tiles[12][x] = S;
     tiles[13][x] = S;
@@ -103,7 +105,7 @@ const SHOP_ITEMS: ShopItem[] = [
     label: 'Large Torch (wider sight)',
     cost: 30,
     action: (s) => {
-      // Store as a small bonus — GameScene reads this via level text
+      // Store as a small bonus - GameScene reads this via level text
       s.gold -= 0; // placeholder, handled separately via stat
     },
   },
@@ -125,7 +127,8 @@ export class TavernScene extends Phaser.Scene {
   // UI elements
   private shopPanel?: Phaser.GameObjects.Container;
   private questPanel?: Phaser.GameObjects.Container;
-  private interactPrompt!: Phaser.GameObjects.Text;
+  private interactPrompt!: Phaser.GameObjects.BitmapText;
+  private promptBg!: Phaser.GameObjects.Rectangle;
   private statsPanel!: Phaser.GameObjects.Container;
 
   // NPC sprites
@@ -214,15 +217,14 @@ export class TavernScene extends Phaser.Scene {
     const totalGold = completed.reduce((sum, q) => sum + q.rewardGold, 0);
     const totalXP = completed.reduce((sum, q) => sum + q.rewardXP, 0);
 
-    const popBg = this.add.rectangle(0, 0, 300, 80, 0x0a2a0a, 0.95)
-      .setStrokeStyle(2, 0x66bb6a);
-    popup.add(popBg);
-    popup.add(this.add.text(0, -20, `${completed.length} Quest${completed.length > 1 ? 's' : ''} Complete!`, {
-      fontSize: "14px", color: "#66bb6a", fontFamily: "monospace",
-    }).setOrigin(0.5));
-    popup.add(this.add.text(0, 6, `+${totalGold} gold  +${totalXP} XP`, {
-      fontSize: "12px", color: "#ffd700", fontFamily: "monospace",
-    }).setOrigin(0.5));
+    popup.add(flatPanel(this, 0, 0, 360, 80, { fill: COL.pine, border: COL.lime }));
+    popup.add(uiText(this, 0, -16, `${completed.length} QUEST${completed.length > 1 ? 'S' : ''} COMPLETE!`, {
+      size: 16, color: COL.lime, originX: 0.5, originY: 0.5,
+    }));
+    popup.add(uiText(this, 0, 14, `+${totalGold} GOLD  +${totalXP} XP`, {
+      size: 16, color: COL.gold, originX: 0.5, originY: 0.5,
+    }));
+    Sfx.play('level_up');
 
     this.tweens.add({
       targets: popup,
@@ -247,18 +249,12 @@ export class TavernScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
     const popup = this.add.container(W / 2, H / 2 + 24).setDepth(290).setScrollFactor(0);
-    popup.add(this.add.rectangle(0, 0, 360, 110, 0x101018, 0.96).setStrokeStyle(2, 0xffd166));
-    popup.add(this.add.text(0, -34, 'Delve Summary', {
-      fontSize: '15px', color: '#ffd166', fontFamily: 'monospace',
-    }).setOrigin(0.5));
-    popup.add(this.add.text(0, -4, [
-      `Deepest floor ${floor}`,
-      `Gold hauled ${gold}g`,
-      `Best streak x${streak}`,
-      `Relics ${s.relics?.length ?? 0}`,
-    ].join('   '), {
-      fontSize: '10px', color: '#c9bed6', fontFamily: 'monospace', align: 'center', wordWrap: { width: 330 },
-    }).setOrigin(0.5));
+    popup.add(flatPanel(this, 0, 0, 440, 110, { fill: COL.ink, border: COL.gold, alpha: 0.96 }));
+    popup.add(uiText(this, 0, -36, 'DELVE SUMMARY', { size: 16, color: COL.gold, originX: 0.5, originY: 0.5 }));
+    popup.add(uiText(this, 0, -14, [
+      `DEEPEST FLOOR ${floor}   GOLD ${gold}G`,
+      `BEST STREAK X${streak}   RELICS ${s.relics?.length ?? 0}`,
+    ].join('\n'), { size: 16, color: COL.silver, originX: 0.5, originY: 0, center: true }));
 
     s.runGoldEarned = 0;
     s.runBestStreak = 0;
@@ -274,7 +270,7 @@ export class TavernScene extends Phaser.Scene {
     });
   }
 
-	  // ── Build Tavern ──────────────────────────────────────────────────────────
+	  // -- Build Tavern ----------------------------------------------------------
 
   private buildTavern() {
     this.wallGroup = this.physics.add.staticGroup();
@@ -318,7 +314,7 @@ export class TavernScene extends Phaser.Scene {
     }
   }
 
-  // ── Spawn Player ──────────────────────────────────────────────────────────
+  // -- Spawn Player ----------------------------------------------------------
 
   private spawnPlayer() {
     // Spawn near the dungeon entrance (row 9, center)
@@ -342,31 +338,25 @@ export class TavernScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.wallGroup);
   }
 
-  // ── NPCs ──────────────────────────────────────────────────────────────────
+  // -- NPCs ------------------------------------------------------------------
 
   private spawnNPCs() {
-    // Innkeeper — stands behind the bar counter
+    // Innkeeper - stands behind the bar counter
     const ix = INNKEEPER_POS.tx * TILE_SIZE + TILE_SIZE / 2;
     const iy = INNKEEPER_POS.ty * TILE_SIZE + TILE_SIZE / 2;
     this.innkeeperSprite = this.add.sprite(ix, iy, "npc").setDepth(5).setScale(1.3);
     this.innkeeperSprite.setTint(0xffcc88);
 
-    this.add.text(ix, iy - TILE_SIZE * 1.2, "Innkeeper", {
-      fontSize: "9px", color: "#ffcc88", fontFamily: "monospace",
-      backgroundColor: "#00000088", padding: { x: 2, y: 1 },
-    }).setOrigin(0.5).setDepth(7);
+    tagText(this, ix, iy - TILE_SIZE * 1.2, "INNKEEPER", { size: 8, color: COL.tan, depth: 7 });
 
     // Notice board sprite
     const bx = NOTICE_BOARD_POS.tx * TILE_SIZE + TILE_SIZE / 2;
     const by = NOTICE_BOARD_POS.ty * TILE_SIZE + TILE_SIZE / 2;
     this.boardSprite = this.add.sprite(bx, by, "notice_board").setDepth(5).setScale(1.4);
 
-    this.add.text(bx, by - TILE_SIZE * 1.2, "Notice Board", {
-      fontSize: "9px", color: "#ffe082", fontFamily: "monospace",
-      backgroundColor: "#00000088", padding: { x: 2, y: 1 },
-    }).setOrigin(0.5).setDepth(6);
+    tagText(this, bx, by - TILE_SIZE * 1.2, "NOTICE BOARD", { size: 8, color: COL.cream, depth: 6 });
 
-    // Quest board glow — draws attention
+    // Quest board glow - draws attention
     const boardGlow = this.add.image(bx, by, "torch_glow")
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(1.5).setAlpha(0.25).setDepth(4).setTint(0xffcc00);
@@ -378,16 +368,13 @@ export class TavernScene extends Phaser.Scene {
     });
 
     // "[E] Quests" label below board
-    const questHint = this.add.text(bx, by + TILE_SIZE * 0.8, "[E] Quests", {
-      fontSize: "10px", color: "#ffe082", fontFamily: "monospace",
-      backgroundColor: "#00000088", padding: { x: 4, y: 2 },
-    }).setOrigin(0.5).setDepth(6);
+    const questHint = tagText(this, bx, by + TILE_SIZE * 0.8, "[E] QUESTS", { size: 8, color: COL.cream, depth: 6, padX: 4, padY: 3 });
     this.tweens.add({
       targets: questHint, alpha: 0.4,
       duration: 1000, yoyo: true, repeat: -1,
     });
 
-    // Innkeeper idle — gentle lateral sway behind bar
+    // Innkeeper idle - gentle lateral sway behind bar
     this.tweens.add({
       targets: this.innkeeperSprite,
       x: ix + 3,
@@ -413,10 +400,7 @@ export class TavernScene extends Phaser.Scene {
       const sprite = this.add.sprite(px, py, p.texture).setDepth(5);
       if (p.tint) sprite.setTint(p.tint);
 
-      this.add.text(px, py - TILE_SIZE, p.name, {
-        fontSize: "8px", color: "#888899", fontFamily: "monospace",
-        backgroundColor: "#00000066", padding: { x: 2, y: 1 },
-      }).setOrigin(0.5).setDepth(6);
+      tagText(this, px, py - TILE_SIZE, p.name.toUpperCase(), { size: 8, color: COL.grey, depth: 6 });
 
       // Subtle idle breathing
       this.tweens.add({
@@ -473,7 +457,7 @@ export class TavernScene extends Phaser.Scene {
   }
 
   private spawnEntranceLabel() {
-    // Portal centre (rows 12-13, cols 12-15 → centre ≈ col 13.5, row 12.5)
+    // Portal centre (rows 12-13, cols 12-15 -> centre ~ col 13.5, row 12.5)
     const portalCx = 13.5 * TILE_SIZE;
     const portalCy = 12.5 * TILE_SIZE;
 
@@ -490,12 +474,9 @@ export class TavernScene extends Phaser.Scene {
     }
 
     // Big visible label above the portal
-    const label = this.add.text(portalCx, portalCy - TILE_SIZE * 2.2, "▼ ENTER DUNGEON ▼", {
-      fontSize: "14px", color: "#cc88ff", fontFamily: "monospace",
-      stroke: "#000000", strokeThickness: 3,
-      backgroundColor: "#0a0014",
-      padding: { x: 8, y: 4 },
-    }).setOrigin(0.5).setDepth(10);
+    const label = tagText(this, portalCx, portalCy - TILE_SIZE * 2.2, "ENTER DUNGEON", {
+      size: 16, color: COL.orchid, fill: COL.plum, padX: 8, padY: 4, depth: 10,
+    });
 
     this.tweens.add({
       targets: label,
@@ -507,9 +488,9 @@ export class TavernScene extends Phaser.Scene {
     });
 
     // Walk-on hint
-    this.add.text(portalCx, portalCy - TILE_SIZE * 1.2, "walk onto portal", {
-      fontSize: "9px", color: "#664488", fontFamily: "monospace",
-    }).setOrigin(0.5).setDepth(10);
+    uiText(this, portalCx, portalCy - TILE_SIZE * 1.2, "WALK ONTO PORTAL", {
+      size: 8, color: COL.violet, originX: 0.5, originY: 0.5, depth: 10,
+    });
   }
 
   private spawnTorches() {
@@ -537,16 +518,16 @@ export class TavernScene extends Phaser.Scene {
     }
   }
 
-  // ── Camera ────────────────────────────────────────────────────────────────
+  // -- Camera ----------------------------------------------------------------
 
   private setupCamera(totalW: number, totalH: number) {
     this.cameras.main.setBounds(0, 0, totalW, totalH);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
-    this.cameras.main.setZoom(1.2);
-    // No fog — tavern is fully lit
+    // Zoom stays 1: a fractional zoom smears pixel art and shifts the screen-fixed panels.
+    // No fog - tavern is fully lit
   }
 
-  // ── Stats Panel ───────────────────────────────────────────────────────────
+  // -- Stats Panel -----------------------------------------------------------
 
   private buildStatsPanel() {
     const W = this.scale.width;
@@ -566,43 +547,52 @@ export class TavernScene extends Phaser.Scene {
     const y = 8;
 
     const lines = [
-      `${cls.name}  LV ${s.level}`,
-      `HP  ${Math.ceil(s.hp)}/${s.maxHp}`,
-      `Gold ${s.gold}g`,
-      `🧪 ${s.potions}  💧 ${s.manaPotions}`,
+      `${cls.name.toUpperCase()}  LV ${s.level}`,
+      `HP ${Math.ceil(s.hp)}/${s.maxHp}`,
+      `GOLD ${s.gold}G`,
+      `POTIONS ${s.potions}  MANA ${s.manaPotions}`,
     ];
+    const panelW = 280;
+    const panelH = lines.length * 20 + 16;
 
-    const bg = this.add.rectangle(x - 80, y + 36, 166, lines.length * 18 + 12, 0x0a0a14, 0.85)
-      .setStrokeStyle(1, 0x333355);
-    this.statsPanel.add(bg);
+    this.statsPanel.add(flatPanel(this, x - panelW / 2, y + panelH / 2, panelW, panelH, {
+      fill: COL.ink, border: COL.slate, alpha: 0.9,
+    }));
 
     lines.forEach((line, i) => {
-      const txt = this.add.text(x, y + 8 + i * 18, line, {
-        fontSize: "11px", color: "#ccccdd", fontFamily: "monospace",
-      }).setOrigin(1, 0);
-      this.statsPanel.add(txt);
+      this.statsPanel.add(uiText(this, x - 12, y + 10 + i * 20, line, {
+        size: 16, color: i === 0 ? COL.gold : COL.silver, originX: 1,
+      }));
     });
   }
 
-  // ── Interact Prompt ───────────────────────────────────────────────────────
+  // -- Interact Prompt -------------------------------------------------------
 
   private buildPromptText() {
-    this.interactPrompt = this.add.text(
-      this.scale.width / 2, this.scale.height - 36,
-      "",
-      { fontSize: "15px", color: "#ffffff", fontFamily: "monospace", backgroundColor: "#000000cc", padding: { x: 12, y: 6 }, stroke: "#000000", strokeThickness: 2 }
-    ).setOrigin(0.5).setDepth(100).setScrollFactor(0).setVisible(false);
+    const x = this.scale.width / 2;
+    const y = this.scale.height - 40;
+    this.promptBg = flatPanel(this, x, y, 120, 40, { fill: COL.black, border: COL.slate, alpha: 0.9 })
+      .setDepth(99).setScrollFactor(0).setVisible(false);
+    this.interactPrompt = uiText(this, x, y, "", { size: 16, color: COL.white, originX: 0.5, originY: 0.5, depth: 100 })
+      .setScrollFactor(0).setVisible(false);
   }
 
   private showPrompt(text: string) {
-    this.interactPrompt.setText(text).setVisible(true);
+    const clean = asciiOnly(text);
+    if (this.interactPrompt.text !== clean) {
+      this.interactPrompt.setText(clean);
+      this.promptBg.setSize(this.interactPrompt.width + 32, 40);
+    }
+    this.interactPrompt.setVisible(true);
+    this.promptBg.setVisible(true);
   }
 
   private hidePrompt() {
     this.interactPrompt.setVisible(false);
+    this.promptBg.setVisible(false);
   }
 
-  // ── Update ────────────────────────────────────────────────────────────────
+  // -- Update ----------------------------------------------------------------
 
   update(_time: number, delta: number) {
     if (!this.player || this.playerStats.hp <= 0) return;
@@ -627,7 +617,7 @@ export class TavernScene extends Phaser.Scene {
     this.nearEntrance = entranceDist < TILE_SIZE * 3;
 
     // ESC closes dungeon choice dialog
-    // Check _dungeonChoiceOpen BEFORE JustDown — JustDown consumes the keypress
+    // Check _dungeonChoiceOpen BEFORE JustDown - JustDown consumes the keypress
     if (this._esc && this._dungeonChoiceOpen && Phaser.Input.Keyboard.JustDown(this._esc)) {
       this.closeDungeonChoice();
       return;
@@ -646,13 +636,13 @@ export class TavernScene extends Phaser.Scene {
 
     // Prompt
     if (this.shopPanel || this.questPanel) {
-      this.showPrompt("ESC — Close");
+      this.showPrompt("ESC - CLOSE");
     } else if (this.nearInnkeeper) {
-      this.showPrompt("E — Talk to Innkeeper (Shop)");
+      this.showPrompt("E - TALK TO THE INNKEEPER (SHOP)");
     } else if (this.nearBoard) {
-      this.showPrompt("E — Read Notice Board");
+      this.showPrompt("E - READ THE NOTICE BOARD");
     } else if (this.nearEntrance) {
-      this.showPrompt("Walk onto the glowing portal to enter the dungeon ▼");
+      this.showPrompt("WALK ONTO THE GLOWING PORTAL TO ENTER THE DUNGEON");
     } else {
       this.hidePrompt();
     }
@@ -676,79 +666,64 @@ export class TavernScene extends Phaser.Scene {
     this.emitHUD();
   }
 
-  // ── Shop ──────────────────────────────────────────────────────────────────
+  // -- Shop ------------------------------------------------------------------
 
   private openShop() {
     this.closeAllPanels();
     const W = this.scale.width;
     const H = this.scale.height;
-    const panelW = 380;
-    const panelH = 320;
+    const classKey = this.playerStats.classKey;
+    const available = SHOP_ITEMS.filter(i => !i.classFilter || i.classFilter.includes(classKey));
+    const panelW = 480;
+    const panelH = 160 + available.length * 48;
     const cx = W / 2;
     const cy = H / 2;
 
     this.shopPanel = this.add.container(cx, cy).setDepth(200).setScrollFactor(0);
+    const panel = this.shopPanel;
 
-    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0a0a18, 0.96)
-      .setStrokeStyle(2, 0x8b5e2a);
-    this.shopPanel.add(bg);
-
-    this.shopPanel.add(this.add.text(0, -panelH / 2 + 20, "⚒  INNKEEPER'S SHOP", {
-      fontSize: "16px", color: "#ffcc88", fontFamily: "monospace",
-    }).setOrigin(0.5));
-
-    this.shopPanel.add(this.add.text(0, -panelH / 2 + 42, `Gold: ${this.playerStats.gold}g`, {
-      fontSize: "12px", color: "#ffd700", fontFamily: "monospace",
-    }).setOrigin(0.5));
-
-    const classKey = this.playerStats.classKey;
-    const available = SHOP_ITEMS.filter(i => !i.classFilter || i.classFilter.includes(classKey));
+    panel.add(flatPanel(this, 0, 0, panelW, panelH, { fill: COL.ink, border: COL.brown, alpha: 0.97 }));
+    panel.add(uiText(this, 0, -panelH / 2 + 28, "INNKEEPER'S SHOP", { size: 24, color: COL.tan, originX: 0.5, originY: 0.5 }));
+    panel.add(uiText(this, 0, -panelH / 2 + 60, `GOLD: ${this.playerStats.gold}G`, { size: 16, color: COL.gold, originX: 0.5, originY: 0.5 }));
 
     available.forEach((item, i) => {
-      const itemY = -panelH / 2 + 80 + i * 42;
+      const itemY = -panelH / 2 + 104 + i * 48;
       const canAfford = this.playerStats.gold >= item.cost;
 
-      const itemBg = this.add.rectangle(0, itemY, panelW - 24, 36, 0x141420)
-        .setInteractive()
-        .setStrokeStyle(1, canAfford ? 0x444466 : 0x222228);
-      this.shopPanel!.add(itemBg);
+      const itemBg = flatPanel(this, 0, itemY, panelW - 32, 40, {
+        fill: COL.dusk, border: canAfford ? COL.grey : COL.slate,
+      }).setInteractive();
+      panel.add(itemBg);
 
-      const nameColor = canAfford ? "#ccccff" : "#555566";
-      const costColor = canAfford ? "#ffd700" : "#554400";
-
-      this.shopPanel!.add(this.add.text(-panelW / 2 + 20, itemY, item.label, {
-        fontSize: "12px", color: nameColor, fontFamily: "monospace",
-      }).setOrigin(0, 0.5));
-
-      this.shopPanel!.add(this.add.text(panelW / 2 - 20, itemY, `${item.cost}g`, {
-        fontSize: "12px", color: costColor, fontFamily: "monospace",
-      }).setOrigin(1, 0.5));
+      panel.add(uiText(this, -panelW / 2 + 28, itemY, item.label.toUpperCase(), {
+        size: 16, color: canAfford ? COL.white : COL.grey, originY: 0.5,
+      }));
+      panel.add(uiText(this, panelW / 2 - 28, itemY, `${item.cost}G`, {
+        size: 16, color: canAfford ? COL.gold : COL.umber, originX: 1, originY: 0.5,
+      }));
 
       if (canAfford) {
-        itemBg.on("pointerover", () => itemBg.setFillStyle(0x1e1e30));
-        itemBg.on("pointerout", () => itemBg.setFillStyle(0x141420));
+        itemBg.on("pointerover", () => itemBg.setFillStyle(COL.slate));
+        itemBg.on("pointerout", () => itemBg.setFillStyle(COL.dusk));
         itemBg.on("pointerdown", () => {
           this.playerStats.gold -= item.cost;
           item.action(this.playerStats);
+          Sfx.play("gold");
           // Refresh panel
           this.openShop();
         });
       }
     });
 
-    // Full-width close bar (x=0 for reliable hit-testing under zoom)
-    const closeBg = this.add.rectangle(0, panelH / 2 - 18, panelW - 24, 26, 0x2a0a0a)
-      .setInteractive().setStrokeStyle(1, 0x884444);
-    this.shopPanel.add(closeBg);
-    this.shopPanel.add(this.add.text(0, panelH / 2 - 18, "CLOSE  ✕", {
-      fontSize: "11px", color: "#ff6666", fontFamily: "monospace",
-    }).setOrigin(0.5));
-    closeBg.on("pointerover", () => closeBg.setFillStyle(0x3a1a1a));
-    closeBg.on("pointerout", () => closeBg.setFillStyle(0x2a0a0a));
-    closeBg.on("pointerdown", () => this.closeAllPanels());
+    // Full-width close bar (x=0 keeps hit-testing simple for a screen-fixed panel)
+    const close = retroButton(this, 0, panelH / 2 - 32, panelW - 32, 40, "CLOSE (ESC)", () => this.closeAllPanels(), {
+      fill: COL.blood, hoverFill: COL.red, border: COL.red, color: COL.rose, hoverColor: COL.white,
+    });
+    panel.add(close.box);
+    panel.add(close.label);
   }
 
-  // ── Quest Board ────────────────────────────────────────────────────────────
+  // -- Quest Board ------------------------------------------------------------
 
   private openQuestBoard() {
     this.closeAllPanels();
@@ -771,95 +746,77 @@ export class TavernScene extends Phaser.Scene {
     s.questBoardGeneratedAt = board.generatedAt;
     _boardQuests = board.quests;
 
-    const panelW = 460;
-    const cardH = 82;
-    const panelH = 60 + _boardQuests.length * (cardH + 6) + 20;
+    const panelW = 680;
+    const cardH = 92;
+    const gap = 6;
+    const panelH = 96 + _boardQuests.length * (cardH + gap);
 
     this.questPanel = this.add.container(W / 2, H / 2).setDepth(200).setScrollFactor(0);
+    const panel = this.questPanel;
 
-    const bg = this.add.rectangle(0, 0, panelW, panelH, 0x0e0c04, 0.96)
-      .setStrokeStyle(2, 0x8b5e2a);
-    this.questPanel.add(bg);
+    panel.add(flatPanel(this, 0, 0, panelW, panelH, { fill: COL.ink, border: COL.brown, alpha: 0.97 }));
+    panel.add(uiText(this, 0, -panelH / 2 + 28, "QUEST BOARD", { size: 24, color: COL.cream, originX: 0.5, originY: 0.5 }));
 
-    this.questPanel.add(this.add.text(0, -panelH / 2 + 18, "📋  QUEST BOARD", {
-      fontSize: "15px", color: "#ffe082", fontFamily: "monospace",
-    }).setOrigin(0.5));
-
-    // Full-width close bar at top (x=0 for reliable hit-testing under zoom)
-    const closeBg = this.add.rectangle(0, -panelH / 2 + 18, panelW - 20, 26, 0x2a0a0a)
-      .setInteractive().setStrokeStyle(1, 0x884444);
-    this.questPanel.add(closeBg);
-    this.questPanel.add(this.add.text(0, -panelH / 2 + 18, "CLOSE  ✕", {
-      fontSize: "11px", color: "#ff6666", fontFamily: "monospace",
-    }).setOrigin(0.5));
-    closeBg.on("pointerover", () => closeBg.setFillStyle(0x3a1a1a));
-    closeBg.on("pointerout", () => closeBg.setFillStyle(0x2a0a0a));
-    closeBg.on("pointerdown", () => this.closeAllPanels());
+    const close = retroButton(this, panelW / 2 - 96, -panelH / 2 + 28, 160, 32, "CLOSE (ESC)", () => this.closeAllPanels(), {
+      fill: COL.blood, hoverFill: COL.red, border: COL.red, color: COL.rose, hoverColor: COL.white,
+    });
+    panel.add(close.box);
+    panel.add(close.label);
 
     _boardQuests.forEach((q, i) => {
-      const qy = -panelH / 2 + 55 + i * (cardH + 6);
+      const qy = -panelH / 2 + 56 + cardH / 2 + i * (cardH + gap);
       const rarityColor = RARITY_COLORS[q.rarity];
-      const rarityHex = `#${rarityColor.toString(16).padStart(6, '0')}`;
+      const left = -panelW / 2 + 24;
 
       // Check if already active
       const isActive = s.activeQuests!.some(aq => aq.id === q.id);
 
-      // Card background — full-width interactive for accepting
-      const cardFill = isActive ? 0x0e1a0e : 0x18160a;
-      const cardBg = this.add.rectangle(0, qy, panelW - 20, cardH, cardFill)
-        .setStrokeStyle(isActive ? 2 : 1, isActive ? 0x66bb6a : rarityColor)
-        .setInteractive();
-      this.questPanel!.add(cardBg);
+      // Card background: full-width interactive for accepting
+      const cardFill = isActive ? COL.pine : COL.dusk;
+      const cardBg = flatPanel(this, 0, qy, panelW - 24, cardH, {
+        fill: cardFill, border: isActive ? COL.lime : rarityColor,
+      }).setInteractive();
+      panel.add(cardBg);
 
       if (!isActive) {
-        cardBg.on("pointerover", () => cardBg.setFillStyle(0x24220e));
-        cardBg.on("pointerout", () => cardBg.setFillStyle(0x18160a));
+        cardBg.on("pointerover", () => cardBg.setFillStyle(COL.slate));
+        cardBg.on("pointerout", () => cardBg.setFillStyle(COL.dusk));
         cardBg.on("pointerdown", () => {
           this.acceptQuest(q);
+          Sfx.play("ui_select");
           this.openQuestBoard(); // refresh panel
         });
       }
 
       // Rarity badge
-      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 8, RARITY_LABELS[q.rarity], {
-        fontSize: "8px", color: rarityHex, fontFamily: "monospace",
-        backgroundColor: "#000000aa", padding: { x: 3, y: 1 },
-      }).setOrigin(0, 0));
+      panel.add(uiText(this, left, qy - cardH / 2 + 8, RARITY_LABELS[q.rarity], { size: 8, color: rarityColor }));
 
       // Title
-      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 22, q.title, {
-        fontSize: "11px", color: isActive ? "#66bb6a" : rarityHex, fontFamily: "monospace",
-      }).setOrigin(0, 0));
+      panel.add(uiText(this, left, qy - cardH / 2 + 20, q.title.toUpperCase(), {
+        size: 16, color: isActive ? COL.lime : rarityColor, maxWidth: panelW - 240,
+      }));
 
       // Description
-      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy - cardH / 2 + 38, q.description, {
-        fontSize: "9px", color: "#887766", fontFamily: "monospace",
-        wordWrap: { width: panelW - 140 },
-      }).setOrigin(0, 0));
+      panel.add(uiText(this, left, qy - cardH / 2 + 42, q.description, {
+        size: 8, color: COL.silver, maxWidth: panelW - 240,
+      }));
 
       // Rewards
-      this.questPanel!.add(this.add.text(-panelW / 2 + 18, qy + cardH / 2 - 14,
-        `${q.rewardGold}g  +${q.rewardXP}xp`, {
-        fontSize: "9px", color: "#ffd700", fontFamily: "monospace",
-      }).setOrigin(0, 0));
+      panel.add(uiText(this, left, qy + cardH / 2 - 22, `${q.rewardGold}G  +${q.rewardXP}XP`, {
+        size: 16, color: COL.gold,
+      }));
 
       // Status label on right side
       if (isActive) {
-        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "ACCEPTED ✓", {
-          fontSize: "11px", color: "#66bb6a", fontFamily: "monospace",
-          backgroundColor: "#0a2a0a", padding: { x: 6, y: 3 },
-        }).setOrigin(1, 0.5));
+        panel.add(uiText(this, panelW / 2 - 36, qy, "ACCEPTED", {
+          size: 16, color: COL.lime, originX: 1, originY: 0.5,
+        }));
       } else {
-        this.questPanel!.add(this.add.text(panelW / 2 - 18, qy, "▶ CLICK TO ACCEPT", {
-          fontSize: "9px", color: "#aaaa66", fontFamily: "monospace",
-        }).setOrigin(1, 0.5));
+        panel.add(uiText(this, panelW / 2 - 36, qy, "CLICK TO\nACCEPT", {
+          size: 16, color: COL.cream, originX: 1, originY: 0.5, center: true,
+        }));
       }
     });
-
-    // Close hint at bottom
-    this.questPanel.add(this.add.text(0, panelH / 2 - 16, "Click a quest to accept  |  ESC to close", {
-      fontSize: "9px", color: "#555544", fontFamily: "monospace",
-    }).setOrigin(0.5));
   }
 
   private acceptQuest(quest: Quest) {
@@ -872,11 +829,12 @@ export class TavernScene extends Phaser.Scene {
   }
 
   private closeAllPanels() {
+    if (this.shopPanel || this.questPanel) Sfx.play("ui_back");
     if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = undefined; }
     if (this.questPanel) { this.questPanel.destroy(); this.questPanel = undefined; }
   }
 
-  // ── Portal Step — Continue or New ─────────────────────────────────────────
+  // -- Portal Step - Continue or New -----------------------------------------
 
   private onPortalStep() {
     const hasSavedDungeon = Object.keys(this.playerStats?.savedDungeons ?? {}).length > 0;
@@ -897,59 +855,42 @@ export class TavernScene extends Phaser.Scene {
     const s = this.playerStats;
     const deepestFloor = Math.max(...Object.keys(s.savedDungeons ?? {}).map(Number));
 
-    this._dungeonChoiceDialog = this.add.container(W / 2, H / 2).setDepth(200).setScrollFactor(0);
+    const dlg = this.add.container(W / 2, H / 2).setDepth(200).setScrollFactor(0);
+    this._dungeonChoiceDialog = dlg;
 
-    const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.55);
-    this._dungeonChoiceDialog.add(overlay);
-
-    const bg = this.add.rectangle(0, 0, 480, 280, 0x0c0c1a, 0.97).setStrokeStyle(2, 0x6622aa);
-    this._dungeonChoiceDialog.add(bg);
-
-    this._dungeonChoiceDialog.add(this.add.text(0, -108, '⚔  DUNGEON ENTRANCE  ⚔', {
-      fontSize: '18px', color: '#cc88ff', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5));
-
-    this._dungeonChoiceDialog.add(this.add.text(0, -76, `Active expedition — Floor ${deepestFloor}`, {
-      fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
-    }).setOrigin(0.5));
+    dlg.add(this.add.rectangle(0, 0, W, H, 0x000000, 0.55));
+    dlg.add(flatPanel(this, 0, 0, 640, 340, { fill: COL.ink, border: COL.violet, alpha: 0.97 }));
+    dlg.add(uiText(this, 0, -132, 'DUNGEON ENTRANCE', { size: 24, color: COL.orchid, originX: 0.5, originY: 0.5 }));
+    dlg.add(uiText(this, 0, -96, `ACTIVE EXPEDITION - FLOOR ${deepestFloor}`, { size: 16, color: COL.silver, originX: 0.5, originY: 0.5 }));
 
     // Continue button
-    const contBg = this.add.rectangle(-110, 10, 200, 120, 0x0a1a2a).setInteractive().setStrokeStyle(1, 0x3399ff);
-    this._dungeonChoiceDialog.add(contBg);
-    this._dungeonChoiceDialog.add(this.add.text(-110, -30, 'CONTINUE', {
-      fontSize: '16px', color: '#3399ff', fontFamily: 'monospace',
-    }).setOrigin(0.5));
-    this._dungeonChoiceDialog.add(this.add.text(-110, 4, [
-      `Resume Floor ${deepestFloor}`,
-      'All state preserved',
-      'Monsters/traps/chests',
-      'as you left them',
-    ].join('\n'), { fontSize: '10px', color: '#668899', fontFamily: 'monospace', align: 'center', lineSpacing: 3 }).setOrigin(0.5));
-    contBg.on('pointerover', () => contBg.setFillStyle(0x0a2a44));
-    contBg.on('pointerout', () => contBg.setFillStyle(0x0a1a2a));
+    const contBg = flatPanel(this, -160, 20, 280, 150, { fill: COL.navy, border: COL.sky }).setInteractive();
+    dlg.add(contBg);
+    dlg.add(uiText(this, -160, -30, 'CONTINUE', { size: 24, color: COL.sky, originX: 0.5, originY: 0.5 }));
+    dlg.add(uiText(this, -160, 20, [
+      `RESUME FLOOR ${deepestFloor}`,
+      'STATE KEPT AS',
+      'YOU LEFT IT',
+    ].join('\n'), { size: 16, color: COL.ice, originX: 0.5, originY: 0, center: true }));
+    contBg.on('pointerover', () => contBg.setFillStyle(COL.blue));
+    contBg.on('pointerout', () => contBg.setFillStyle(COL.navy));
     contBg.on('pointerdown', () => { this.closeDungeonChoice(); this.enterDungeon(true); });
 
     // New dungeon button
-    const newBg = this.add.rectangle(110, 10, 200, 120, 0x1a0a2a).setInteractive().setStrokeStyle(1, 0xcc44ff);
-    this._dungeonChoiceDialog.add(newBg);
-    this._dungeonChoiceDialog.add(this.add.text(110, -30, 'NEW DUNGEON', {
-      fontSize: '16px', color: '#cc44ff', fontFamily: 'monospace',
-    }).setOrigin(0.5));
-    this._dungeonChoiceDialog.add(this.add.text(110, 4, [
-      'Fresh from Floor 1',
-      'New random layout',
-      'All floors reset',
-      'Keep gear & levels',
-    ].join('\n'), { fontSize: '10px', color: '#886699', fontFamily: 'monospace', align: 'center', lineSpacing: 3 }).setOrigin(0.5));
-    newBg.on('pointerover', () => newBg.setFillStyle(0x2a0a44));
-    newBg.on('pointerout', () => newBg.setFillStyle(0x1a0a2a));
+    const newBg = flatPanel(this, 160, 20, 280, 150, { fill: COL.plum, border: COL.orchid }).setInteractive();
+    dlg.add(newBg);
+    dlg.add(uiText(this, 160, -30, 'NEW DUNGEON', { size: 24, color: COL.orchid, originX: 0.5, originY: 0.5 }));
+    dlg.add(uiText(this, 160, 20, [
+      'FRESH FROM FLOOR 1',
+      'ALL FLOORS RESET',
+      'KEEP GEAR + LEVELS',
+    ].join('\n'), { size: 16, color: COL.rose, originX: 0.5, originY: 0, center: true }));
+    newBg.on('pointerover', () => newBg.setFillStyle(COL.violet));
+    newBg.on('pointerout', () => newBg.setFillStyle(COL.plum));
     newBg.on('pointerdown', () => { this.closeDungeonChoice(); this.enterDungeon(false); });
 
     // ESC hint
-    this._dungeonChoiceDialog.add(this.add.text(0, 110, 'ESC — close', {
-      fontSize: '10px', color: '#333355', fontFamily: 'monospace',
-    }).setOrigin(0.5));
+    dlg.add(uiText(this, 0, 138, 'ESC - CLOSE', { size: 8, color: COL.grey, originX: 0.5, originY: 0.5 }));
   }
 
   private closeDungeonChoice() {
@@ -958,9 +899,9 @@ export class TavernScene extends Phaser.Scene {
     this._dungeonChoiceOpen = false;
   }
 
-  // ── Enter Dungeon ─────────────────────────────────────────────────────────
+  // -- Enter Dungeon ---------------------------------------------------------
 
-  /** @param continueSaved — true = resume saved dungeon, false = fresh generation */
+  /** @param continueSaved - true = resume saved dungeon, false = fresh generation */
   private enterDungeon(continueSaved: boolean) {
     if (this._enteringDungeon) return;
     this._enteringDungeon = true;
@@ -969,7 +910,7 @@ export class TavernScene extends Phaser.Scene {
     persistedStats.saveSlot = this.saveSlot;
 
     if (!continueSaved) {
-      // Clear all saved dungeon floors — fresh generation
+      // Clear all saved dungeon floors - fresh generation
       persistedStats.savedDungeons = {};
       persistedStats.floor = 1;
     } else {
@@ -1000,7 +941,7 @@ export class TavernScene extends Phaser.Scene {
     await saveGame(this.saveSlot, stats);
   }
 
-  // ── HUD Events ────────────────────────────────────────────────────────────
+  // -- HUD Events ------------------------------------------------------------
 
   private emitHUD() {
     const s = this.playerStats;

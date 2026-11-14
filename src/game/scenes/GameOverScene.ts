@@ -1,5 +1,7 @@
 import * as Phaser from "phaser";
 import { listSaves, loadGame } from "../systems/SaveStore";
+import { Sfx } from "../audio/Sfx";
+import { CLASS_COL, COL, asciiOnly, flatPanel, retroButton, uiText } from "../gfx/retroUi";
 
 interface SaveMeta {
   slot: number;
@@ -9,10 +11,16 @@ interface SaveMeta {
   updatedAt: string;
 }
 
-const CLASS_ICONS: Record<string, string> = { fighter: '⚔', thief: '🗡', wizard: '✨', cleric: '✝' };
-const CLASS_COLORS: Record<string, string> = {
-  fighter: '#ef5350', thief: '#90a4ae', wizard: '#42a5f5', cleric: '#ffca28',
-};
+export interface GameOverData {
+  floor?: number;
+  kills?: number;
+  level?: number;
+  gold?: number;
+  bestStreak?: number;
+  relics?: string[];
+  /** True when the Hollow King fell: shows the victory screen instead of the death screen. */
+  victory?: boolean;
+}
 
 export class GameOverScene extends Phaser.Scene {
   private floor = 1;
@@ -21,194 +29,125 @@ export class GameOverScene extends Phaser.Scene {
   private gold = 0;
   private bestStreak = 0;
   private relics: string[] = [];
+  private victory = false;
   private optionsContainer!: Phaser.GameObjects.Container;
 
   constructor() {
     super({ key: "GameOverScene" });
   }
 
-  init(data: { floor?: number; kills?: number; level?: number; gold?: number; bestStreak?: number; relics?: string[] }) {
+  init(data: GameOverData) {
     this.floor = data?.floor ?? 1;
     this.kills = data?.kills ?? 0;
     this.level = data?.level ?? 1;
     this.gold = data?.gold ?? 0;
     this.bestStreak = data?.bestStreak ?? 0;
     this.relics = data?.relics ?? [];
+    this.victory = data?.victory === true;
   }
 
   create() {
     const { width, height } = this.scale;
 
-    this.add.rectangle(width / 2, height / 2, width, height, 0x0a0a0f, 0.95);
+    this.add.rectangle(width / 2, height / 2, width, height, COL.ink);
+    for (let x = 16; x < width; x += 32) {
+      this.add.image(x, 16, this.victory ? "wall_3" : "wall_0");
+      this.add.image(x, height - 16, this.victory ? "wall_3" : "wall_0");
+    }
 
-    this.add
-      .text(width / 2, height * 0.18, "YOU DIED", {
-        fontSize: "52px",
-        color: "#f44336",
-        fontFamily: "monospace",
-        stroke: "#000",
-        strokeThickness: 6,
-      })
-      .setOrigin(0.5);
+    if (this.victory) {
+      uiText(this, width / 2 + 4, 100, "THE HOLLOW KING RESTS", { size: 40, color: COL.umber, originX: 0.5, originY: 0.5 });
+      uiText(this, width / 2, 96, "THE HOLLOW KING RESTS", { size: 40, color: COL.gold, originX: 0.5, originY: 0.5 });
+      uiText(this, width / 2, 144, "THE TOMB IS QUIET AT LAST", { size: 16, color: COL.cream, originX: 0.5, originY: 0.5 });
+      Sfx.play("victory");
+    } else {
+      uiText(this, width / 2 + 4, 100, "YOU DIED", { size: 64, color: COL.blood, originX: 0.5, originY: 0.5 });
+      uiText(this, width / 2, 96, "YOU DIED", { size: 64, color: COL.red, originX: 0.5, originY: 0.5 });
+    }
 
-	    const stats = [
-	      `Floor reached:  ${this.floor}`,
-	      `Enemies killed: ${this.kills}`,
-	      `Level:          ${this.level}`,
-      `Gold hauled:    ${this.gold}`,
-      `Best streak:    ${this.bestStreak}`,
-      `Relics found:   ${this.relics.length}`,
-	    ];
-
-    stats.forEach((line, i) => {
-      this.add
-        .text(width / 2, height * 0.32 + i * 28, line, {
-          fontSize: "16px",
-          color: "#aaaaaa",
-          fontFamily: "monospace",
-        })
-        .setOrigin(0.5);
+    const stats: Array<[string, string]> = [
+      ["FLOOR REACHED", String(this.floor)],
+      ["ENEMIES SLAIN", String(this.kills)],
+      ["LEVEL", String(this.level)],
+      ["GOLD HAULED", String(this.gold)],
+      ["BEST STREAK", String(this.bestStreak)],
+      ["RELICS FOUND", String(this.relics.length)],
+    ];
+    const px = 260;
+    const py = 360;
+    flatPanel(this, px, py, 440, 300, { fill: COL.dusk, border: this.victory ? COL.gold : COL.slate });
+    uiText(this, px, py - 130, this.victory ? "YOUR RUN" : "THE LAST DELVE", { size: 16, color: COL.gold, originX: 0.5, originY: 0.5 });
+    stats.forEach(([label, value], i) => {
+      const y = py - 90 + i * 40;
+      uiText(this, px - 200, y, label, { size: 16, color: COL.silver });
+      uiText(this, px + 200, y, value, { size: 16, color: COL.white, originX: 1 });
     });
 
     this.optionsContainer = this.add.container(0, 0);
 
     // Render buttons immediately (no saves yet), then fetch saves
     this.renderOptions([]);
-    this.loadSaves();
+    void this.loadSaves();
   }
 
   private async loadSaves() {
     // Server first, this device's saves when signed out or offline (SaveStore falls back).
     const listing = await listSaves();
+    if (!this.sys.isActive()) return;
     const saves = listing.saves.filter((s): s is SaveMeta => s !== null);
     this.renderOptions(saves);
   }
 
   private renderOptions(saves: SaveMeta[]) {
     this.optionsContainer.removeAll(true);
+    const cx = 700;
+    let cursorY = 214;
+    const put = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      this.optionsContainer.add(o);
+      return o;
+    };
 
-    const { width, height } = this.scale;
-    let cursorY = height * 0.56;
-
-    // -- Saved characters section --
+    // -- Saved characters --
     if (saves.length > 0) {
-      this.optionsContainer.add(
-        this.add
-          .text(width / 2, cursorY, "── SAVED CHARACTERS ──", {
-            fontSize: "13px",
-            color: "#aaaacc",
-            fontFamily: "monospace",
-          })
-          .setOrigin(0.5)
-      );
-      cursorY += 28;
-
-      const rowW = 360;
-      const rowH = 36;
-
-      for (const save of saves.slice(0, 5)) {
-        const cy = cursorY;
-        const classKey = this.detectClass(save.name);
-        const icon = CLASS_ICONS[classKey] ?? '?';
-        const color = CLASS_COLORS[classKey] ?? '#ffffff';
-        const floorStr = save.floor === 0 ? 'Tavern' : `Floor ${save.floor}`;
-
-        // Row background
-        const rowBg = this.add
-          .rectangle(width / 2, cy, rowW, rowH, 0x101830)
-          .setInteractive({ useHandCursor: true })
-          .setStrokeStyle(1, 0x4466aa);
-        this.optionsContainer.add(rowBg);
-
-        // Icon
-        const leftX = width / 2 - rowW / 2 + 12;
-        this.optionsContainer.add(
-          this.add.text(leftX, cy, icon, {
-            fontSize: '16px', fontFamily: 'monospace',
-          }).setOrigin(0, 0.5)
-        );
-
-        // Name
-        this.optionsContainer.add(
-          this.add.text(leftX + 26, cy, save.name, {
-            fontSize: '12px', color, fontFamily: 'monospace',
-          }).setOrigin(0, 0.5)
-        );
-
-        // Level / Floor
-        this.optionsContainer.add(
-          this.add.text(width / 2 + 40, cy, `Lv ${save.level} / ${floorStr}`, {
-            fontSize: '10px', color: '#888899', fontFamily: 'monospace',
-          }).setOrigin(0, 0.5)
-        );
-
-        // LOAD button label
-        this.optionsContainer.add(
-          this.add.text(width / 2 + rowW / 2 - 10, cy, 'LOAD ▶', {
-            fontSize: '10px', color: '#4488cc', fontFamily: 'monospace',
-          }).setOrigin(1, 0.5)
-        );
-
-        rowBg.on("pointerover", () => rowBg.setFillStyle(0x18243a));
-        rowBg.on("pointerout", () => rowBg.setFillStyle(0x101830));
-        rowBg.on("pointerdown", () => this.loadSave(save.slot));
-
-        cursorY += rowH + 6;
+      put(uiText(this, cx, cursorY, "SAVED CHARACTERS", { size: 16, color: COL.silver, originX: 0.5, originY: 0.5 }));
+      cursorY += 32;
+      const rowW = 440;
+      const rowH = 40;
+      for (const save of saves.slice(0, 4)) {
+        const cls = this.detectClass(save.name);
+        const where = save.floor === 0 ? "TAVERN" : `FLOOR ${save.floor}`;
+        const box = put(flatPanel(this, cx, cursorY, rowW, rowH, { fill: COL.navy, border: COL.sky }));
+        box.setInteractive({ useHandCursor: true });
+        box.on("pointerover", () => box.setFillStyle(COL.blue));
+        box.on("pointerout", () => box.setFillStyle(COL.navy));
+        box.on("pointerdown", () => this.loadSave(save.slot));
+        put(this.add.image(cx - rowW / 2 + 24, cursorY, `player_${cls}`).setScale(1));
+        put(uiText(this, cx - rowW / 2 + 48, cursorY, asciiOnly(save.name).toUpperCase().slice(0, 10), { size: 16, color: CLASS_COL[cls], originY: 0.5 }));
+        put(uiText(this, cx + rowW / 2 - 10, cursorY, `LV ${save.level} ${where}`, { size: 8, color: COL.silver, originX: 1, originY: 0.5 }));
+        cursorY += rowH + 8;
       }
-
-      cursorY += 10;
+      cursorY += 8;
     }
 
-    // -- NEW CHARACTER button (green, prominent) --
-    const newBtnW = 260;
-    const newBtnH = 44;
-    const newBg = this.add
-      .rectangle(width / 2, cursorY, newBtnW, newBtnH, 0x0a1a0a)
-      .setInteractive({ useHandCursor: true });
-    this.add.rectangle(width / 2, cursorY, newBtnW, newBtnH).setStrokeStyle(2, 0x44cc44);
-    const newTxt = this.add
-      .text(width / 2, cursorY, "NEW CHARACTER", {
-        fontSize: "18px",
-        color: "#44cc44",
-        fontFamily: "monospace",
-      })
-      .setOrigin(0.5);
-    this.optionsContainer.add(newBg);
-    this.optionsContainer.add(newTxt);
+    const newBtn = retroButton(this, cx, cursorY + 24, 440, 48, "NEW CHARACTER", () => this.scene.start("CharacterSelectScene"), {
+      size: 24, fill: COL.pine, hoverFill: COL.green, border: COL.lime, color: COL.lime, hoverColor: COL.white,
+    });
+    put(newBtn.box);
+    put(newBtn.label);
+    cursorY += 24 + 24 + 16;
 
-    newBg.on("pointerover", () => { newBg.setFillStyle(0x102010); newTxt.setColor("#88ff88"); });
-    newBg.on("pointerout", () => { newBg.setFillStyle(0x0a1a0a); newTxt.setColor("#44cc44"); });
-    newBg.on("pointerdown", () => this.scene.start("CharacterSelectScene"));
-
-    cursorY += newBtnH + 12;
-
-    // -- MAIN MENU button (dim, small) --
-    const menuBg = this.add
-      .rectangle(width / 2, cursorY, 200, 40, 0x111111)
-      .setInteractive({ useHandCursor: true });
-    this.add.rectangle(width / 2, cursorY, 200, 40).setStrokeStyle(1, 0x555555);
-    const menuTxt = this.add
-      .text(width / 2, cursorY, "MAIN MENU", {
-        fontSize: "15px",
-        color: "#666666",
-        fontFamily: "monospace",
-      })
-      .setOrigin(0.5);
-    this.optionsContainer.add(menuBg);
-    this.optionsContainer.add(menuTxt);
-
-    menuBg.on("pointerover", () => { menuBg.setFillStyle(0x1a1a1a); menuTxt.setColor("#aaaaaa"); });
-    menuBg.on("pointerout", () => { menuBg.setFillStyle(0x111111); menuTxt.setColor("#666666"); });
-    menuBg.on("pointerdown", () => this.scene.start("MainMenuScene"));
+    const menu = retroButton(this, cx, cursorY + 20, 440, 40, "MAIN MENU", () => this.scene.start("MainMenuScene"));
+    put(menu.box);
+    put(menu.label);
   }
 
   private detectClass(saveName: string): string {
     const lower = saveName.toLowerCase();
-    if (lower.includes('fighter')) return 'fighter';
-    if (lower.includes('thief')) return 'thief';
-    if (lower.includes('wizard')) return 'wizard';
-    if (lower.includes('cleric')) return 'cleric';
-    return 'fighter';
+    if (lower.includes("fighter")) return "fighter";
+    if (lower.includes("thief")) return "thief";
+    if (lower.includes("wizard")) return "wizard";
+    if (lower.includes("cleric")) return "cleric";
+    return "fighter";
   }
 
   private loadSave(slot: number) {

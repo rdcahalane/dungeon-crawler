@@ -37,6 +37,10 @@ export interface GameEventMap {
   ui_open: { panel: string };
   ui_close: { panel: string };
   status: { text: string };
+  /** Optional (audio lane): the player's torch burned out. */
+  torch_out: undefined;
+  /** Optional (audio lane): a mechanism asks for a sound by name (a key of `SFX_KEYS`, or a common alias). */
+  mech_sfx: { key: string };
 }
 
 export type GameEventName = keyof GameEventMap;
