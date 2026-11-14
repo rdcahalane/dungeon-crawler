@@ -23,6 +23,9 @@ export default function PhaserGame() {
           parent: containerRef.current!,
         };
         gameRef.current = new Phaser.Game(config);
+        if (process.env.NODE_ENV !== "production") {
+          (window as unknown as { __game?: Phaser.Game }).__game = gameRef.current;
+        }
       });
     });
 
