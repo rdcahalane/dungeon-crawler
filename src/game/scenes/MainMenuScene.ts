@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { listSaves, loadGame } from "../systems/SaveStore";
 import { CLASS_COL, COL, asciiOnly, flatPanel, retroButton, uiText } from "../gfx/retroUi";
+import { narrator } from "../audio/Narrator";
 import { graveyard, causePhrase, type FallenRecord } from "../systems/Graveyard";
 
 interface SaveMeta {
@@ -32,6 +33,7 @@ export const HOW_TO_PLAY: ReadonlyArray<readonly [string, string]> = [
   ["I", "INVENTORY AND EQUIPMENT"],
   ["F2", "CRT SCANLINES ON OR OFF"],
   ["N", "SOUND ON OR OFF"],
+  ["V / Z", "NARRATOR VOICE ON OR OFF / HEAR IT AGAIN"],
 ];
 
 export class MainMenuScene extends Phaser.Scene {
@@ -71,6 +73,7 @@ export class MainMenuScene extends Phaser.Scene {
       ];
       kb.on("keydown-H", () => this.mode === "title" && this.show("howto"));
       kb.on("keydown-F", () => this.mode === "title" && this.openFallen(0));
+      kb.on("keydown-V", () => this.mode === "title" && this.toggleVoice());
       kb.on("keydown-LEFT", () => this.mode === "fallen" && this.openFallen(this.fallenPage - 1));
       kb.on("keydown-RIGHT", () => this.mode === "fallen" && this.openFallen(this.fallenPage + 1));
       kb.on("keydown-ESC", () => this.mode !== "title" && this.show("title"));
@@ -79,6 +82,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off("keydown-H");
       this.input.keyboard?.off("keydown-F");
+      this.input.keyboard?.off("keydown-V");
       this.input.keyboard?.off("keydown-LEFT");
       this.input.keyboard?.off("keydown-RIGHT");
       this.input.keyboard?.off("keydown-ESC");
@@ -181,9 +185,13 @@ export class MainMenuScene extends Phaser.Scene {
     this.add2(fallen.box);
     this.add2(fallen.label);
 
-    this.statusText = this.add2(uiText(this, cx, 560, this.statusLine, { size: 8, color: COL.grey, originX: 0.5, originY: 0.5 }));
+    const voice = retroButton(this, cx, 548, 280, 32, this.voiceLabel(), () => this.toggleVoice(), { size: 16 });
+    this.add2(voice.box);
+    this.add2(voice.label);
+
+    this.statusText = this.add2(uiText(this, cx, 578, this.statusLine, { size: 8, color: COL.grey, originX: 0.5, originY: 0.5 }));
     this.add2(
-      uiText(this, cx, height - 48, "(C) 2026 DUNGEON CRAWLER   F2 CRT   N SOUND", {
+      uiText(this, cx, height - 48, "(C) 2026 DUNGEON CRAWLER   F2 CRT   N SOUND   V VOICE", {
         size: 8,
         color: COL.grey,
         originX: 0.5,
@@ -192,13 +200,24 @@ export class MainMenuScene extends Phaser.Scene {
     );
   }
 
+  private voiceLabel(): string {
+    if (!narrator.isAvailable()) return "VOICE: UNAVAILABLE";
+    return narrator.enabled ? "VOICE: ON (V)" : "VOICE: OFF (V)";
+  }
+
+  /** The narrator's voice, saved for next time. Room text boxes still appear when it is off. */
+  private toggleVoice() {
+    narrator.setEnabled(!narrator.enabled);
+    this.show("title");
+  }
+
   private drawHowTo() {
     const { width, height } = this.scale;
     const cx = width / 2;
     this.add2(uiText(this, cx, 72, "HOW TO PLAY", { size: 32, color: COL.gold, originX: 0.5, originY: 0.5 }));
     this.add2(flatPanel(this, cx, 316, 880, 380, { fill: COL.dusk, border: COL.slate }));
     HOW_TO_PLAY.forEach(([keys, what], i) => {
-      const y = 140 + i * 30;
+      const y = 138 + i * 28;
       this.add2(uiText(this, 60, y, keys, { size: 16, color: COL.gold }));
       this.add2(uiText(this, 290, y, what, { size: 16, color: COL.silver }));
     });

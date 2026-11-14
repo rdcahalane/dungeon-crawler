@@ -26,6 +26,7 @@ import type { MechanismController } from "./scenes/game/MechanismController";
 import type { InputController } from "./scenes/game/InputController";
 import type { WanderController } from "./scenes/game/WanderController";
 import type { PartyController } from "./scenes/game/PartyController";
+import type { NarratorController } from "./scenes/game/NarratorController";
 
 /** Per-floor state that survives leaving and re-entering a floor (written into `SerializedFloor`). */
 export interface FloorPersist {
@@ -117,6 +118,8 @@ export interface GameContext {
   wander: WanderController;
   /** Hired companions (D3). */
   party: PartyController;
+  /** Boxed room text and the narrator's voice. */
+  narrator: NarratorController;
 }
 
 export type { PlayerStats };
