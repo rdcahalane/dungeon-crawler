@@ -3,6 +3,7 @@ import {
   CATALOG, CURSES, ITEM_DEFS, UNIQUES, Inventory, PACK_SIZE, buy, buyValue, describe as describeItem,
   displayName, equipmentBonuses, fromLegacyInventory, instantiate, makeItem, makeUnique, rarityColor,
   rarityWeights, rollDrop, rollItem, sell, sellValue, shopStock, starterKit,
+  STAPLE_KEYS, buyWithPurse, sellList, sellWithPurse,
   type ItemInstance, type Rng,
 } from './index';
 
@@ -444,6 +445,9 @@ describe('starter kits and weight', () => {
       for (const it of inv.equipped()) expect(CATALOG[it.defKey].classes, `${c} ${it.defKey}`).toContain(c);
     }
     expect(starterKit('thief').has('thieves_tools')).toBe(true);
+    for (const c of ['fighter', 'thief', 'wizard', 'cleric'] as const) {
+      expect(starterKit(c).count('ten_foot_pole'), `${c} pole`).toBe(1);
+    }
     expect(starterKit('fighter').equipment.armor?.defKey).toBe('chain_mail');
     expect(starterKit('wizard').equipment.armor).toBeUndefined();
     expect(JSON.stringify(starterKit('cleric'))).toBe(JSON.stringify(starterKit('cleric')));
@@ -532,5 +536,70 @@ describe('legacy conversion', () => {
     expect(r.inventory.equipment.armor).toBeUndefined();
     expect(r.inventory.has('chain_mail')).toBe(true);
     expect(r.inventory.equipment.weapon?.plus).toBe(2);
+  });
+});
+
+describe('tavern shop guarantees and purse accounting', () => {
+  it('always stocks the ten staples, at every level, for every seed', () => {
+    expect(STAPLE_KEYS).toEqual([
+      'torch', 'ten_foot_pole', 'rope', 'iron_spikes', 'sack', 'holy_water', 'ration',
+      'thieves_tools', 'healing_potion', 'scroll_recall',
+    ]);
+    for (const lv of [1, 2, 5, 12]) {
+      for (const seed of [1, 2, 3, 99]) {
+        const stock = shopStock(lv, mulberry32(seed));
+        for (const key of STAPLE_KEYS) {
+          const e = stock.find((x) => x.item.defKey === key);
+          expect(e, `${key} at level ${lv}`).toBeDefined();
+          expect(e!.item.quantity).toBeGreaterThanOrEqual(1);
+          expect(e!.unitPrice).toBeGreaterThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  it('buying and selling keep one purse: the purse is truth and the inventory mirrors it', () => {
+    const inv = new Inventory('fighter', 999); // a stale mirror
+    const purse = { gold: 40 };
+    const stock = shopStock(1, mulberry32(7));
+    const potion = stock.find((e) => e.item.defKey === 'healing_potion')!;
+    const r = buyWithPurse(inv, purse, potion, 1);
+    expect(r).toMatchObject({ ok: true, spent: potion.unitPrice });
+    expect(purse.gold).toBe(40 - potion.unitPrice);
+    expect(inv.gold).toBe(purse.gold);
+    expect(inv.count('healing_potion')).toBe(1);
+
+    const line = sellList(inv)[0];
+    expect(line.item.defKey).toBe('healing_potion');
+    const s = sellWithPurse(inv, purse, line.item.id, 1);
+    expect(s).toMatchObject({ ok: true, earned: line.unitPrice });
+    expect(purse.gold).toBe(40 - potion.unitPrice + line.unitPrice);
+    expect(inv.gold).toBe(purse.gold);
+    expect(inv.count('healing_potion')).toBe(0);
+  });
+
+  it('a purchase you cannot afford changes neither gold nor stock; a full pack refuses cleanly', () => {
+    const inv = new Inventory('fighter');
+    const purse = { gold: 0 };
+    const entry = shopStock(1, mulberry32(7)).find((e) => e.item.defKey === 'scroll_recall')!;
+    const q = entry.item.quantity;
+    expect(buyWithPurse(inv, purse, entry, 1).ok).toBe(false);
+    expect(purse.gold).toBe(0);
+    expect(entry.item.quantity).toBe(q);
+
+    purse.gold = 1000;
+    for (let i = 0; i < PACK_SIZE; i++) inv.add(makeItem('plate_mail', mulberry32(i)));
+    expect(buyWithPurse(inv, purse, entry, 1).ok).toBe(false);
+    expect(purse.gold).toBe(1000);
+    expect(entry.item.quantity).toBe(q);
+  });
+
+  it('the sell list is the pack only and skips worthless things', () => {
+    const inv = new Inventory('fighter');
+    inv.add(makeItem('torch', mulberry32(1), 2));
+    inv.add(makeItem('key_iron', mulberry32(2)));
+    inv.equipment.weapon = instantiate('long_sword', 'w1');
+    const list = sellList(inv);
+    expect(list.map((l) => l.item.defKey)).toEqual(['torch']);
   });
 });

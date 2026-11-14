@@ -19,6 +19,10 @@ export interface HotbarSlot {
   kind: HotbarKind;
   /** Short text drawn in the slot. */
   label: string;
+  /** At most four characters, drawn in the slot at 16px (a slot is 52px wide). */
+  short: string;
+  /** Full name for the hover line above the bar. */
+  name: string;
   spellKey?: string;
   remaining: number;
   max: number;
@@ -30,6 +34,7 @@ export interface HotbarSlot {
 
 const CASTER_CLASSES = new Set(['wizard', 'cleric']);
 const ABILITY_BY_CLASS: Record<string, string> = { fighter: 'Cleave', thief: 'Sneak' };
+const ABILITY_SHORT: Record<string, string> = { Cleave: 'CLV', Sneak: 'SNK' };
 
 export function isCasterClass(classKey: string): boolean {
   return CASTER_CLASSES.has(classKey);
@@ -50,7 +55,7 @@ export function abbreviate(name: string, max = 6): string {
 export function buildHotbar(spellSlots: readonly SpellSlotInfo[] | undefined, classKey: string): HotbarSlot[] {
   const out: HotbarSlot[] = [];
   const empty = (i: number): HotbarSlot => ({
-    index: i, hotkey: SPELL_HOTKEYS[i], kind: 'empty', label: '', remaining: 0, max: 0, passive: false, disabled: true,
+    index: i, hotkey: SPELL_HOTKEYS[i], kind: 'empty', label: '', short: '', name: '', remaining: 0, max: 0, passive: false, disabled: true,
   });
   if (!isCasterClass(classKey)) {
     const ability = ABILITY_BY_CLASS[classKey];
@@ -58,6 +63,7 @@ export function buildHotbar(spellSlots: readonly SpellSlotInfo[] | undefined, cl
       if (i === 0 && ability) {
         out.push({
           index: 0, hotkey: SPELL_HOTKEYS[0], kind: 'ability', label: abbreviate(ability, 8),
+          short: ABILITY_SHORT[ability] ?? abbreviate(ability, 4), name: ability,
           remaining: 0, max: 0, passive: true, disabled: false,
         });
       } else out.push(empty(i));
@@ -68,7 +74,7 @@ export function buildHotbar(spellSlots: readonly SpellSlotInfo[] | undefined, cl
     const s = spellSlots?.[i];
     if (!s) { out.push(empty(i)); continue; }
     out.push({
-      index: i, hotkey: SPELL_HOTKEYS[i], kind: 'spell', label: abbreviate(s.name), spellKey: s.key,
+      index: i, hotkey: SPELL_HOTKEYS[i], kind: 'spell', label: abbreviate(s.name), short: abbreviate(s.name, 4), name: s.name, spellKey: s.key,
       remaining: s.remaining, max: s.max, passive: false, disabled: s.remaining <= 0,
     });
   }

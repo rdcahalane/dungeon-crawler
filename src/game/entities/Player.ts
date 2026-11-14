@@ -10,7 +10,7 @@ import {
   WeaponTrait,
   abilityMod,
 } from "../constants";
-import { Inventory, starterKit, fromLegacyInventory, equipmentBonuses, getDef, makeItem } from "../items";
+import { Inventory, starterKit, fromLegacyInventory, equipmentBonuses, getDef } from "../items";
 import {
   Spellbook, isCaster, mathRng, mulberry32, titleFor, thac0For, xpForLevel, MAX_LEVEL, xpBonusPercent,
   abilityModifiers, intelligenceEffect, spellsFor,
@@ -113,6 +113,8 @@ export interface PlayerStats {
   saves?: Record<SaveCategory, number>;
   /** Level title, "Recruit", "Cutpurse"... */
   title?: string;
+  /** One-time hints already shown to this character (message log). */
+  seenHints?: string[];
 }
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -248,16 +250,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (brandNew) stats.gold = this.inventory.gold;
     else this.inventory.gold = stats.gold;
 
-    // The tavern shop still sells "health potions" by bumping a counter; turn the surplus into real potions.
-    if (!brandNew) {
-      let owed = Math.floor(stats.potions ?? 0) - this.inventory.count('healing_potion');
-      while (owed > 0) {
-        const take = Math.min(owed, 5);
-        const r = this.inventory.add(makeItem('healing_potion', mathRng, take));
-        if (!r.ok) break;
-        owed -= take;
-      }
-    }
+    // `stats.potions` and `manaPotions` are read-only mirrors now (recomputeDerived refreshes them from the pack). A save
+    // from before the item system has its bare counters converted into real potions by `fromLegacyInventory` above.
 
     // A save from before the first-edition scale keeps its character but gets first-edition hit points.
     if (stats.baseMaxHp === undefined) {

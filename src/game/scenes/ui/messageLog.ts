@@ -40,3 +40,27 @@ export class MessageLog {
 
 /** Process-wide log so messages survive the HUD restarting on a floor change. */
 export const hudLog = new MessageLog();
+
+export interface LogRow { text: string; age: number }
+
+/**
+ * Lay recent messages out as at most `maxRows` rows of `cols` characters, newest at the bottom. A long message wraps
+ * onto more rows rather than being cut; when there are too many rows the oldest are dropped.
+ * `age` is 0 for the newest message, 1 for the one before it, and so on (the view dims older ones).
+ */
+export function layoutLog(messages: readonly string[], cols: number, maxRows: number): LogRow[] {
+  const rows: LogRow[] = [];
+  messages.forEach((m, i) => {
+    const age = messages.length - 1 - i;
+    let line = "";
+    const flush = (): void => { if (line) rows.push({ text: line, age }); line = ""; };
+    for (const raw of m.split(/\s+/).filter(Boolean)) {
+      let w = raw;
+      while (w.length > cols) { flush(); rows.push({ text: w.slice(0, cols), age }); w = w.slice(cols); }
+      if (line && line.length + 1 + w.length > cols) flush();
+      line = line ? `${line} ${w}` : w;
+    }
+    flush();
+  });
+  return rows.slice(-Math.max(0, maxRows));
+}

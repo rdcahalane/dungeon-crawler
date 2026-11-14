@@ -3,11 +3,12 @@ import { TILE_SIZE } from "../../constants";
 import { mathRng } from "../../rules";
 import type { Enemy } from "../../entities/Enemy";
 import {
-  createMechState, deserialize, serialize as serializeMech, tileOverrides, tileKey,
+  createMechState, deserialize, footprint, serialize as serializeMech, tileOverrides, tileKey,
 } from "../../world/mechanisms";
 import type { MechEvent, MechState, MechanismSpec } from "../../world/types";
 import type { GameEventScope } from "../../GameEvents";
 import type { GameContext } from "../../GameContext";
+import { resolveInteract } from "./interactArbiter";
 import { MechDialog } from "./MechDialog";
 import { MechDriver } from "./MechDriver";
 import { MechHost } from "./MechHost";
@@ -147,6 +148,20 @@ export class MechanismController {
 
   isBlocked(tx: number, ty: number): boolean {
     return this.render?.isBlocked(tx, ty) ?? false;
+  }
+
+  /** Pixels to the nearest mechanism E would work from here, or `Infinity` when there is none (chest arbitration). */
+  nearestInteractDistance(): number {
+    const state = this.state;
+    const p = this.ctx.player;
+    if (!state || !p || this.busy) return Infinity;
+    const target = pickInteractTarget(state, p.x / TILE_SIZE, p.y / TILE_SIZE, p.stats.facing);
+    if (!target) return Infinity;
+    let best = Infinity;
+    for (const q of footprint(target)) {
+      best = Math.min(best, Math.hypot((q.tx + 0.5) * TILE_SIZE - p.x, (q.ty + 0.5) * TILE_SIZE - p.y));
+    }
+    return best;
   }
 
   serialize(): string | undefined {
@@ -303,6 +318,8 @@ export class MechanismController {
     const state = this.state;
     const p = ctx.player;
     if (!state) return;
+    // A chest nearer than the mechanism takes this press (LootController asks the same question).
+    if (resolveInteract(ctx.loot.nearestChestDistance(), this.nearestInteractDistance()) === "chest") return;
     const target = pickInteractTarget(state, p.x / TILE_SIZE, p.y / TILE_SIZE, p.stats.facing);
     if (!target) {
       const spikes = spikeEvent(state, tx, ty, p.inventory);

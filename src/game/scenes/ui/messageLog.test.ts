@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MessageLog } from "./messageLog";
+import { MessageLog, layoutLog } from "./messageLog";
 
 describe("MessageLog", () => {
   it("keeps only the newest lines up to capacity", () => {
@@ -36,5 +36,21 @@ describe("MessageLog", () => {
     log.push("old", 0);
     log.push("new", 9000);
     expect(log.recent(3, 10000, 5000).map((l) => l.text)).toEqual(["new"]);
+  });
+});
+
+describe("layoutLog", () => {
+  it("wraps a long message instead of cutting it, newest at the bottom", () => {
+    const rows = layoutLog(["You light the torch.", "The pole taps stone and nothing gives way at all."], 26, 3);
+    expect(rows.map((r) => r.text)).toEqual(["You light the torch.", "The pole taps stone and", "nothing gives way at all."]);
+    expect(rows.every((r) => r.text.length <= 26)).toBe(true);
+    expect(rows[0].age).toBe(1);
+    expect(rows[2].age).toBe(0);
+  });
+  it("keeps only the newest rows and splits a word longer than a row", () => {
+    const rows = layoutLog(["one", "two", "three", "four"], 10, 3);
+    expect(rows.map((r) => r.text)).toEqual(["two", "three", "four"]);
+    expect(layoutLog(["x".repeat(25)], 10, 5).map((r) => r.text)).toEqual(["x".repeat(10), "x".repeat(10), "x".repeat(5)]);
+    expect(layoutLog([], 10, 3)).toEqual([]);
   });
 });

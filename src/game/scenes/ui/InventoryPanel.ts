@@ -14,18 +14,28 @@ import {
   EQUIP_GRID, EQUIP_LABELS, PACK_COLS, beltAction, dropAction, itemAt, moveBetween, moveCursor,
   primaryAction, primaryLabel, sameCursor, type Cursor, type Dir, type InvAction,
 } from "./inventoryModel";
-import { SAVE_LABELS, SAVE_ORDER, buildSheet } from "./charSheet";
+import { SAVE_ORDER, buildSheet } from "./charSheet";
 import { BELT_HOTKEYS } from "./hotbar";
-import { UI, drawBox, iconAt, label, pointIn, wrap } from "./theme";
+import { LINE, UI, drawBox, iconAt, label, pointIn, wrap } from "./theme";
 
 const SLOT = 48;
 const EQ_STEP = 56;
 const CELL = 56;
 const CELL_STEP = 62;
-const DOLL = { x: 56, y: 90 };
-const PACK = { x: 250, y: 90 };
-const BELT = { x: 250, y: 358 };
-const DETAIL = { x: 56, y: 430, w: 848, h: 150 };
+// Everything is 16px text now. Panel: x 40..920, y 32..616.
+const PANEL = { x: 40, y: 32, w: 880, h: 584 };
+const DOLL = { x: 56, y: 84 };
+const PACK = { x: 250, y: 84 };
+const BELT = { x: 250, y: 352 };
+const SHEET = { x: 640, y: 84 };
+const BTN = { x: 640, y: 262 };
+const DETAIL = { x: 56, y: 424, w: 848, h: 150 };
+/** Three letters fit a 48px slot at 16px. */
+/** Saves in three letters so a row of three fits the sheet column. */
+const SAVE_SHORT: Record<string, string> = { death: "DTH", petrify: "PET", wands: "WND", breath: "BRT", spells: "SPL" };
+const SLOT_TAG: Record<string, string> = {
+  WEAPON: "WPN", OFFHAND: "OFF", ARMOR: "ARM", HELM: "HLM", CLOAK: "CLK", BOOTS: "BTS", RING: "RNG", AMULET: "AMU",
+};
 const DOUBLE_CLICK_MS = 380;
 
 interface SlotRect { c: Cursor; x: number; y: number; w: number; h: number }
@@ -47,7 +57,7 @@ export class InventoryPanel extends PanelBase {
   private msgColor: number = UI.gold;
 
   constructor(scene: Phaser.Scene, private host: PanelHost, onClose: () => void) {
-    super(scene, 40, 40, 880, 560, "INVENTORY", UI.sky, onClose);
+    super(scene, PANEL.x, PANEL.y, PANEL.w, PANEL.h, "INVENTORY", UI.sky, onClose);
   }
 
   protected onOpen(): void {
@@ -67,9 +77,9 @@ export class InventoryPanel extends PanelBase {
     this.slots = [];
     const add = (o: Phaser.GameObjects.GameObject): void => { this.dyn.add(o); };
 
-    add(label(scene, DOLL.x, DOLL.y - 14, "EQUIPMENT", { color: UI.gold }));
-    add(label(scene, PACK.x, PACK.y - 14, `PACK ${inv.pack.filter(Boolean).length}/${PACK_SIZE}`, { color: UI.gold }));
-    add(label(scene, BELT.x, BELT.y - 14, "BELT  (KEYS 5-8)", { color: UI.gold }));
+    add(label(scene, DOLL.x, DOLL.y - 18, "EQUIPMENT", { color: UI.gold }));
+    add(label(scene, PACK.x, PACK.y - 18, `PACK ${inv.pack.filter(Boolean).length}/${PACK_SIZE}`, { color: UI.gold }));
+    add(label(scene, BELT.x, BELT.y - 18, "BELT (KEYS 5-8)", { color: UI.gold }));
 
     // paper doll: sprite behind the middle cells
     const spriteKey = `player_${stats.classKey}`;
@@ -78,7 +88,7 @@ export class InventoryPanel extends PanelBase {
       const gp = EQUIP_GRID[slot];
       const x = DOLL.x + gp.col * EQ_STEP;
       const y = DOLL.y + gp.row * EQ_STEP;
-      this.slotBox(g, { zone: "equip", index: i }, x, y, SLOT, SLOT, inv.equipment[slot] ?? null, EQUIP_LABELS[slot]);
+      this.slotBox(g, { zone: "equip", index: i }, x, y, SLOT, SLOT, inv.equipment[slot] ?? null, SLOT_TAG[EQUIP_LABELS[slot]] ?? "");
     });
 
     for (let i = 0; i < PACK_SIZE; i++) {
@@ -87,18 +97,18 @@ export class InventoryPanel extends PanelBase {
       this.slotBox(g, { zone: "pack", index: i }, x, y, CELL, CELL, inv.pack[i], "");
     }
     for (let i = 0; i < BELT_SIZE; i++) {
-      this.slotBox(g, { zone: "belt", index: i }, BELT.x + i * CELL_STEP, BELT.y, CELL, CELL, inv.belt[i], BELT_HOTKEYS[i]);
+      this.slotBox(g, { zone: "belt", index: i }, BELT.x + i * CELL_STEP, BELT.y, CELL, CELL, inv.belt[i], BELT_HOTKEYS[i], true);
     }
 
     this.buildSheet(inv);
     this.buildButtons();
     this.buildDetail(g, inv);
-    add(label(scene, 56, 586, "ARROWS MOVE  ENTER USE/EQUIP  D DROP  B BELT  V MOVE  I OR ESC CLOSE", { color: UI.grey }));
+    add(label(scene, 56, 584, "ARROWS MOVE  ENTER USE/EQUIP  D DROP  B BELT  V MOVE  I OR ESC CLOSE", { color: UI.grey }));
   }
 
   private slotBox(
     g: Phaser.GameObjects.Graphics, c: Cursor, x: number, y: number, w: number, h: number,
-    it: ItemInstance | null, tag: string,
+    it: ItemInstance | null, tag: string, tagAlways = false,
   ): void {
     const { scene } = this;
     this.slots.push({ c, x, y, w, h });
@@ -112,44 +122,48 @@ export class InventoryPanel extends PanelBase {
     if (selected) border = UI.gold;
     drawBox(g, x, y, w, h, it ? UI.dusk : UI.ink, border, null);
     if (selected) g.lineStyle(2, UI.gold, 1).strokeRect(x - 2, y - 2, w + 4, h + 4);
-    if (tag) this.dyn.add(label(scene, x + 3, y + 3, tag, { size: 8, color: it ? UI.grey : UI.slate }));
+    // The slot name shows on an empty slot (centred); the belt keeps its key number in the corner.
+    if (!it && tag) this.dyn.add(label(scene, x + w / 2, y + h / 2, tag, { color: UI.slate, ox: 0.5, oy: 0.5 }));
+    if (it && tag && tagAlways) this.dyn.add(label(scene, x + 3, y + 2, tag, { color: UI.grey }));
     if (!it) return;
     const d = getDef(it.defKey);
     this.dyn.add(iconAt(scene, d.icon, x + w / 2, y + h / 2, 32));
-    if (it.quantity > 1) this.dyn.add(label(scene, x + w - 3, y + h - 10, String(it.quantity), { color: UI.white, ox: 1 }));
-    if (!it.identified && it.rarity !== "common") this.dyn.add(label(scene, x + w - 4, y + 3, "?", { color: UI.violet, ox: 1 }));
-    if (it.identified && it.cursed) this.dyn.add(label(scene, x + w - 4, y + 3, "!", { color: UI.red, ox: 1 }));
+    const badge = (text: string, color: number, right: boolean, bottom: boolean): void => {
+      const bw = text.length * 12 + 2;
+      const bx = right ? x + w - 3 - bw : x + 3;
+      const by = bottom ? y + h - 19 : y + 3;
+      const back = scene.add.rectangle(bx, by, bw, 16, UI.black, 0.8).setOrigin(0, 0);
+      this.dyn.add(back);
+      this.dyn.add(label(scene, bx + 1, by, text, { color }));
+    };
+    if (it.quantity > 1) badge(String(it.quantity), UI.white, true, true);
+    if (!it.identified && it.rarity !== "common") badge("?", UI.violet, true, false);
+    if (it.identified && it.cursed) badge("!", UI.red, true, false);
   }
 
+  /** Character sheet: only what a decision needs (ability scores, THAC0, AC, five saves, load, gold), at 16px. */
   private buildSheet(inv: Inventory): void {
     const { scene } = this;
     const stats = this.host.player.stats;
     const hud = this.host.hud();
     const s = buildSheet(stats, inv, { thac0: hud?.thac0, ac: hud?.ac, saves: hud?.saves, title: hud?.title });
-    const x = 640;
-    let y = 90;
+    const x = SHEET.x;
+    let y = SHEET.y;
     const line = (t: string, color: number = UI.silver): void => {
       this.dyn.add(label(scene, x, y, t, { color }));
-      y += 10;
+      y += LINE;
     };
-    line("CHARACTER", UI.gold);
-    y += 4;
-    line(`${stats.name ?? stats.classKey.toUpperCase()}`, UI.white);
-    line(`LEVEL ${stats.level} ${s.title.toUpperCase()}`);
-    y += 6;
+    line(`${stats.name ?? stats.classKey}`.toUpperCase().slice(0, 22), UI.white);
+    line(`LV ${stats.level} ${s.title.toUpperCase()}`.slice(0, 22), UI.gold);
     const a = s.abilities.map(([k, v]) => `${k} ${String(v).padStart(2)}`);
-    line(a.slice(0, 3).join("  "));
-    line(a.slice(3).join("  "));
-    y += 6;
+    line(a.slice(0, 3).join(" "));
+    line(a.slice(3).join(" "));
     line(`THAC0 ${s.thac0}   AC ${s.ac}`, UI.white);
-    y += 6;
-    line("SAVES (ROLL THIS OR HIGHER)", UI.grey);
-    line(SAVE_ORDER.slice(0, 3).map((c) => `${SAVE_LABELS[c]} ${s.saves[c]}`).join("  "));
-    line(SAVE_ORDER.slice(3).map((c) => `${SAVE_LABELS[c]} ${s.saves[c]}`).join("  "));
-    y += 6;
+    const sv = SAVE_ORDER.map((c) => `${SAVE_SHORT[c]} ${s.saves[c]}`);
+    line(sv.slice(0, 3).join(" "), UI.sky);
+    line(sv.slice(3).join(" "), UI.sky);
     const tierColor = s.enc.tier === "light" ? UI.lime : s.enc.tier === "moderate" ? UI.gold : UI.red;
     line(`LOAD ${s.enc.tier.toUpperCase()}`, tierColor);
-    line(`${s.enc.weight}/${s.enc.lightLimit} LB  MOVE x${s.enc.speedMult}`, tierColor);
     line(`GOLD ${inv.gold}`, UI.gold);
   }
 
@@ -157,13 +171,13 @@ export class InventoryPanel extends PanelBase {
     const inv = this.host.player.inventory;
     const c = this.cursor;
     const pl = primaryLabel(inv, c);
-    const x = 640;
-    const y = 300;
-    this.addButton(x, y, 124, 20, pl ?? "USE", () => this.primary(), pl !== null);
-    this.addButton(x + 132, y, 124, 20, "DROP", () => this.drop(), dropAction(inv, c) !== null);
-    this.addButton(x, y + 26, 124, 20, c.zone === "belt" ? "TO PACK" : "TO BELT", () => this.toBelt(), beltAction(inv, c) !== null);
-    this.addButton(x + 132, y + 26, 124, 20, this.moveFrom ? "CANCEL" : "MOVE", () => this.toggleMove(), itemAt(inv, c) !== null || this.moveFrom !== null);
-    if (this.moveFrom) this.dyn.add(label(this.scene, x, y + 54, "PICK A DESTINATION SLOT", { color: UI.orange }));
+    const x = BTN.x;
+    const y = BTN.y;
+    this.addButton(x, y, 132, 26, pl ?? "USE", () => this.primary(), pl !== null);
+    this.addButton(x + 140, y, 132, 26, "DROP", () => this.drop(), dropAction(inv, c) !== null);
+    this.addButton(x, y + 32, 132, 26, c.zone === "belt" ? "TO PACK" : "TO BELT", () => this.toBelt(), beltAction(inv, c) !== null);
+    this.addButton(x + 140, y + 32, 132, 26, this.moveFrom ? "CANCEL" : "MOVE", () => this.toggleMove(), itemAt(inv, c) !== null || this.moveFrom !== null);
+    if (this.moveFrom) this.dyn.add(label(this.scene, x, y + 64, "PICK A DESTINATION", { color: UI.orange }));
   }
 
   private buildDetail(g: Phaser.GameObjects.Graphics, inv: Inventory): void {
@@ -173,18 +187,19 @@ export class InventoryPanel extends PanelBase {
     const it = itemAt(inv, c);
     const x = DETAIL.x + 10;
     if (!it) {
-      this.dyn.add(label(scene, x, DETAIL.y + 10, c.zone === "equip" ? `${EQUIP_LABELS[EQUIP_SLOTS[c.index]]} SLOT: EMPTY` : "EMPTY SLOT", { size: 16, color: UI.grey }));
+      this.dyn.add(label(scene, x, DETAIL.y + 10, c.zone === "equip" ? `${EQUIP_LABELS[EQUIP_SLOTS[c.index]]} SLOT: EMPTY` : "EMPTY SLOT", { color: UI.grey }));
     } else {
       const tone = it.identified && it.cursed ? UI.red : itemTone(it);
       this.dyn.add(iconAt(scene, getDef(it.defKey).icon, DETAIL.x + DETAIL.w - 30, DETAIL.y + 30, 32));
-      this.dyn.add(label(scene, x, DETAIL.y + 8, displayName(it, { quantity: true }), { size: 16, color: tone }));
-      const lines = describe(it).slice(1).flatMap((l) => wrap(l, 90)).slice(0, 10);
+      this.dyn.add(label(scene, x, DETAIL.y + 8, displayName(it, { quantity: true }).slice(0, 56), { color: tone }));
+      // Five rows of 16px: the first lines of the description are the ones that matter, the rest is cut.
+      const lines = describe(it).slice(1).flatMap((l) => wrap(l, 62)).slice(0, 5);
       lines.forEach((l, i) => {
         const col = l.startsWith("Cursed") ? UI.red : l.startsWith("Unidentified") ? UI.violet : UI.silver;
-        this.dyn.add(label(scene, x, DETAIL.y + 30 + i * 10, l, { color: col }));
+        this.dyn.add(label(scene, x, DETAIL.y + 28 + i * LINE, l, { color: col }));
       });
     }
-    if (this.msg) this.dyn.add(label(scene, x, DETAIL.y + DETAIL.h - 14, this.msg, { color: this.msgColor }));
+    if (this.msg) this.dyn.add(label(scene, x, DETAIL.y + DETAIL.h - 20, this.msg.slice(0, 66), { color: this.msgColor }));
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────────────────────────────

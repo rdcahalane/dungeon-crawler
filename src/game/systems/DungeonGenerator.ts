@@ -6,6 +6,7 @@ import {
 } from "../constants";
 import type { InscriptionSpawn, MechanismSpec } from "../world/types";
 import { stampVaults } from "../world/stamp";
+import type { ItemInstance } from "../items";
 
 export interface Room {
   x: number;
@@ -82,6 +83,8 @@ export interface SerializedFloor {
   pickedItemKeys: string[];          // "tx,ty" — floor items picked up
   revealedDoorKeys: string[];        // "tx,ty" — secret doors permanently revealed
   mechStateJson?: string;            // serialize(MechState) from world/mechanisms, when the floor has mechanisms
+  /** Items lying on the floor (dropped, chest loot, monster drops). Absent on older saves. */
+  groundItems?: { item: ItemInstance; tx: number; ty: number; dropped?: boolean }[];
 }
 
 function rng(min: number, max: number): number {

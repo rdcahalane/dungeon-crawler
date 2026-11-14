@@ -18,6 +18,8 @@ class UiState {
   private closedAt = -1e9;
   private rects = new Map<string, Rect>();
   hover: HoverInfo | null = null;
+  /** A modal owned by another scene (the tavern's shop, inn, notice board) is open: HUD hotkeys stand down. */
+  externalModal = false;
 
   setPanel(open: boolean, captureKeys = open, now = nowMs()): void {
     if (this.panelOpen && !open) this.closedAt = now;
@@ -48,6 +50,7 @@ class UiState {
     this.closedAt = -1e9;
     this.rects.clear();
     this.hover = null;
+    this.externalModal = false;
   }
 }
 

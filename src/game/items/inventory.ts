@@ -605,6 +605,8 @@ export function starterKit(classKey: ClassKey): Inventory {
       wear('torch');
       break;
   }
+  // First-edition adventurers carried a ten-foot pole; the probe verb (P) is central to the tomb.
+  stow('ten_foot_pole');
   const potion = mk('healing_potion');
   inv.belt[0] = potion;
   if (classKey === 'wizard') inv.belt[1] = mk('scroll_magic_missile');
