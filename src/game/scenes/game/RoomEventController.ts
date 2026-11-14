@@ -36,6 +36,8 @@ interface ChoiceDialog {
   fill: number;
   button: string;
   cards: ChoiceCard[];
+  /** Esc walks away (shrine). Without it Esc does nothing (a boon must be chosen). */
+  onCancel?: () => void;
 }
 
 const CARD_W = 240;
@@ -353,7 +355,7 @@ export class RoomEventController {
     const D = 220;
     const n = d.cards.length;
     const panelW = n * CARD_W + (n - 1) * CARD_GAP + 48;
-    const panelH = CARD_H + 110;
+    const panelH = CARD_H + 128;
     const top = Math.round(cy - panelH / 2);
     const fixed = <T extends Phaser.GameObjects.GameObject & { setScrollFactor(v: number): T; setDepth(v: number): T }>(o: T, depth = D): T => {
       o.setScrollFactor(0).setDepth(depth);
@@ -366,8 +368,31 @@ export class RoomEventController {
     fixed(uiText(scene, cx, top + 14, d.title, { size: 24, color: d.border, originX: 0.5 }), D + 1);
     fixed(uiText(scene, cx, top + 50, d.sub, { size: 16, color: COL.grey, originX: 0.5 }), D + 1);
 
-    const cardTop = top + 80;
+    const cardTop = top + 98;
     const left = cx - panelW / 2 + 24 + CARD_W / 2;
+    const hovers: Array<(on: boolean) => void> = [];
+    let selected = -1;
+    const select = (i: number) => {
+      if (selected >= 0) hovers[selected]?.(false);
+      selected = (i + n) % n;
+      hovers[selected]?.(true);
+    };
+    // Keys as well as the mouse: 1 to 3 pick, Left/Right and Enter choose, Esc walks away where that is allowed.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      if (digit && Number(digit[1]) <= n) { e.preventDefault(); d.cards[Number(digit[1]) - 1].onPick(); return; }
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') { e.preventDefault(); select(selected < 0 ? 0 : selected - 1); return; }
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') { e.preventDefault(); select(selected < 0 ? 0 : selected + 1); return; }
+      if ((e.code === 'Enter' || e.code === 'Space') && selected >= 0) { e.preventDefault(); d.cards[selected].onPick(); return; }
+      if (e.code === 'Escape' && d.onCancel) { e.preventDefault(); d.onCancel(); }
+    };
+    window.addEventListener('keydown', onKey);
+    const keyHolder = fixed(scene.add.zone(0, 0, 1, 1));
+    keyHolder.once('destroy', () => window.removeEventListener('keydown', onKey));
+    const hint = `1-${n} OR ARROWS AND ENTER${d.onCancel ? '   ESC: WALK AWAY' : ''}`;
+    // Under the subtitle: the HUD's message log covers the panel's bottom-left corner.
+    fixed(uiText(scene, cx, top + 72, hint, { size: 16, color: COL.silver, originX: 0.5 }), D + 1);
     d.cards.forEach((card, i) => {
       const x = left + i * (CARD_W + CARD_GAP);
       const y = cardTop + CARD_H / 2;
@@ -401,6 +426,7 @@ export class RoomEventController {
         bg.setFillStyle(on ? COL.slate : COL.dusk);
         btnLabel.setTint(on ? COL.gold : COL.white);
       };
+      hovers.push(hover);
       for (const t of [bg, btn]) {
         t.on('pointerover', () => hover(true));
         t.on('pointerout', () => hover(false));
@@ -470,6 +496,10 @@ export class RoomEventController {
       fill: COL.ink,
       button: 'TAKE BARGAIN',
       cards: options,
+      onCancel: () => {
+        this.closeCursedShrine();
+        this.ctx.status('You leave the shrine and its bargains alone.');
+      },
     });
   }
 
