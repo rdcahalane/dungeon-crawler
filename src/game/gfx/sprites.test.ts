@@ -7,6 +7,7 @@ import {
   CREATURE_KEYS,
   HIRELING_KEYS,
   ITEM_KEYS,
+  LARGE_ENEMY_KEYS,
   LEGACY_TEXTURE_KEYS,
   LEGACY_TEXTURE_SIZES,
   MECH_KEYS,
@@ -91,6 +92,23 @@ describe("texture coverage", () => {
   it("uses 16x16 grids at 2x for 32px tile textures", () => {
     for (const k of [...MECH_KEYS, ...ITEM_KEYS, ...NEW_ENEMY_KEYS, ...HIRELING_KEYS]) {
       expect([SPRITES[k].w, SPRITES[k].h, SPRITES[k].scale]).toEqual([16, 16, 2]);
+    }
+  });
+
+  it("draws each large monster on a 24x24 or 32x32 grid at 2x (48 or 64 pixels), with a distinct walk frame", () => {
+    const want: Record<string, number> = {
+      enemy_ogre: 24, enemy_cave_bear: 24, enemy_giant_scorpion: 24,
+      enemy_barrow_giant: 32, enemy_ossuary_hulk: 32, enemy_cave_wyrm: 32,
+    };
+    expect([...LARGE_ENEMY_KEYS].sort()).toEqual(Object.keys(want).sort());
+    for (const k of LARGE_ENEMY_KEYS) {
+      for (const key of [k, `${k}_f2`]) {
+        const s = SPRITES[key];
+        expect([s.w, s.h, s.scale], key).toEqual([want[k], want[k], 2]);
+        expect(s.maxColors).toBe(6);
+        for (const r of s.rows) expect(r).toHaveLength(want[k]);
+      }
+      expect(SPRITES[`${k}_f2`].rows.join("|")).not.toBe(SPRITES[k].rows.join("|"));
     }
   });
 

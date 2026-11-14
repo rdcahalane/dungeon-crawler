@@ -24,7 +24,16 @@ export type NewMonsterKey =
   | 'GIANT_BAT'
   | 'HOLLOW_KING';
 
-export type MonsterKey = EnemyTypeKey | NewMonsterKey;
+/** Large monsters: 24x24 or 32x32 sprites drawn at 48 or 64 pixels. They are placed by the large-spawn planner. */
+export type LargeMonsterKey =
+  | 'OGRE'
+  | 'CAVE_BEAR'
+  | 'GIANT_SCORPION'
+  | 'BARROW_GIANT'
+  | 'OSSUARY_HULK'
+  | 'CAVE_WYRM';
+
+export type MonsterKey = EnemyTypeKey | NewMonsterKey | LargeMonsterKey;
 
 export interface MonsterAttack {
   name: string;
@@ -88,8 +97,20 @@ export interface MonsterDef {
   minFloor: number;
   maxFloor?: number;
   textureKey: string;
-  /** Display size in pixels, as in the original ENEMY_TYPES. */
+  /**
+   * Display size in pixels, as in the original ENEMY_TYPES. 48 and 64 are the large monsters (24x24 and 32x32
+   * sprites at 2x). For those, `attackRange` is the edge-to-edge reach in pixels, not a centre distance.
+   */
   size: number;
+  /** Spawn weight among its peers, default 1. Large monsters are rare: a floor gets at most one or two. */
+  rarity?: number;
+}
+
+/** On-screen size from which a monster counts as large (a 24x24 sprite at 2x). */
+export const LARGE_MONSTER_SIZE = 48;
+
+export function isLargeMonster(def: Pick<MonsterDef, 'size'>): boolean {
+  return def.size >= LARGE_MONSTER_SIZE;
 }
 
 /** Monster THAC0 from hit dice: 20 below one HD, then one better per HD, floor of 1. */
@@ -297,6 +318,67 @@ export const MONSTERS: Record<MonsterKey, MonsterDef> = {
     ],
     textureKey: 'enemy_hollow_king', size: 36,
   }),
+
+  // ── Large monsters (48 and 64 pixels). Slow, heavy swings, rare. ───────────
+  OGRE: monster({
+    key: 'OGRE', name: 'Ogre', hd: 4, hpDice: '4d8+1', ac: 5,
+    attacks: [{ name: 'Knotted club', dice: '1d10+1' }],
+    speed: 55, aggroRange: 150, attackRange: 12, attackCooldownMs: 1700,
+    xp: 75, morale: 10, minFloor: 4, maxFloor: 9,
+    textureKey: 'enemy_ogre', size: 48, rarity: 1,
+  }),
+  CAVE_BEAR: monster({
+    key: 'CAVE_BEAR', name: 'Cave Bear', hd: 5, hpDice: '5d8', ac: 6,
+    attacks: [
+      { name: 'Claw', dice: '1d6' },
+      { name: 'Claw', dice: '1d6' },
+      { name: 'Bite', dice: '1d8' },
+    ],
+    speed: 70, aggroRange: 140, attackRange: 12, attackCooldownMs: 1500,
+    xp: 85, morale: 9, minFloor: 3, maxFloor: 8,
+    textureKey: 'enemy_cave_bear', size: 48, rarity: 1,
+  }),
+  GIANT_SCORPION: monster({
+    key: 'GIANT_SCORPION', name: 'Giant Scorpion', hd: 5, hpDice: '5d8', ac: 3,
+    attacks: [
+      { name: 'Pincer', dice: '1d10' },
+      { name: 'Pincer', dice: '1d10' },
+      { name: 'Sting', dice: '1d4' },
+    ],
+    speed: 75, aggroRange: 130, attackRange: 14, attackCooldownMs: 1600,
+    xp: 105, morale: 9, minFloor: 5, maxFloor: 10,
+    special: [{ kind: 'poison', save: 'death', dps: 2, durationMs: 4000 }],
+    textureKey: 'enemy_giant_scorpion', size: 48, rarity: 1,
+  }),
+  BARROW_GIANT: monster({
+    key: 'BARROW_GIANT', name: 'Barrow Giant', hd: 8, hpDice: '8d8', ac: 4,
+    attacks: [{ name: 'Tree-trunk club', dice: '2d8' }],
+    speed: 45, aggroRange: 170, attackRange: 16, attackCooldownMs: 2100,
+    xp: 140, morale: 9, minFloor: 8, maxFloor: 12,
+    textureKey: 'enemy_barrow_giant', size: 64, rarity: 0.6,
+  }),
+  OSSUARY_HULK: monster({
+    key: 'OSSUARY_HULK', name: 'Ossuary Hulk', hd: 9, hpDice: '9d8', ac: 3,
+    attacks: [
+      { name: 'Bone fist', dice: '2d6' },
+      { name: 'Bone fist', dice: '2d6' },
+    ],
+    speed: 40, aggroRange: 180, attackRange: 16, attackCooldownMs: 1900,
+    xp: 190, undead: true, morale: 12, minFloor: 9, maxFloor: 12,
+    textureKey: 'enemy_ossuary_hulk', size: 64, rarity: 0.5,
+  }),
+  CAVE_WYRM: monster({
+    key: 'CAVE_WYRM', name: 'Cave Wyrm', hd: 10, hpDice: '10d8', ac: 2,
+    attacks: [
+      { name: 'Bite', dice: '2d8', bonus: 1 },
+      { name: 'Claw', dice: '1d6' },
+      { name: 'Tail sweep', dice: '1d10' },
+    ],
+    speed: 60, aggroRange: 200, attackRange: 18, attackCooldownMs: 2200,
+    xp: 270, morale: 10, minFloor: 10, maxFloor: 12,
+    special: [{ kind: 'caster', spells: ['fire_breath'], cooldownMs: 7000 }],
+    textureKey: 'enemy_cave_wyrm', size: 64, rarity: 0.4,
+  }),
 };
 
 export const MONSTER_KEYS = Object.keys(MONSTERS) as MonsterKey[];
@@ -304,6 +386,18 @@ export const MONSTER_KEYS = Object.keys(MONSTERS) as MonsterKey[];
 export const NEW_MONSTER_KEYS: readonly NewMonsterKey[] = [
   'GHOUL', 'WIGHT', 'WRAITH', 'GARGOYLE', 'OOZE', 'CULTIST', 'BONE_KNIGHT', 'GIANT_BAT', 'HOLLOW_KING',
 ];
+
+export const LARGE_MONSTER_KEYS: readonly LargeMonsterKey[] = [
+  'OGRE', 'CAVE_BEAR', 'GIANT_SCORPION', 'BARROW_GIANT', 'OSSUARY_HULK', 'CAVE_WYRM',
+];
+
+/** Large monsters that may stand on `floor` (they are placed by the large-spawn planner, never scattered at random). */
+export function largeMonstersForFloor(floor: number): LargeMonsterKey[] {
+  return LARGE_MONSTER_KEYS.filter((k) => {
+    const m = MONSTERS[k];
+    return floor >= m.minFloor && (m.maxFloor === undefined || floor <= m.maxFloor);
+  });
+}
 
 /** Texture keys A2 must provide for the new monsters. */
 export const NEW_MONSTER_TEXTURE_KEYS: readonly string[] = NEW_MONSTER_KEYS.map((k) => MONSTERS[k].textureKey);

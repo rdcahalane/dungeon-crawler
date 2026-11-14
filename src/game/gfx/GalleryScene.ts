@@ -77,8 +77,8 @@ export class GalleryScene extends Phaser.Scene {
       const bg = this.add.rectangle(cx + 2, cy + 2, CELL_W - 4, CELL_H - 4, 0x1c1a26).setOrigin(0, 0);
       const img = this.add.image(cx + CELL_W / 2, cy + 38, key);
       const longest = Math.max(img.width, img.height);
-      // 32px textures show at 2x (64px); big glow textures shrink to fit.
-      img.setScale(longest <= 32 ? 2 : 64 / longest);
+      // 32px textures show at 2x (64px), the 48 and 64px monsters at 1x; big glow textures shrink to fit.
+      img.setScale(longest <= 32 ? 2 : longest <= 64 ? 1 : 64 / longest);
       const label = retroText(this, cx + CELL_W / 2, cy + CELL_H - 12, shorten(key, 19), {
         size: 8,
         color: WHITE,
@@ -111,7 +111,7 @@ export class GalleryScene extends Phaser.Scene {
     }
     this.preview.setTexture(key);
     const longest = Math.max(this.preview.width, this.preview.height);
-    this.preview.setScale(longest <= 32 ? 4 : 120 / longest);
+    this.preview.setScale(longest <= 32 ? 4 : longest <= 64 ? 2 : 120 / longest);
     const f2 = `${this.previewBase}_f2`;
     if (this.textures.exists(f2) && this.textures.exists(this.previewBase)) {
       this.previewTimer = this.time.addEvent({

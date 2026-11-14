@@ -15,6 +15,9 @@ import {
   ALLY_DEATH_RADIUS_PX, KEEP_DISTANCE_MS, SURPRISE_MS, fleeDurationMs, isIntelligent, lineOfSight, monsterReaction,
   moraleCheck, neverChecksMorale, retreatOutcome, surpriseRoll,
 } from "../../rules/encounter";
+import { isLargeMonster } from "../../rules";
+import type { SaveCategory } from "../../rules/classes";
+import { planLargeSpawnsForLayout, playerReachesMonster, type Tile as PlanTile } from "../../rules/largeMonsters";
 import type { EnemyEvent } from "../../entities/Enemy";
 import {
   resolvePlayerAttack, resolveMonsterRound, playerArmorClass, ignoresArmor, weaponProfile, enemyKeyIsMonster,
@@ -34,6 +37,8 @@ interface EnemyBolt {
   enemy: Enemy;
   spellDamage?: number;
   spellSave?: boolean;
+  /** Which saving throw halves the damage; spells by default, `breath` for a wyrm's fire. */
+  spellSaveCategory?: SaveCategory;
 }
 
 /**
@@ -137,15 +142,50 @@ export class CombatController {
       (enemy as Enemy & { _spawnIdx: number })._spawnIdx = idx;
     });
 
+    this.spawnLargeMonsters(ctx.dungeon.enemies.length + markers.length);
+
     scene.physics.add.collider(ctx.player, ctx.enemyGroup);
     scene.physics.add.collider(ctx.enemyGroup, ctx.enemyGroup);
   }
 
+  /**
+   * Zero, one or two large monsters (48 and 64 pixels) per floor, each on a clear 2x2 block of open floor in a room,
+   * so none is born inside a wall or a corridor it cannot leave. The plan is seeded by the floor's layout, so a
+   * revisit finds the same giants in the same places; their persistence indices follow the random spawns and markers.
+   */
+  private spawnLargeMonsters(firstIdx: number) {
+    const ctx = this.ctx;
+    const d = ctx.dungeon;
+    const taken: PlanTile[] = [
+      ...d.enemies, ...d.items, ...d.chests, ...d.traps, ...(d.inscriptions ?? []), ...(d.spawnMarkers ?? []),
+      ...d.secretDoors, ...(d.mechanisms ?? []).flatMap((m) => [{ tx: m.tx, ty: m.ty }, ...(m.tiles ?? [])]),
+    ];
+    const plan = planLargeSpawnsForLayout({
+      floor: ctx.currentFloor,
+      rooms: d.rooms,
+      isOpenFloor: (tx, ty) => d.tiles[ty]?.[tx] === TILE.FLOOR && ctx.isWalkable(tx, ty),
+      occupied: taken,
+      keepAwayFrom: [d.playerStart, d.stairsPos, d.stairsUpPos],
+    });
+    plan.forEach((p, k) => {
+      const idx = firstIdx + k;
+      if (ctx.persist.deadEnemyIndices.has(idx)) return;
+      const enemy = this.addEnemyAt(p.key, p.x, p.y);
+      (enemy as Enemy & { _spawnIdx: number })._spawnIdx = idx;
+      (enemy as Enemy & { _roomIdx?: number })._roomIdx = p.roomIdx;
+    });
+  }
+
   /** Make a monster at a tile and register it with the floor. */
   addEnemy(type: EnemyTypeKey, tx: number, ty: number, elite = false): Enemy {
+    return this.addEnemyAt(type, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, elite);
+  }
+
+  /** Make a monster at a world position (a large one stands on the corner of four tiles, not the middle of one). */
+  addEnemyAt(type: EnemyTypeKey, x: number, y: number, elite = false): Enemy {
     const ctx = this.ctx;
     const scene = ctx.scene;
-    const enemy = new Enemy(scene, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, type, elite);
+    const enemy = new Enemy(scene, x, y, type, elite);
     ctx.enemies.push(enemy);
     ctx.enemyGroup.add(enemy);
     scene.physics.add.collider(enemy, ctx.wallGroup);
@@ -162,7 +202,7 @@ export class CombatController {
     const ctx = this.ctx;
     if (!ctx.enemyGroup) return null;
     const pool = Object.values(MONSTERS).filter(
-      (m) => !m.boss && m.minFloor <= ctx.currentFloor && (m.maxFloor === undefined || ctx.currentFloor <= m.maxFloor) &&
+      (m) => !m.boss && !isLargeMonster(m) && m.minFloor <= ctx.currentFloor && (m.maxFloor === undefined || ctx.currentFloor <= m.maxFloor) &&
         m.key !== 'MIMIC' && (ctx.currentFloor > 1 || m.hd <= 1),
     );
     if (pool.length === 0) return null;
@@ -472,6 +512,19 @@ export class CombatController {
       }
       return;
     }
+    // Dragon's breath: a big gout of fire, save versus breath for half.
+    if (spell === 'fire_breath') {
+      ctx.floatText(enemy.x, enemy.y - 40, 'BREATH!', 0xff6f00, 12);
+      const bx = player.x - enemy.x;
+      const by = player.y - enemy.y;
+      const bl = Math.sqrt(bx * bx + by * by) || 1;
+      const gout = ctx.scene.add.rectangle(enemy.x, enemy.y, 16, 16, 0xff6f00).setDepth(16);
+      this.enemyProjectiles.push({
+        obj: gout, vx: (bx / bl) * 240, vy: (by / bl) * 240, life: 1600, kind: 'spell', enemy,
+        spellDamage: rollDice(mathRng, '5d6'), spellSave: true, spellSaveCategory: 'breath',
+      });
+      return;
+    }
     // Missile or fireball: a bolt that does fixed damage on arrival.
     const isFire = spell === 'fireball';
     const dmg = isFire ? rollDice(mathRng, '3d6') : rollDice(mathRng, '1d4+1');
@@ -587,7 +640,8 @@ export class CombatController {
         if (!enemy.active || enemy.hp <= 0) continue;
         if (enemy.isMimic && !enemy.mimicRevealed) continue;
         const d = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
-        if (d <= reach && d < best) { best = d; target = enemy; }
+        // Edge to edge: a big body's centre is farther away than the part of it you can strike.
+        if (playerReachesMonster(d, enemy.displayWidth, reach) && d < best) { best = d; target = enemy; }
       }
       if (target) {
         const oct = Math.round(Math.atan2(target.y - player.y, target.x - player.x) / (Math.PI / 4));
@@ -879,7 +933,7 @@ export class CombatController {
         if (proj.kind === 'spell') {
           let dmg = proj.spellDamage ?? 1;
           if (proj.spellSave) {
-            if (player.rollSave('spells').success) dmg = Math.max(1, Math.floor(dmg / 2));
+            if (player.rollSave(proj.spellSaveCategory ?? 'spells').success) dmg = Math.max(1, Math.floor(dmg / 2));
           }
           player.takeDamage(dmg);
         } else if (proj.enemy.active) {

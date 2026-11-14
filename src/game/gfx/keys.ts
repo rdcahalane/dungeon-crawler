@@ -165,6 +165,19 @@ export const NEW_ENEMY_KEYS: readonly string[] = [
   "enemy_hollow_king",
 ];
 
+/**
+ * Large monsters. Their sprites are not 16x16: 24x24 (ogre, cave bear, giant scorpion) and 32x32 (barrow giant,
+ * ossuary hulk, cave wyrm), drawn 2x, so the textures are 48 and 64 pixels.
+ */
+export const LARGE_ENEMY_KEYS: readonly string[] = [
+  "enemy_ogre",
+  "enemy_cave_bear",
+  "enemy_giant_scorpion",
+  "enemy_barrow_giant",
+  "enemy_ossuary_hulk",
+  "enemy_cave_wyrm",
+];
+
 /** Hirelings hired at the inn (32x32, 16x16 grid drawn 2x). */
 export const HIRELING_KEYS: readonly string[] = ["hireling_torchbearer", "hireling_man_at_arms"];
 
@@ -191,6 +204,7 @@ export const CREATURE_KEYS: readonly string[] = [
   "enemy_fast",
   "enemy_tank",
   ...NEW_ENEMY_KEYS,
+  ...LARGE_ENEMY_KEYS,
 ];
 
 export const WALK_FRAME_KEYS: readonly string[] = CREATURE_KEYS.map((k) => `${k}_f2`);
@@ -202,6 +216,7 @@ export const RETRO_TEXTURE_KEYS: readonly string[] = Array.from(
     ...MECH_KEYS,
     ...ITEM_KEYS,
     ...NEW_ENEMY_KEYS,
+    ...LARGE_ENEMY_KEYS,
     ...HIRELING_KEYS,
     ...WALK_FRAME_KEYS,
   ]),
