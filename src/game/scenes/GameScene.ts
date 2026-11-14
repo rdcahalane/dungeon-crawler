@@ -19,6 +19,7 @@ import { SpellInputController } from "./game/SpellInputController";
 import { FloatingTextController } from "./game/FloatingText";
 import { MechanismController } from "./game/MechanismController";
 import { InputController } from "./game/InputController";
+import { WanderController } from "./game/WanderController";
 import { buildHudExtras } from "./game/AdndHud";
 
 interface GameSceneInit {
@@ -221,8 +222,10 @@ export class GameScene extends Phaser.Scene {
     ctx.floor = new FloorController(ctx);
     ctx.spells = new SpellInputController(ctx);
     ctx.input = new InputController(ctx);
+    ctx.wander = new WanderController(ctx);
     this.controllers = [
       ctx.text, ctx.map, ctx.mech, ctx.traps, ctx.combat, ctx.loot, ctx.rooms, ctx.floor, ctx.spells, ctx.input,
+      ctx.wander,
     ];
     return ctx;
   }
@@ -312,6 +315,9 @@ export class GameScene extends Phaser.Scene {
     // Enemy update, enemy bolts
     ctx.combat.updateEnemies(delta);
     ctx.combat.updateEnemyProjectiles(delta);
+
+    // Game-turn clock: wandering monsters
+    ctx.wander.update(delta);
 
     // Chests, floor items, potions
     ctx.loot.update();

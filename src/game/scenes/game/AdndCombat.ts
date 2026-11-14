@@ -12,6 +12,7 @@ import {
   thac0For, wisdomSaveAdj,
   type AbilityScores, type MonsterDef, type MonsterKey, type Rng, type SaveCategory, type SaveResult, type Spellbook,
 } from '../../rules';
+import { SURPRISE_TO_HIT_BONUS } from '../../rules/encounter';
 import {
   equipmentBonuses, getDef, type Drop, type FoeTag, type Inventory, type ItemInstance,
 } from '../../items';
@@ -128,6 +129,8 @@ export interface TargetInfo {
   unaware?: boolean;
   /** Asleep or held: struck automatically. */
   helpless?: boolean;
+  /** Caught flat on first contact: the player gets `SURPRISE_TO_HIT_BONUS` to hit it. */
+  surprised?: boolean;
 }
 
 export type PlayerAttackOutcome =
@@ -155,7 +158,7 @@ export function resolvePlayerAttack(
   if (target.def && style === 'melee' && !canHarm(target.def, { plus: weapon.plus, silver: weapon.silver })) {
     return { kind: 'immune' };
   }
-  const toHit = playerToHitBonus(sheet, style);
+  const toHit = playerToHitBonus(sheet, style) + (target.surprised ? SURPRISE_TO_HIT_BONUS : 0);
   let natural = 0;
   let hit: boolean;
   let crit = false;

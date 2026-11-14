@@ -2,8 +2,31 @@ import * as Phaser from "phaser";
 import { TILE_SIZE, ENEMY_TYPES, EnemyTypeKey } from "../constants";
 import { MONSTERS, hasSpecial, mathRng, rollMonsterHp, isTurnable } from "../rules";
 import type { BossPhase, MonsterDef } from "../rules";
+import {
+  AFRAID_BACKOFF_PX, AFRAID_RUN_PX, MELEE_HOLD_PX, WARY_PATIENCE_MS, WARY_PROXIMITY_PX, fleeDurationMs,
+  type Reaction,
+} from "../rules/encounter";
 
 export type EnemyStatus = "asleep" | "held" | "webbed";
+
+/**
+ * Things the monster noticed about itself that the combat controller should react to (it owns the dice and the
+ * floating text). Drained once a frame with `drainEvents()`.
+ */
+export type EnemyEvent =
+  /** A morale flight ran out: roll to return or to keep distance. */
+  | "flee_ended"
+  /** A spell of keeping its distance ran out: roll again. */
+  | "distance_ended"
+  /** An afraid monster was approached and ran: show "flees!". */
+  | "afraid_flee"
+  /** A fleeing or afraid monster was backed into a wall and turned to fight. */
+  | "cornered";
+
+type FleeKind = "turn" | "morale";
+
+/** Monsters this small (display pixels) are drawn above the player sprite's depth (49), so they are never hidden by it. */
+const SMALL_MONSTER_SIZE = 20;
 
 /**
  * A monster. Hit points, armor class, THAC0, attacks, XP and specials come from the bestiary (`rules/bestiary`);
@@ -33,7 +56,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private _engaged = false;
 
   private _attackTimer = 0;
-  private _aiState: "idle" | "chase" | "attack" | "flee" = "idle";
+  private _aiState: "idle" | "chase" | "attack" | "flee" | "distance" = "idle";
   private hpBar!: Phaser.GameObjects.Rectangle;
   private hpBarBg!: Phaser.GameObjects.Rectangle;
   private nameTag!: Phaser.GameObjects.Text;
@@ -43,9 +66,32 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private _regenTimer = 0;
   private _regenBlockedMs = 0;
 
-  // Flee state (Turn Undead)
+  // Flee state: Turn Undead runs along a fixed line, a morale flight runs away from the player each frame.
   private _fleeTimer = 0;
   private _fleeDir = { x: 0, y: 0 };
+  private _fleeKind: FleeKind = "turn";
+  private _fleeSide = Math.random() < 0.5 ? 1 : -1;
+
+  // Encounter state (rules/encounter.ts): the controller rolls, this class acts.
+  /** How it feels about the player: hostile attacks, wary holds still, afraid backs away. */
+  public attitude: Reaction = "hostile";
+  /** The controller has done the first-contact rolls (surprise, reaction) for this monster. */
+  public contactDone = false;
+  /** Has had its half-hit-points morale check. */
+  public halfMoraleChecked = false;
+  /** Spawned by the wandering-monster clock. */
+  public wandering = false;
+  /**
+   * Where a wandering monster steers while it has no line to the player (set by `WanderController` from a walking
+   * route; cleared once it can see the player). Only used while hostile and in the chase.
+   */
+  public hunt: { x: number; y: number } | null = null;
+  private _surpriseMs = 0;
+  private _waryMs = 0;
+  private _keepDistanceMs = 0;
+  private _retreats = 0;
+  private _events: EnemyEvent[] = [];
+  private _desperateMs = 0;
 
   // Mimic: hidden until revealed
   private _mimicRevealed = false;
@@ -85,10 +131,16 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     const size = elite ? Math.ceil(def.size * 1.25) : def.size;
     this.setDisplaySize(size, size);
-    this.setDepth(9);
+    // Small monsters draw just above the player sprite (depth 49) and the floor items (3), so a rat at your
+    // feet is seen. Everything else keeps the old depth, under the torch glow.
+    const small = size <= SMALL_MONSTER_SIZE;
+    this.setDepth(small ? 49.4 : 9);
 
+    // The body is in unscaled texture pixels: the old `size - 12` made a 16px rat a 2px body that sat inside the
+    // player. Keep the old world size for big monsters, never below 14px.
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setSize(size - 12, size - 12);
+    const bodyWorld = Math.max(14, (size - 12) * this.scaleX);
+    body.setSize(bodyWorld / this.scaleX, bodyWorld / this.scaleY);
 
     // Mimic starts invisible (disguised as chest in the loot controller)
     if (this.isMimic) {
@@ -102,12 +154,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (hasSpecial(def, "incorporeal")) this.setAlpha(0.7);
 
     this.threatRing = scene.add.arc(x, y, size * (elite ? 0.9 : 0.72), 0, 360, false, elite ? 0xffd166 : look.color, elite ? 0.42 : 0.2)
-      .setDepth(8);
+      .setDepth(small ? 49.3 : 8);
 
     // HP bar
-    this.hpBarBg = scene.add.rectangle(x, y - size / 2 - 6, size, 4, 0x333333).setDepth(11);
+    this.hpBarBg = scene.add.rectangle(x, y - size / 2 - 6, size, 4, 0x333333).setDepth(small ? 49.55 : 11);
     this.hpBar = scene.add.rectangle(x - size / 2, y - size / 2 - 6, size, 4, 0x4caf50)
-      .setOrigin(0, 0.5).setDepth(12);
+      .setOrigin(0, 0.5).setDepth(small ? 49.6 : 12);
     const label = this._shortName();
     this.nameTag = scene.add.text(x, y + size / 2 + 5, elite ? `*${label}*` : label, {
       fontSize: '8px',
@@ -115,7 +167,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       fontFamily: 'monospace',
       stroke: '#000',
       strokeThickness: 2,
-    }).setOrigin(0.5, 0).setDepth(12);
+    }).setOrigin(0.5, 0).setDepth(small ? 49.6 : 12);
 
     if (elite) {
       this.setTint(0xffd166);
@@ -137,7 +189,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // ── Per-frame ───────────────────────────────────────────────────────────
 
-  update(delta: number, playerX: number, playerY: number) {
+  /** `seesPlayer` is the controller's line-of-sight answer, only asked for wary monsters. */
+  update(delta: number, playerX: number, playerY: number, seesPlayer = true) {
     if (this.hp <= 0) return;
 
     // Mimic: stay hidden until aggro range
@@ -156,6 +209,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._casterTimer = Math.max(0, this._casterTimer - delta);
     this._summonTimer = Math.max(0, this._summonTimer - delta);
     this._regenBlockedMs = Math.max(0, this._regenBlockedMs - delta);
+    this._desperateMs = Math.max(0, this._desperateMs - delta);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
 
@@ -185,16 +239,94 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const distToPlayer = Math.sqrt(dx * dx + dy * dy);
     const moveLen = distToPlayer || 1;
 
-    // Flee state (Turn Undead)
+    // Surprise: caught flat on first contact, it stands still for a moment.
+    if (this._surpriseMs > 0) {
+      this._surpriseMs = Math.max(0, this._surpriseMs - delta);
+      body.setVelocity(0, 0);
+      this.updateHpBar();
+      return;
+    }
+
+    // Flight: Turn Undead (fixed line) or a failed morale check (away from the player, around walls).
     if (this._aiState === 'flee') {
       this._fleeTimer = Math.max(0, this._fleeTimer - delta);
       if (this._fleeTimer <= 0) {
         this._aiState = 'idle';
-      } else {
+        // An afraid monster simply carries on being afraid; a rattled one gets to roll its nerve again.
+        if (this._fleeKind === 'morale' && this.attitude === 'hostile') {
+          this._retreats++;
+          this._events.push('flee_ended');
+        }
+      } else if (this._fleeKind === 'turn') {
         body.setVelocity(this._fleeDir.x * this.speed, this._fleeDir.y * this.speed);
         this.updateHpBar();
         return;
+      } else if (this._runAway(body, dx, dy, distToPlayer, 1)) {
+        this.updateHpBar();
+        return;
+      } else {
+        this._turnAtBay();
       }
+    }
+
+    // Keeping its distance after a flight: hangs back, does not close, ranged things may still shoot.
+    if (this._aiState === 'distance') {
+      this._keepDistanceMs = Math.max(0, this._keepDistanceMs - delta);
+      if (this._keepDistanceMs <= 0) {
+        this._aiState = 'idle';
+        this._retreats++;
+        this._events.push('distance_ended');
+      } else if (this._runAway(body, dx, dy, distToPlayer, 0.6, 4 * TILE_SIZE)) {
+        this.updateHpBar();
+        return;
+      } else {
+        this._turnAtBay();
+      }
+    }
+
+    // Reaction: wary monsters hold their ground, afraid ones back away. Neither attacks.
+    if (this.attitude === 'wary') {
+      this.setFlipX(dx < 0);
+      if (distToPlayer <= WARY_PROXIMITY_PX) {
+        this.attitude = 'hostile';
+      } else {
+        if (distToPlayer <= this.aggroRange && seesPlayer) this._waryMs += delta;
+        if (this._waryMs >= WARY_PATIENCE_MS) this.attitude = 'hostile';
+      }
+      if (this.attitude === 'wary') {
+        body.setVelocity(0, 0);
+        this.updateHpBar();
+        return;
+      }
+    } else if (this.attitude === 'afraid') {
+      if (distToPlayer <= AFRAID_RUN_PX) {
+        this.startMoraleFlee(fleeDurationMs(mathRng));
+        this._events.push('afraid_flee');
+        this._runAway(body, dx, dy, distToPlayer, 1);
+        this.updateHpBar();
+        return;
+      }
+      if (distToPlayer < AFRAID_BACKOFF_PX) {
+        if (this._runAway(body, dx, dy, distToPlayer, 0.7)) {
+          this.updateHpBar();
+          return;
+        }
+        this._turnAtBay();
+      } else {
+        body.setVelocity(0, 0);
+        this.updateHpBar();
+        return;
+      }
+    }
+
+    // A wanderer still looking for the player follows its route rather than pushing at a wall.
+    if (this.hunt && this._aiState === 'chase' && this.attitude === 'hostile') {
+      const hx = this.hunt.x - this.x;
+      const hy = this.hunt.y - this.y;
+      const hl = Math.sqrt(hx * hx + hy * hy) || 1;
+      body.setVelocity((hx / hl) * this.speed, (hy / hl) * this.speed);
+      this.updateHpBar();
+      return;
     }
 
     // Aggro check
@@ -244,6 +376,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       } else {
         if (distToPlayer > this.attackRange + 8) {
           body.setVelocity((dx / moveLen) * this.speed, (dy / moveLen) * this.speed);
+        } else if (distToPlayer < MELEE_HOLD_PX) {
+          // Stand beside the player, not inside the sprite: ease back out to the hold distance.
+          const back = Math.min(this.speed, 90) * 0.6;
+          body.setVelocity(-(dx / moveLen) * back, -(dy / moveLen) * back);
         } else {
           body.setVelocity(0, 0);
         }
@@ -287,6 +423,101 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     return this._aiState === 'flee';
   }
 
+  // ── Encounter hooks (driven by CombatController) ─────────────────────────
+
+  /** Caught flat on first contact: player attacks get +2 to hit while this lasts. */
+  get isSurprised(): boolean {
+    return this._surpriseMs > 0;
+  }
+
+  /** Backed into a corner and fighting for its life: it makes no morale checks for a while. */
+  get desperate(): boolean {
+    return this._desperateMs > 0;
+  }
+
+  /** Retreats so far (flights and spells of keeping distance that have ended). */
+  get retreats(): number {
+    return this._retreats;
+  }
+
+  /** Running away or hanging back: either way it is not in the fight. */
+  get retreating(): boolean {
+    return this._aiState === 'flee' || this._aiState === 'distance';
+  }
+
+  beginSurprise(ms: number) {
+    this._surpriseMs = ms;
+  }
+
+  /** Events for the controller since the last call. */
+  drainEvents(): EnemyEvent[] {
+    if (this._events.length === 0) return this._events;
+    const out = this._events;
+    this._events = [];
+    return out;
+  }
+
+  /** Struck, or an ally was: whatever it felt before, it fights now. */
+  provoke() {
+    this.attitude = 'hostile';
+    this._waryMs = 0;
+  }
+
+  /** Failed morale: run from the player for `ms`, not attacking, then roll again. */
+  startMoraleFlee(ms: number) {
+    this._aiState = 'flee';
+    this._fleeKind = 'morale';
+    this._fleeTimer = ms;
+    this._surpriseMs = 0;
+  }
+
+  /** Rallied but shaky: hang back for `ms` without closing. */
+  startKeepDistance(ms: number) {
+    this._aiState = 'distance';
+    this._keepDistanceMs = ms;
+  }
+
+  /** Rallied: back into the fight. */
+  returnToFight() {
+    this._aiState = 'chase';
+  }
+
+  /**
+   * Run directly away from the player, sliding along walls. Returns false when cornered (blocked both ways with the
+   * player close); stands still and returns true once farther than `until` pixels away.
+   */
+  private _runAway(
+    body: Phaser.Physics.Arcade.Body, dx: number, dy: number, dist: number, speedMult: number, until = Infinity,
+  ): boolean {
+    if (dist >= until) {
+      body.setVelocity(0, 0);
+      return true;
+    }
+    const len = dist || 1;
+    let ax = -dx / len;
+    let ay = -dy / len;
+    const b = body.blocked;
+    const blockedX = (ax < 0 && b.left) || (ax > 0 && b.right);
+    const blockedY = (ay < 0 && b.up) || (ay > 0 && b.down);
+    if (blockedX && blockedY) {
+      if (dist < 80) return false;
+      body.setVelocity(0, 0);
+      return true;
+    }
+    if (blockedX) { ax = 0; ay = ay === 0 ? this._fleeSide : Math.sign(ay); }
+    else if (blockedY) { ay = 0; ax = ax === 0 ? this._fleeSide : Math.sign(ax); }
+    body.setVelocity(ax * this.speed * speedMult, ay * this.speed * speedMult);
+    return true;
+  }
+
+  /** Nowhere left to run: it fights, and does not break again for a while. */
+  private _turnAtBay() {
+    this.attitude = 'hostile';
+    this._aiState = 'chase';
+    this._desperateMs = 10000;
+    this._events.push('cornered');
+  }
+
   // ── Skeletons, mimics, turning ──────────────────────────────────────────
 
   tryReform(): boolean {
@@ -320,6 +551,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   forceFleeFrom(fromX: number, fromY: number, duration = 10000): boolean {
     if (!isTurnable(this.def)) return false;
     this._aiState = 'flee';
+    this._fleeKind = 'turn';
     this._fleeTimer = duration;
     const dx = this.x - fromX;
     const dy = this.y - fromY;
@@ -333,10 +565,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   canAttackPlayer(playerX: number, playerY: number): boolean {
     if (this._attackTimer > 0 || this.hp <= 0 || this._aiState === 'flee' || this.status) return false;
     if (this.isMimic && !this._mimicRevealed) return false;
+    // Surprised, wary and afraid monsters do not attack; one keeping its distance only shoots.
+    if (this._surpriseMs > 0 || this.attitude !== 'hostile') return false;
+    if (this._aiState === 'distance' && !this.isRanged) return false;
     const dx = playerX - this.x;
     const dy = playerY - this.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    return dist <= this.attackRange + TILE_SIZE / 2;
+    // Monsters hold MELEE_HOLD_PX from the player's centre, so reach is never less than that plus a bite's length.
+    return dist <= Math.max(this.attackRange + TILE_SIZE / 2, MELEE_HOLD_PX + 10);
   }
 
   /** Start the cooldown and flash. The combat controller rolls the attacks. */
@@ -353,6 +589,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   takeSpellTurn(distToPlayer: number): string | null {
     const caster = hasSpecial(this.def, "caster");
     if (!caster || this._casterTimer > 0 || this.status || this._aiState === 'flee') return null;
+    if (this.attitude !== 'hostile' || this._surpriseMs > 0) return null;
     if (this.isMimic && !this._mimicRevealed) return null;
     if (distToPlayer > 230 || this._aiState !== 'chase') return null;
     this._casterTimer = caster.cooldownMs;
@@ -362,7 +599,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   /** True once per summon interval for bosses that call help. */
   summonDue(): boolean {
     const summon = hasSpecial(this.def, "summon");
-    if (!summon || this.status || this._aiState !== 'chase') return false;
+    if (!summon || this.status || this._aiState !== 'chase' || this._surpriseMs > 0) return false;
     if (this._summonTimer > 0) return false;
     this._summonTimer = summon.everyMs;
     return true;
@@ -404,6 +641,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const dmg = Math.max(1, Math.round(amount));
     this.hp = Math.max(0, this.hp - dmg);
     this._engaged = true;
+    this.provoke();
     const regen = hasSpecial(this.def, "regen");
     if (regen?.stoppedBy && ((regen.stoppedBy === 'fire' && opts.fire) || (regen.stoppedBy === 'acid' && opts.acid))) {
       this._regenBlockedMs = 6000;
