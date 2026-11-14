@@ -682,10 +682,387 @@ const honest_wall = defineVault({
   },
 });
 
+// ── Riddle vaults ────────────────────────────────────────────────────────────
+// Eight vaults whose way on is a riddle. The answer is typed, offered, pulled, trodden, or (once) not given at all.
+// Every riddle can be solved from its own words, and every vault carries a second, humbler hint for the stuck.
+
+const bell_door = defineVault({
+  id: 'bell_door',
+  name: 'The Tongueless Bell',
+  floors: [1, 4],
+  lootTier: 'wooden',
+  trick: 'A door that wants a typed answer: the riddle describes a bell, and the skeleton under an empty bracket says the same for anyone who cannot guess.',
+  rows: [
+    '###I#######',
+    '#.....#...#',
+    '#..z..#...#',
+    '......d..C#',
+    '#.....#...#',
+    '#.....#...#',
+    '###########',
+  ],
+  notes: { I: 'inscription', z: 'skeleton under an empty bracket', d: 'riddle door' },
+  build: (m) => {
+    const riddle =
+      'THE LINTEL READS: I SPEAK ONLY WHEN I AM STRUCK, AND THEN NO HAND CAN HUSH ME. TAKE MY TONGUE AND I AM A POT THAT HOLDS NO SOUP. HANG ME HIGH AND A WHOLE VALLEY KNOWS WHAT YOU HAVE DONE.';
+    return {
+      mechanisms: [
+        mk('riddle_door', 'bd_door', m.p('d'), {
+          params: {
+            answers: ['bell', 'a bell', 'the bell', 'church bell', 'brass bell', 'bronze bell', 'iron bell', 'tolling bell', 'bells'],
+            strikes: 3, dice: [1, 8], save: 'spells', cause: "the door's answer", grant: 'healing_potion', spawnAt: pos(8, 3),
+          },
+          clue: riddle,
+        }),
+        mk('inscription', 'bd_note', m.p('I'), { clue: `${riddle} SAY WHAT I AM. THE DOOR HAS NO PATIENCE FOR GUESSING.` }),
+        mk('inscription', 'bd_bones', m.p('z'), {
+          params: { look: 'bones' },
+          clue: 'A skeleton sits under an empty iron bracket, a rotted rope still wound in its fist. Beside its knee lies an iron clapper the size of a loaf, with nothing left to ring.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'bd_door' },
+      solution: [E.read('bd_note'), E.read('bd_bones'), E.read('bd_door'), E.answer('bd_door', 'A bell.')],
+      altSolutions: [[E.answer('bd_door', 'the church bell')]],
+      carelessPath: [E.answer('bd_door', 'open'), E.answer('bd_door', 'a key'), E.answer('bd_door', 'a drum')],
+    };
+  },
+});
+
+const lampkeeper = defineVault({
+  id: 'lampkeeper',
+  name: 'The Lampkeeper',
+  floors: [1, 4],
+  lootTier: 'wooden',
+  trick: 'A blind stone keeper holds out her hands for the one thing a delver carries that burns by inches: lay a torch in them.',
+  rows: [
+    '###I#######',
+    '#.....#...#',
+    '#..s.z#...#',
+    '......g..C#',
+    '#.....#...#',
+    '#.....#...#',
+    '###########',
+  ],
+  notes: { I: 'inscription', s: 'stone keeper', z: 'soot on the floor', g: 'portcullis' },
+  build: (m) => {
+    const riddle =
+      'I AM ALL THE SUN YOU WILL SEE DOWN HERE. I LIVE ON A STICK AND DIE BY INCHES. THE DARK HAS NEVER BEATEN ME, ONLY OUTWAITED ME. THE KEEPER IS BLIND, AND HAS ASKED FOR ME FOR A THOUSAND YEARS.';
+    return {
+      mechanisms: [
+        mk('statue_offering', 'lk_keeper', m.p('s'), {
+          params: { wants: 'torch', spawn: 'skeleton', spawnAt: pos(2, 4), grant: 'oil_flask' },
+          links: ['lk_gate'],
+          clue: 'A woman of grey stone with a cloth carved over her eyes, both hands cupped and held out. The palms are black with old soot.',
+        }),
+        mk('portcullis', 'lk_gate', m.p('g')),
+        mk('inscription', 'lk_note', m.p('I'), { clue: `ON THE PLINTH: ${riddle} LAY IT IN HER HANDS.` }),
+        mk('inscription', 'lk_soot', m.p('z'), {
+          params: { look: 'scorch' },
+          clue: 'Soot is smeared across the flags in front of the keeper, and a scatter of charred wood lies at her feet, as if something here has been burned and burned again.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'lk_gate' },
+      solution: [E.read('lk_note'), E.read('lk_soot'), E.read('lk_keeper'), E.offer('lk_keeper', 'torch')],
+      carelessPath: [E.offer('lk_keeper', 'rope')],
+    };
+  },
+});
+
+const held_breath = defineVault({
+  id: 'held_breath',
+  name: 'The Hall of Held Breath',
+  floors: [2, 5],
+  lootTier: 'wooden',
+  trick: 'The riddle answers itself: silence. A bright gong tempts the hand, but the gate only lifts for someone who stands on the worn stone and does nothing at all.',
+  rows: [
+    '###I##D##G###',
+    '#........#..#',
+    '#..b.....#..#',
+    '.....p...g.C#',
+    '#.....w..#..#',
+    '#........#..#',
+    '#############',
+  ],
+  notes: { I: 'inscription', D: 'dart holes', G: 'bronze gong', b: 'skeleton with a mallet', p: 'worn flagstone', w: 'worn dish in the floor', g: 'portcullis' },
+  build: (m) => {
+    const plate = m.p('p');
+    const riddle =
+      'I AM THE FIRST THING A THIEF LEARNS AND THE LAST THING A BOASTER KEEPS. FEED ME AND I STARVE. NAME ME AND I AM GONE. THE DEAD HAVE BEEN MY BEST CUSTOMERS FOR A VERY LONG TIME. GIVE ME TO THE HALL AND THE HALL WILL GIVE YOU THE WAY.';
+    return {
+      mechanisms: [
+        mk('pressure_plate', 'hb_plate', plate, {
+          params: { totalMs: 15000, grant: 'healing_potion', spawnAt: pos(10, 3) },
+          links: ['hb_gate'],
+          clue: 'A flagstone worn to a shallow dish, not by feet passing over it but by feet standing on it, for a long time, very still.',
+        }),
+        mk('portcullis', 'hb_gate', m.p('g')),
+        mk('lever', 'hb_gong', m.p('G'), {
+          params: { fires: ['hb_darts'] },
+          clue: 'A bronze gong on a chain, its striker polished by use. The floor beneath it is peppered with spent dart-tips.',
+        }),
+        mk('dart_wall', 'hb_darts', m.p('D'), {
+          params: { zone: { tx: 1, ty: 1, w: 8, h: 5 }, dice: [2, 6], ammo: 2, save: 'breath', cause: 'darts loosed by a struck gong' },
+          clue: 'Narrow black slots in the north wall, aimed at the whole floor of the hall.',
+        }),
+        mk('inscription', 'hb_note', m.p('I'), { clue: `CUT IN THE LINTEL: ${riddle}` }),
+        mk('inscription', 'hb_bones', m.p('b'), {
+          params: { look: 'bones' },
+          clue: 'A skeleton lies with a gong mallet still gripped in one hand and a dart through each knee. Its jaw hangs open, as though its last act was to apologise.',
+        }),
+        mk('inscription', 'hb_worn', m.p('w'), {
+          params: { look: 'stain' },
+          clue: 'Two pale prints are worn into the flag here, side by side, toes forward: the mark of someone who once stood and did not move.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'hb_gate' },
+      solution: [E.read('hb_note'), E.read('hb_bones'), E.step(pos(4, 3)), E.step(plate), ...E.wait(20)],
+      altSolutions: [[E.step(plate), ...E.wait(15)]],
+      carelessPath: [E.step(pos(4, 3)), E.pull('hb_gong')],
+    };
+  },
+});
+
+const reckoners_row = defineVault({
+  id: 'reckoners_row',
+  name: "The Reckoner's Row",
+  floors: [5, 8],
+  lootTier: 'iron',
+  trick: 'Five handles, each under a plaque naming a trade; the riddle describes one trade, and only that handle opens the gate. The rest loose darts.',
+  rows: [
+    '##A#B#E#F#H####',
+    '#.1.2.3.4.5.#.#',
+    '#.......h...#.#',
+    '............gC#',
+    '#...........#.#',
+    '#...........#.#',
+    '####W#####I####',
+  ],
+  notes: { A: 'first handle', B: 'second handle', E: 'third handle', F: 'fourth handle', H: 'fifth handle', W: 'dart holes', I: 'inscription', h: 'skeleton', g: 'portcullis' },
+  build: (m) => {
+    const names = ['THE MISER', 'THE PILGRIM', 'THE WIDOW', 'THE THIEF', 'THE HEIR'];
+    const levers = ['A', 'B', 'E', 'F', 'H'].map((c) => m.p(c));
+    const plaques = ['1', '2', '3', '4', '5'].map((c) => m.p(c));
+    const riddle =
+      'THE HANDLE THAT OPENS THE WAY BEARS MY NAME. I LIVE ON WHAT I NEVER MADE, AND OWN ONLY WHAT I HAVE NOT YET BEEN CAUGHT HOLDING. THE PRIEST CALLS ME A SIN, THE HANGMAN CALLS ME A LIVING, AND THE DARK IS THE ONE LANDLORD WHO NEVER ASKS ME FOR RENT.';
+    return {
+      mechanisms: [
+        ...levers.map((at, i) =>
+          mk('lever', `rl_l${i + 1}`, at, i === 3
+            ? { links: ['rl_gate'], params: { grant: 'gem_garnet', spawnAt: pos(13, 2) } }
+            : { params: { fires: ['rl_darts'] } }),
+        ),
+        ...plaques.map((at, i) =>
+          mk('inscription', `rl_p${i + 1}`, at, { clue: `A brass plaque under the handle: ${names[i]}.` }),
+        ),
+        mk('portcullis', 'rl_gate', m.p('g')),
+        mk('dart_wall', 'rl_darts', m.p('W'), {
+          params: { zone: { tx: 1, ty: 1, w: 11, h: 5 }, dice: [2, 6], ammo: 3, save: 'breath', cause: 'darts from the wrong handle' },
+          clue: 'A row of black slots in the south wall, all pointed at the stretch of floor under the handles.',
+        }),
+        mk('inscription', 'rl_note', m.p('I'), { clue: `ON THE SOUTH WALL: ${riddle}` }),
+        mk('inscription', 'rl_bones', m.p('h'), {
+          params: { look: 'bones' },
+          clue: 'A skeleton sits propped under the fourth plaque, a bent lockpick in its fingers and nothing in its ribs but dust. It looks like the only man in the hall who died comfortable.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'rl_gate' },
+      solution: [E.read('rl_note'), E.read('rl_p4'), E.read('rl_bones'), E.step(pos(8, 1)), E.pull('rl_l4')],
+      carelessPath: [E.step(pos(2, 1)), E.pull('rl_l1')],
+    };
+  },
+});
+
+const dial_of_hours = defineVault({
+  id: 'dial_of_hours',
+  name: 'The Dial of Hours',
+  floors: [5, 8],
+  lootTier: 'iron',
+  trick: 'Four flags to be trodden in the order of one day: east, middle, west, south. The riddle gives the compass from the door; a bolt answers any wrong step.',
+  rows: [
+    '######I########',
+    '#...........###',
+    '#.d.........###',
+    '#...........#.#',
+    '#.....n....aSC#',
+    '#.........b.#.#',
+    '............###',
+    '#.....s.....###',
+    '###############',
+  ],
+  notes: { I: 'inscription', d: 'dusk flag', n: 'noon flag', a: 'dawn flag', s: 'night flag', S: 'sliding wall', b: 'chalk and bones' },
+  build: (m) => {
+    const [a, n, d, s] = ['a', 'n', 'd', 's'].map((ch) => m.p(ch));
+    const riddle =
+      'THE HALL KEEPS ONE DAY. THE DOOR YOU CAME BY FACES WEST. THE DAY BEGINS ON THE FLAG THAT SEES THE SUNRISE FIRST, FARTHEST FROM THE DOOR. IT CLIMBS TO THE FLAG AT THE HEART OF THE FLOOR. IT FALLS TO THE FLAG THAT CATCHES THE LAST OF THE SUN, UP IN THE NORTH CORNER BY THE DOOR. THEN IT LIES DOWN WHERE THE SUN NEVER COMES: THE FLAG AT THE FOOT OF THE SOUTH WALL.';
+    return {
+      mechanisms: [
+        mk('rune_floor', 'dh_runes', a, {
+          tiles: [n, d, s],
+          params: {
+            order: [0, 1, 2, 3], punish: 'bolt', dice: [3, 6], save: 'wands', cause: 'a bolt from a flag trodden out of turn',
+            grant: 'gem_pearl', spawnAt: pos(13, 3),
+          },
+          links: ['dh_slide'],
+          clue: 'Four flags are set in the floor, each a hand wide and warm to the touch. The wear on them says they were meant to be trodden one after another.',
+        }),
+        mk('sliding_wall', 'dh_slide', m.p('S')),
+        mk('inscription', 'dh_note', m.p('I'), { clue: `ON THE NORTH WALL: ${riddle} A DAY KEPT OUT OF ORDER IS A STORM.` }),
+        mk('inscription', 'dh_bones', m.p('b'), {
+          params: { look: 'bones' },
+          clue: 'A skeleton lies stretched from the east flag toward the middle of the floor, a lump of chalk still in its fingers. Chalk scratches run in a wavering line from the east flag and give out halfway.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'dh_slide' },
+      solution: [E.read('dh_note'), E.read('dh_bones'), ...E.walk([a, n, d, s])],
+      carelessPath: [E.step(n)],
+    };
+  },
+});
+
+const twin_mouths = defineVault({
+  id: 'twin_mouths',
+  name: 'The Twin Mouths',
+  floors: [8, 12],
+  lootTier: 'golden',
+  trick: 'Two carved mouths, one that always lies. The liar swears that both are honest, which cannot be so when exactly one lies, so the other mouth is the one to believe.',
+  rows: [
+    '###T##I#U####',
+    '#........#..#',
+    '#........#..#',
+    '.........g.C#',
+    '#........#..#',
+    '#..z.....#..#',
+    '###L##W#R####',
+  ],
+  notes: { T: 'west carved mouth', U: 'east carved mouth', I: 'inscription', L: 'west handle', R: 'east handle', W: 'dart holes', z: 'soot on the floor', g: 'portcullis' },
+  build: (m) => {
+    const riddle =
+      'TWO MOUTHS SPEAK FOR THE KEEPER. ONE HAS NEVER SPOKEN FALSE. THE OTHER HAS NEVER SPOKEN TRUE. NEITHER WILL SAY WHICH HE IS. ONLY ONE OF THE TWO HANDLES IN THE SOUTH WALL OPENS THE GATE. HEAR BOTH MOUTHS AND REASON, FOR A LIAR WILL ALWAYS CLAIM THE COMPANY OF HONEST MEN.';
+    return {
+      mechanisms: [
+        mk('talking_face', 'tm_west', m.p('T'), {
+          params: {
+            truthFlag: 'tm_never',
+            falseText: 'The west mouth says: We two speak nothing but the truth, brother and I. Pull the west handle, and be quick about it.',
+            trueText: 'The west mouth says nothing that you can believe.',
+          },
+        }),
+        mk('talking_face', 'tm_east', m.p('U'), {
+          params: {
+            trueText: 'The east mouth says: My brother lies, as he was carved to. The east handle opens the gate. The west handle only hurts.',
+            falseText: 'The east mouth says nothing.',
+          },
+        }),
+        mk('lever', 'tm_lever_w', m.p('L'), { params: { fires: ['tm_darts'] } }),
+        mk('lever', 'tm_lever_e', m.p('R'), { links: ['tm_gate'], params: { grant: 'gem_pearl', spawnAt: pos(10, 2) } }),
+        mk('portcullis', 'tm_gate', m.p('g')),
+        mk('dart_wall', 'tm_darts', m.p('W'), {
+          params: { zone: { tx: 1, ty: 1, w: 8, h: 5 }, dice: [3, 6], ammo: 2, save: 'breath', cause: 'darts from the west handle' },
+          clue: 'A row of slots in the south wall, black inside, all aimed at the floor of the hall.',
+        }),
+        mk('inscription', 'tm_note', m.p('I'), { clue: `ON THE NORTH WALL, BETWEEN THE MOUTHS: ${riddle}` }),
+        mk('inscription', 'tm_soot', m.p('z'), {
+          params: { look: 'scorch' },
+          clue: 'Black soot is ground into the flags under the west handle, and there are bronze dart-tips in the cracks. Under the east handle the floor is clean.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'tm_gate' },
+      solution: [E.read('tm_note'), E.touch('tm_west'), E.touch('tm_east'), E.step(pos(7, 5)), E.pull('tm_lever_e')],
+      carelessPath: [E.touch('tm_west'), E.step(pos(3, 4)), E.pull('tm_lever_w')],
+    };
+  },
+});
+
+const starved_judge = defineVault({
+  id: 'starved_judge',
+  name: 'The Starved Judge',
+  floors: [9, 12],
+  lootTier: 'golden',
+  trick: 'A hollow stone judge will pass only a delver who feeds him. Gold is an insult to a man who died starving, and a wrong gift wakes the thing that served him.',
+  rows: [
+    '####I########',
+    '#.........###',
+    '#...s.....###',
+    '....b.....SC#',
+    '#.........###',
+    '#.........###',
+    '#############',
+  ],
+  notes: { I: 'inscription', s: 'stone judge', b: 'kneeling skeleton', S: 'sliding wall' },
+  build: (m) => {
+    const riddle =
+      'I AM THE DULLEST THING IN YOUR PACK AND THE ONE MOST MISSED. I AM A DAY THAT FITS IN A POCKET. THE JUDGE HAS NOT EATEN IN A HUNDRED YEARS AND WILL NOT HEAR A HUNGRY MAN. GIVE HIM WHAT YOU WOULD KEEP FOR YOURSELF.';
+    return {
+      mechanisms: [
+        mk('statue_offering', 'sj_judge', m.p('s'), {
+          params: { wants: 'ration', spawn: 'ghoul', spawnAt: pos(2, 5), grant: 'extra_healing_potion' },
+          links: ['sj_wall'],
+          clue: 'A crowned judge on a stone throne, his ribs showing through the carving and both hands cupped on his knees. The cup of his hands is dry as chalk.',
+        }),
+        mk('sliding_wall', 'sj_wall', m.p('S')),
+        mk('inscription', 'sj_note', m.p('I'), { clue: `ON THE PLINTH: ${riddle}` }),
+        mk('inscription', 'sj_bones', m.p('b'), {
+          params: { look: 'bones' },
+          clue: 'A skeleton kneels before the judge with a heap of coins at its knees. It died with a full purse and an empty stomach.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'sj_wall' },
+      solution: [E.read('sj_note'), E.read('sj_bones'), E.read('sj_judge'), E.offer('sj_judge', 'ration')],
+      carelessPath: [E.offer('sj_judge', 'gem_garnet')],
+    };
+  },
+});
+
+const sleepers_bier = defineVault({
+  id: 'sleepers_bier',
+  name: "The Sleeper's Bier",
+  floors: [9, 12],
+  lootTier: 'golden',
+  trick: 'Five flags lie in a row beneath a dead king: only the one under his heart is safe, and the riddle counts from his feet. The other four loose a bolt.',
+  rows: [
+    '######I########',
+    '#...........###',
+    '#...........###',
+    '............SC#',
+    '#.......h...###',
+    '#.a.b.c.d.e.###',
+    '###############',
+  ],
+  notes: { I: 'inscription', a: 'first flag', b: 'second flag', c: 'third flag', d: 'fourth flag', e: 'fifth flag', h: 'skeleton on its back', S: 'sliding wall' },
+  build: (m) => {
+    const flags = ['a', 'b', 'c', 'd', 'e'].map((ch) => m.p(ch));
+    const riddle =
+      'FIVE FLAGS LIE UNDER THE KING AS HE SLEEPS: FOOT, KNEE, HIP, HEART AND CROWN. HIS FEET ARE TO THE DOOR AND HIS CROWN IS TO THE FAR WALL. FOUR OF THE FLAGS HAVE LIED TO MEN. THE ONE UNDER THE KING\'S OWN HEART HAS NEVER LIED TO ANYONE.';
+    return {
+      mechanisms: [
+        mk('rune_floor', 'sb_flags', flags[0], {
+          tiles: flags.slice(1),
+          params: {
+            order: [3], punish: 'bolt', dice: [3, 6], save: 'wands', cause: 'a flag that lied',
+            grant: 'gem_ruby', spawnAt: pos(11, 3),
+          },
+          links: ['sb_slide'],
+          clue: 'Five flags in a line across the south of the hall, each warm and each slightly proud of the floor. Only one of them has no scorch on its edge.',
+        }),
+        mk('sliding_wall', 'sb_slide', m.p('S')),
+        mk('inscription', 'sb_note', m.p('I'), { clue: `ON THE NORTH WALL: ${riddle}` }),
+        mk('inscription', 'sb_bones', m.p('h'), {
+          params: { look: 'bones' },
+          clue: 'A skeleton lies on its back above the line of flags, its arms folded over its own ribs and its feet toward the door. It looks as though it chose a place to lie down, and chose well.',
+        }),
+      ],
+      goal: { kind: 'open', id: 'sb_slide' },
+      solution: [E.read('sb_note'), E.read('sb_bones'), E.step(flags[3])],
+      carelessPath: [E.step(flags[0])],
+    };
+  },
+});
+
 export const VAULTS: VaultDef[] = [
   loose_flag, two_levers, weighing_hall, scorched_gallery, door_that_asks, wardens_cell,
   rune_ring, false_and_true, thirsty_saint, sweating_chamber, honest_wall,
   returns_corridor, gilded_bait, warm_mouth, narrowing_cell,
+  bell_door, lampkeeper, held_breath, reckoners_row, dial_of_hours, twin_mouths, starved_judge, sleepers_bier,
 ];
 
 export const VAULT_BY_ID: Record<string, VaultDef> = Object.fromEntries(VAULTS.map((v) => [v.id, v]));

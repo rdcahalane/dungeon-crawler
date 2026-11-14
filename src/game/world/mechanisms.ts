@@ -431,6 +431,19 @@ function tickTimers(state: MechState, dtMs: number, effs: MechEffect[], rng: Rng
   state.clockMs += dtMs;
   for (const s of state.specs) {
     const r = rtOf(state, s.id);
+    if (s.kind === 'pressure_plate' && s.params.totalMs && !s.params.momentary && !r.on && !r.spent) {
+      if (r.held > 0) {
+        r.timerMs += dtMs;
+        if (r.timerMs >= s.params.totalMs) {
+          r.on = true;
+          r.spent = true;
+          effs.push(sfx('plate_click'));
+          effs.push(msg('The hall lets out its breath. Somewhere iron shifts, unhurried.', 'info'));
+          solved(state, s, effs, rng);
+        }
+      }
+      continue;
+    }
     if (!r.on || r.spent) continue;
     const p = s.params;
     if (s.kind === 'closing_walls') {
@@ -563,6 +576,18 @@ function stepPlate(
 ): void {
   const p = s.params;
   if (p.minWeight === 'player' && weight === 'item') return;
+  if (p.totalMs && !p.momentary) {
+    // Dwell plate: it fires only after a person has stood on it for totalMs (see tickTimers). A dropped item or a
+    // monster counts for nothing, and stepping off starts the wait over.
+    if (weight !== 'player') return;
+    r.held++;
+    if (r.held === 1 && !r.on) {
+      r.timerMs = 0;
+      r.revealed = true;
+      effs.push(msg('The flag settles a hair under your weight. The hall seems to listen.', 'info'));
+    }
+    return;
+  }
   r.held++;
   if (r.held !== 1) return;
   if (!p.momentary && r.spent) return;
@@ -583,6 +608,7 @@ function onLeave(state: MechState, ev: Extract<MechEvent, { type: 'leave' }>, ef
     if (s.kind !== 'pressure_plate' || !hasTile(footprint(s), ev.tx, ev.ty)) continue;
     const r = rtOf(state, s.id);
     if (r.held > 0) r.held--;
+    if (r.held === 0 && s.params.totalMs && !s.params.momentary && !r.on) r.timerMs = 0;
     if (r.held === 0 && s.params.momentary && r.on) {
       r.on = false;
       effs.push(sfx('plate_rise'));
@@ -795,6 +821,11 @@ function onInteract(state: MechState, ev: Extract<MechEvent, { type: 'interact' 
         effs.push(sfx('curse'));
         effs.push(msg('The stone face turns a degree toward you. It did not want that.', 'danger'));
         effs.push({ type: 'status', key: 'cursed', durationMs: 300000, save: 'spells' });
+        if (p.spawn) {
+          const at = p.spawnAt ?? { tx: s.tx, ty: s.ty };
+          effs.push(msg('Dust sifts from the statue\'s hands, and something nearby stirs awake.', 'danger'));
+          effs.push({ type: 'spawn', monster: p.spawn, tx: at.tx, ty: at.ty });
+        }
       }
       return;
     }

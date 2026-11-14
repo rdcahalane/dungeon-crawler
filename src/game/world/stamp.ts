@@ -49,6 +49,23 @@ function rectBlocked(sums: number[][], x0: number, y0: number, x1: number, y1: n
   return sums[y1 + 1][x1 + 1] - sums[y0][x1 + 1] - sums[y1 + 1][x0] + sums[y0][x0];
 }
 
+const WALKABLE = new Set<TileValue>([TILE.FLOOR, TILE.STAIRS, TILE.STAIRS_UP, TILE.TRAP, TILE.SECRET_DOOR]);
+
+/** Every tile the player can walk to from the start, as y * MAP_WIDTH + x keys. */
+function reachableFromStart(d: DungeonData): Set<number> {
+  const seen = new Set<number>();
+  const stack = [d.playerStart.ty * MAP_WIDTH + d.playerStart.tx];
+  while (stack.length > 0) {
+    const k = stack.pop() as number;
+    const x = k % MAP_WIDTH;
+    const y = (k - x) / MAP_WIDTH;
+    if (x < 0 || y < 0 || x >= MAP_WIDTH || y >= MAP_HEIGHT || seen.has(k) || !WALKABLE.has(d.tiles[y][x])) continue;
+    seen.add(k);
+    stack.push(k + 1, k - 1, k + MAP_WIDTH, k - MAP_WIDTH);
+  }
+  return seen;
+}
+
 interface Placement {
   ox: number;
   oy: number;
@@ -59,6 +76,8 @@ function findPlacement(
   d: DungeonData, v: VaultDef, protectedTiles: Set<number>, rng: Rng,
 ): Placement | null {
   const sums = buildBlockedSums(d.tiles, protectedTiles);
+  // a corridor must join floor the player can actually reach, not a sealed pocket of the generated level
+  const reach = reachableFromStart(d);
   const spots: { ox: number; oy: number }[] = [];
   for (let oy = 2; oy + v.height <= MAP_HEIGHT - 2; oy++) {
     for (let ox = 2; ox + v.width <= MAP_WIDTH - 2; ox++) {
@@ -77,7 +96,7 @@ function findPlacement(
         if (protectedTiles.has(y * MAP_WIDTH + x)) break;
         const t = d.tiles[y][x];
         if (t === TILE.FLOOR) {
-          if (path.length > 0) return { ox, oy, corridor: path };
+          if (path.length > 0 && reach.has(y * MAP_WIDTH + x)) return { ox, oy, corridor: path };
           break;
         }
         if (t !== TILE.WALL) break;
