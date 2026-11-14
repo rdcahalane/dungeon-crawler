@@ -20,8 +20,11 @@ import {
 export const REALTIME_TO_HIT_BONUS = 2;
 /** Base swing cooldown. */
 export const BASE_SWING_MS = 400;
-/** Short window after a hit that swallows duplicate projectile hits. */
-export const PLAYER_HIT_GRACE_MS = 120;
+/**
+ * Window after a hit in which nothing else can land. Long enough that a pack cannot stack three bites into one
+ * instant (tuned 2026-11-14 after level-1 characters died in about six seconds on floor 1).
+ */
+export const PLAYER_HIT_GRACE_MS = 500;
 /** Healing potions heal 2d4+2. */
 export const HEALING_POTION_DICE = '2d4';
 export const HEALING_POTION_BONUS = 2;

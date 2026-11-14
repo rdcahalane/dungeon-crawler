@@ -522,7 +522,7 @@ describe('legacy conversion', () => {
     expect(inv.equipment.armor?.defKey).toBe('plate_mail');
     expect(inv.equipment.armor?.plus).toBe(1);
     expect(inv.has('scroll_fireball')).toBe(true);
-    expect(inv.count('healing_potion')).toBe(1 + 1 + 7);
+    expect(inv.count('healing_potion')).toBe(2 + 1 + 7);
     expect(inv.has('long_sword')).toBe(true); // the starter sword displaced into the pack
     expect(r.skipped.some((s) => s.includes('Tome of STR'))).toBe(true);
     expect(r.skipped.some((s) => s.includes('Mystery Club'))).toBe(true);

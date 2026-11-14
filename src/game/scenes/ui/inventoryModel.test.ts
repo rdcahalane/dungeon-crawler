@@ -202,6 +202,8 @@ describe("runAction", () => {
     expect(r.ok).toBe(true);
     expect(heal).toHaveBeenCalledTimes(1);
     expect(heal.mock.calls[0][0]).toBeGreaterThan(0);
+    expect(inv.belt[0]?.quantity).toBe(1); // the kit starts with two
+    expect(runAction(h, { type: "useBelt", index: 0 }).ok).toBe(true);
     expect(inv.belt[0]).toBeNull();
   });
 });

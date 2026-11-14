@@ -109,7 +109,7 @@ export const MONSTERS: Record<MonsterKey, MonsterDef> = {
   BASIC: monster({
     key: 'BASIC', name: 'Goblin', hd: 1, hpDice: '1d8', ac: 6,
     attacks: [{ name: 'Rusty blade', dice: '1d6' }],
-    speed: 80, aggroRange: 160, attackRange: 20, attackCooldownMs: 1000,
+    speed: 80, aggroRange: 160, attackRange: 20, attackCooldownMs: 1300,
     xp: 15, morale: 7, minFloor: 1, maxFloor: 9, textureKey: 'enemy_basic', size: 22,
   }),
   FAST: monster({
@@ -140,15 +140,15 @@ export const MONSTERS: Record<MonsterKey, MonsterDef> = {
   GIANT_RAT: monster({
     key: 'GIANT_RAT', name: 'Giant Rat', hd: 0.5, hpDice: '1d4', ac: 7,
     attacks: [{ name: 'Bite', dice: '1d3' }],
-    speed: 150, aggroRange: 180, attackRange: 16, attackCooldownMs: 500,
+    speed: 150, aggroRange: 180, attackRange: 16, attackCooldownMs: 900,
     xp: 8, morale: 5, minFloor: 1, maxFloor: 6, textureKey: 'enemy_giant_rat', size: 16,
   }),
   GIANT_SPIDER: monster({
     key: 'GIANT_SPIDER', name: 'Giant Spider', hd: 2, hpDice: '2d8', ac: 6,
     attacks: [{ name: 'Venomous bite', dice: '1d6' }],
-    speed: 100, aggroRange: 170, attackRange: 18, attackCooldownMs: 700,
-    xp: 30, morale: 8, minFloor: 1,
-    special: [{ kind: 'poison', save: 'death', dps: 1, durationMs: 5000 }],
+    speed: 100, aggroRange: 170, attackRange: 18, attackCooldownMs: 1200,
+    xp: 30, morale: 8, minFloor: 2,
+    special: [{ kind: 'poison', save: 'death', dps: 1, durationMs: 3000 }],
     textureKey: 'enemy_giant_spider', size: 20,
   }),
   TROLL: monster({
@@ -269,8 +269,8 @@ export const MONSTERS: Record<MonsterKey, MonsterDef> = {
   GIANT_BAT: monster({
     key: 'GIANT_BAT', name: 'Giant Bat', hd: 1, hpDice: '1d8', ac: 8,
     attacks: [{ name: 'Bite', dice: '1d4' }],
-    speed: 170, aggroRange: 220, attackRange: 16, attackCooldownMs: 650,
-    xp: 18, morale: 7, minFloor: 2,
+    speed: 170, aggroRange: 220, attackRange: 16, attackCooldownMs: 1000,
+    xp: 18, morale: 7, minFloor: 1,
     special: [{ kind: 'erratic' }],
     textureKey: 'enemy_giant_bat', size: 16,
   }),
