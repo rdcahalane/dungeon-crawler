@@ -1,6 +1,9 @@
 # Dungeon Crawler overhaul: design and build contract
 
-Status: in progress (started 2026-11-14). This file is the source of truth for every agent working the overhaul.
+Status: waves A, B and the first polish pass are merged on branch `overhaul` (2026-11-14). Playable end to end.
+Open: sound has not been heard by a person; balance and shop prices are untuned; vault solves with levers, riddles,
+teleporters and falls are covered by tests but not yet played through; main menu and gallery still use 8px text.
+Dev shortcuts: `/?quick=fighter&floor=3` (straight into a floor, 13 is the tomb), `/?gallery=1` (sprites, font, sounds).
 
 ## Where the game is today
 

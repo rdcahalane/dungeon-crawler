@@ -479,7 +479,9 @@ export class TavernScene extends Phaser.Scene {
   // -- Camera ----------------------------------------------------------------
 
   private setupCamera(totalW: number, totalH: number) {
-    this.cameras.main.setBounds(0, 0, totalW, totalH);
+    // Room to scroll past the walls, so whatever the player walks up to (the bar is in the top-left corner)
+    // comes out from under the HUD panels.
+    this.cameras.main.setBounds(0, -120, totalW, totalH + 240);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
     // Zoom stays 1: a fractional zoom smears pixel art and shifts the screen-fixed panels.
     // No fog - tavern is fully lit
@@ -489,7 +491,7 @@ export class TavernScene extends Phaser.Scene {
 
   private buildPromptText() {
     const x = this.scale.width / 2;
-    const y = this.scale.height - 40;
+    const y = this.scale.height - 136; // above the hotbar
     this.promptBg = flatPanel(this, x, y, 120, 40, { fill: COL.black, border: COL.slate, alpha: 0.9 })
       .setDepth(99).setScrollFactor(0).setVisible(false);
     this.interactPrompt = uiText(this, x, y, "", { size: 16, color: COL.white, originX: 0.5, originY: 0.5, depth: 100 })
