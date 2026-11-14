@@ -129,7 +129,12 @@ export class MainMenuScene extends Phaser.Scene {
     CLASSES.forEach((cls, i) => {
       const x = startX + i * spacing;
       const y = 300;
-      this.add2(flatPanel(this, x, y + 6, 112, 128, { fill: COL.dusk, border: COL.slate }));
+      const card = this.add2(flatPanel(this, x, y + 6, 112, 128, { fill: COL.dusk, border: COL.slate }));
+      // A class portrait is a way in too: a click anywhere on it starts a game.
+      card.setInteractive({ useHandCursor: true });
+      card.on("pointerover", () => card.setStrokeStyle(2, CLASS_COL[cls]));
+      card.on("pointerout", () => card.setStrokeStyle(2, COL.slate));
+      card.on("pointerdown", () => this.show("slots"));
       const img = this.add2(this.add.image(x, y - 8, `player_${cls}`).setScale(3));
       this.add2(uiText(this, x, y + 54, cls.toUpperCase(), { size: 16, color: CLASS_COL[cls], originX: 0.5, originY: 0.5 }));
       let frame = 0;
@@ -148,12 +153,26 @@ export class MainMenuScene extends Phaser.Scene {
       );
     });
 
-    const start = this.add2(uiText(this, cx, 430, "PRESS START", { size: 32, color: COL.white, originX: 0.5, originY: 0.5 }));
-    this.walkEvents.push(
-      this.time.addEvent({ delay: 520, loop: true, callback: () => start.setVisible(!start.visible) }),
-    );
-    const hit = this.add2(this.add.rectangle(cx, 430, 420, 56, 0x000000, 0).setInteractive({ useHandCursor: true }));
+    // The way in. It blinks between bright and dim, never off, so it is always on screen.
+    const startY = 432;
+    const hit = this.add2(flatPanel(this, cx, startY, 580, 48, { fill: COL.ink, border: COL.slate }));
+    hit.setInteractive({ useHandCursor: true });
     hit.on("pointerdown", () => this.show("slots"));
+    const start = this.add2(uiText(this, cx, startY, "PRESS ENTER OR CLICK TO BEGIN", {
+      size: 24, color: COL.gold, originX: 0.5, originY: 0.5,
+    }));
+    let bright = true;
+    this.walkEvents.push(
+      this.time.addEvent({
+        delay: 520,
+        loop: true,
+        callback: () => {
+          bright = !bright;
+          start.setAlpha(bright ? 1 : 0.35);
+          start.setTint(bright ? COL.gold : COL.silver);
+        },
+      }),
+    );
 
     const how = retroButton(this, cx - 130, 504, 240, 40, "HOW TO PLAY (H)", () => this.show("howto"), { size: 16 });
     this.add2(how.box);

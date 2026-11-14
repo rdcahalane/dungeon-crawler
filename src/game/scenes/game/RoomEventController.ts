@@ -5,6 +5,8 @@ import { onSpecialRoomEntered } from "../../systems/QuestSystem";
 import type { Enemy } from "../../entities/Enemy";
 import { MONSTERS } from "../../rules";
 import type { GameContext, RelicKey } from "../../GameContext";
+import { COL, flatPanel, uiText } from "../../gfx/retroUi";
+import { GLYPH_W, LINE, wrap } from "../ui/theme";
 
 type BoonKey = 'blade' | 'bulwark' | 'vigor' | 'arcana' | 'fortune';
 
@@ -15,6 +17,32 @@ interface BoonOption {
   color: number;
   apply: () => void;
 }
+
+/** One card in a choice dialog (boon or shrine). Every string is wrapped to the card's inner width. */
+interface ChoiceCard {
+  title: string;
+  color: number;
+  lines: string[];
+  /** Index into `lines` of a price the player pays, drawn in red instead of cream. */
+  costIdx?: number;
+  onPick: () => void;
+}
+
+interface ChoiceDialog {
+  title: string;
+  sub: string;
+  border: number;
+  fill: number;
+  button: string;
+  cards: ChoiceCard[];
+}
+
+const CARD_W = 240;
+const CARD_H = 262;
+const CARD_GAP = 16;
+const CARD_PAD = 12;
+/** Characters of 16px text that fit between the card's inner padding. */
+const CARD_COLS = Math.floor((CARD_W - CARD_PAD * 2) / GLYPH_W);
 
 interface RoomChallenge {
   roomIdx: number;
@@ -41,6 +69,11 @@ const RELIC_LABELS: Record<RelicKey, string> = {
   boss_trophy: 'Guardian Trophy',
 };
 
+/** What each relic does, in the words the shrine shows. Black Candle depends on whether the arcade rewards are on. */
+function candleBoon(): string {
+  return ARCADE_ROOM_EVENTS ? 'Room gambits pay double' : 'Entering a room shows the traps hidden in it';
+}
+
 /**
  * Room challenges (gambits), room modifiers, special rooms, the floor objective, boons, relics and the
  * cursed shrine.
@@ -54,6 +87,7 @@ export class RoomEventController {
   private _roomChallenge?: RoomChallenge;
   private _roomChallengesSeen = new Set<number>();
   private _relicRoomTriggers = new Set<number>();
+  private _candleRooms = new Set<number>();
 
   private _shrineDialogOpen = false;
   private _shrineDialogElements: Phaser.GameObjects.GameObject[] = [];
@@ -229,7 +263,7 @@ export class RoomEventController {
         key: 'blade',
         title: 'Honed Blade',
         lines: ['+1 to hit and damage', 'For the rest of the run'],
-        color: 0xff5a5f,
+        color: COL.red,
         apply: () => {
           s.weaponBonus += 1;
           player.recomputeDerived();
@@ -239,7 +273,7 @@ export class RoomEventController {
         key: 'bulwark',
         title: 'Old Shield',
         lines: ['Armor class 1 better', 'Heal 25% max HP'],
-        color: 0x80d8ff,
+        color: COL.sky,
         apply: () => {
           s.armorBonus += 1;
           player.recomputeDerived();
@@ -250,7 +284,7 @@ export class RoomEventController {
         key: 'vigor',
         title: 'Warrior Vigor',
         lines: ['+3 max HP, fully healed', 'A healing potion'],
-        color: 0x69f0ae,
+        color: COL.lime,
         apply: () => {
           s.baseMaxHp = (s.baseMaxHp ?? s.maxHp) + 3;
           player.recomputeDerived();
@@ -262,7 +296,7 @@ export class RoomEventController {
         key: 'arcana',
         title: 'Arcane Spark',
         lines: book ? ['Every spell memorized again', 'Drained HP mended'] : ['A Scroll of Identify', 'A little experience'],
-        color: 0xce93d8,
+        color: COL.orchid,
         apply: () => {
           if (book) {
             book.rest();
@@ -277,7 +311,7 @@ export class RoomEventController {
         key: 'fortune',
         title: 'Lucky Find',
         lines: [`+${20 + floor * 6} gold`, 'A healing potion'],
-        color: 0xffd166,
+        color: COL.gold,
         apply: () => {
           ctx.addGold(20 + floor * 6);
           ctx.loot.giveItem('healing_potion');
@@ -293,68 +327,85 @@ export class RoomEventController {
     if (this._boonDialogOpen) return;
     this._boonDialogOpen = true;
     this.ctx.bus.emit('ui_open', { panel: 'boon' });
+    this.drawChoiceDialog(this._boonDialogElements, {
+      title: 'CLAIM A BOON',
+      sub: 'CHOOSE ONE REWARD FOR THIS RUN.',
+      border: COL.gold,
+      fill: COL.ink,
+      button: 'CHOOSE',
+      cards: this.buildBoonOptions().map(option => ({
+        title: option.title, color: option.color, lines: option.lines, onPick: () => this.chooseBoon(option),
+      })),
+    });
+  }
+
+  /**
+   * A modal with three cards, all text in the retro bitmap font at 16px and wrapped to the card's inner width. Layout, top
+   * to bottom inside a card: title (up to two lines), body lines (18px pitch), then the button pinned to the card foot.
+   */
+  private drawChoiceDialog(els: Phaser.GameObjects.GameObject[], d: ChoiceDialog) {
     const scene = this.ctx.scene;
     const W = scene.scale.width;
     const H = scene.scale.height;
     const cx = W / 2;
     const cy = H / 2;
     const D = 220;
-    const els = this._boonDialogElements;
+    const n = d.cards.length;
+    const panelW = n * CARD_W + (n - 1) * CARD_GAP + 48;
+    const panelH = CARD_H + 110;
+    const top = Math.round(cy - panelH / 2);
+    const fixed = <T extends Phaser.GameObjects.GameObject & { setScrollFactor(v: number): T; setDepth(v: number): T }>(o: T, depth = D): T => {
+      o.setScrollFactor(0).setDepth(depth);
+      els.push(o);
+      return o;
+    };
 
-    els.push(scene.add.rectangle(cx, cy, W, H, 0x000000, 0.62).setScrollFactor(0).setDepth(D));
-    els.push(scene.add.rectangle(cx, cy, 720, 300, 0x080814, 0.97)
-      .setStrokeStyle(2, 0xffd166).setScrollFactor(0).setDepth(D));
-    els.push(scene.add.text(cx, cy - 126, 'CLAIM A BOON', {
-      fontSize: '24px', color: '#ffd166', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
-    els.push(scene.add.text(cx, cy - 96, 'Choose one reward for this run.', {
-      fontSize: '12px', color: '#888899', fontFamily: 'monospace',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+    fixed(scene.add.rectangle(cx, cy, W, H, COL.black, 0.7));
+    fixed(flatPanel(scene, cx, cy, panelW, panelH, { fill: d.fill, border: d.border }));
+    fixed(uiText(scene, cx, top + 14, d.title, { size: 24, color: d.border, originX: 0.5 }), D + 1);
+    fixed(uiText(scene, cx, top + 50, d.sub, { size: 16, color: COL.grey, originX: 0.5 }), D + 1);
 
-    this.buildBoonOptions().forEach((option, i) => {
-      const x = cx - 230 + i * 230;
-      this.addBoonCard(x, cy + 32, option);
+    const cardTop = top + 80;
+    const left = cx - panelW / 2 + 24 + CARD_W / 2;
+    d.cards.forEach((card, i) => {
+      const x = left + i * (CARD_W + CARD_GAP);
+      const y = cardTop + CARD_H / 2;
+      const inner = x - CARD_W / 2 + CARD_PAD;
+      const bg = fixed(flatPanel(scene, x, y, CARD_W, CARD_H, { fill: COL.dusk, border: card.color }));
+      bg.setInteractive({ useHandCursor: true });
+
+      const titleLines = wrap(card.title.toUpperCase(), CARD_COLS).slice(0, 2);
+      titleLines.forEach((row, k) => {
+        fixed(uiText(scene, x, cardTop + 12 + k * LINE, row, { size: 16, color: card.color, originX: 0.5 }), D + 1);
+      });
+
+      let ly = cardTop + 12 + titleLines.length * LINE + 14;
+      card.lines.forEach((line, k) => {
+        const rows = wrap(line.toUpperCase(), CARD_COLS);
+        rows.forEach((row, m) => {
+          fixed(uiText(scene, inner, ly + m * LINE, row, {
+            size: 16, color: k === card.costIdx ? COL.red : COL.cream,
+          }), D + 1);
+        });
+        ly += rows.length * LINE + 8;
+      });
+
+      const bw = d.button.length * GLYPH_W + 24;
+      const by = cardTop + CARD_H - 28;
+      const btn = fixed(flatPanel(scene, x, by, bw, 32, { fill: COL.ink, border: card.color }), D + 1);
+      btn.setInteractive({ useHandCursor: true });
+      const btnLabel = fixed(uiText(scene, x, by, d.button, { size: 16, color: COL.white, originX: 0.5, originY: 0.5 }), D + 2);
+
+      const hover = (on: boolean) => {
+        bg.setFillStyle(on ? COL.slate : COL.dusk);
+        btnLabel.setTint(on ? COL.gold : COL.white);
+      };
+      for (const t of [bg, btn]) {
+        t.on('pointerover', () => hover(true));
+        t.on('pointerout', () => hover(false));
+        t.on('pointerdown', card.onPick);
+      }
     });
-  }
-
-  private addBoonCard(x: number, y: number, option: BoonOption) {
-    const scene = this.ctx.scene;
-    const D = 220;
-    const W = 200;
-    const H = 190;
-    const els = this._boonDialogElements;
-    const hex = `#${option.color.toString(16).padStart(6, '0')}`;
-
-    const bg = scene.add.rectangle(x, y, W, H, 0x111122, 0.98)
-      .setInteractive({ useHandCursor: true })
-      .setStrokeStyle(1, option.color)
-      .setScrollFactor(0)
-      .setDepth(D);
-    els.push(bg);
-
-    els.push(scene.add.text(x, y - H / 2 + 24, option.title, {
-      fontSize: '15px', color: hex, fontFamily: 'monospace',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 1));
-
-    option.lines.forEach((line, i) => {
-      els.push(scene.add.text(x - W / 2 + 18, y - H / 2 + 58 + i * 24, line, {
-        fontSize: '12px', color: '#c8c8d8', fontFamily: 'monospace',
-      }).setOrigin(0, 0).setScrollFactor(0).setDepth(D + 1));
-    });
-
-    const choose = scene.add.text(x, y + H / 2 - 28, 'CHOOSE', {
-      fontSize: '13px', color: hex, fontFamily: 'monospace',
-      backgroundColor: '#00000066',
-      padding: { x: 12, y: 5 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 1);
-    els.push(choose);
-
-    const apply = () => this.chooseBoon(option);
-    bg.on('pointerover', () => bg.setFillStyle(option.color, 0.12));
-    bg.on('pointerout', () => bg.setFillStyle(0x111122, 0.98));
-    bg.on('pointerdown', apply);
-    choose.setInteractive({ useHandCursor: true }).on('pointerdown', apply);
   }
 
   private chooseBoon(option: BoonOption) {
@@ -376,83 +427,57 @@ export class RoomEventController {
     if (this._shrineDialogOpen) return;
     this._shrineDialogOpen = true;
     this.ctx.bus.emit('ui_open', { panel: 'shrine' });
-    const ctx = this.ctx;
-    const scene = ctx.scene;
-    const W = scene.scale.width;
-    const H = scene.scale.height;
-    const cx = W / 2;
-    const cy = H / 2;
-    const D = 220;
-    const player = ctx.player;
+    const player = this.ctx.player;
     const s = player.stats;
 
-    const options = [
+    const options: ChoiceCard[] = [
       {
         title: 'Blood for Fire',
-        relic: 'ember_idol' as RelicKey,
-        lines: ['Lose 3 max HP for good', 'First kill in each room grants Rush'],
-        color: 0xff5a5f,
-        pay: () => { s.baseMaxHp = Math.max(4, (s.baseMaxHp ?? s.maxHp) - 3); player.recomputeDerived(); },
+        color: COL.red,
+        lines: ['Lose 3 max HP for good', 'First kill in each room quickens your feet'],
+        costIdx: 0,
+        onPick: () => this.takeBargain('ember_idol', () => {
+          s.baseMaxHp = Math.max(4, (s.baseMaxHp ?? s.maxHp) - 3); player.recomputeDerived();
+        }),
       },
       {
         title: 'Vow of Greed',
-        relic: 'chest_contract' as RelicKey,
+        color: COL.gold,
         lines: ['Chests pay double gold', 'Each chest bites for a little HP'],
-        color: 0xffd166,
-        pay: () => player.takeDamage(Math.max(2, Math.floor(s.maxHp * 0.08)), true),
+        costIdx: 1,
+        onPick: () => this.takeBargain('chest_contract', () => {
+          player.takeDamage(Math.max(2, Math.floor(s.maxHp * 0.08)), true);
+        }),
       },
       {
         title: 'Black Candle',
-        relic: 'black_candle' as RelicKey,
-        lines: ['Room gambits pay double', 'Lose a spell, or a healing potion'],
-        color: 0xce93d8,
-        pay: () => {
+        color: COL.orchid,
+        lines: [candleBoon(), 'Lose a spell, or a healing potion'],
+        costIdx: 1,
+        onPick: () => this.takeBargain('black_candle', () => {
           const ready = player.spellbook?.available() ?? [];
           if (ready.length > 0) player.spellbook!.cast(ready[0].key);
           else { player.inventory.consume('healing_potion', 1); player.recomputeDerived(); }
-        },
+        }),
       },
     ];
 
-    const els = this._shrineDialogElements;
-    els.push(scene.add.rectangle(cx, cy, W, H, 0x000000, 0.62).setScrollFactor(0).setDepth(D));
-    els.push(scene.add.rectangle(cx, cy, 690, 300, 0x120812, 0.98).setStrokeStyle(2, 0xce93d8).setScrollFactor(0).setDepth(D));
-    els.push(scene.add.text(cx, cy - 118, 'Cursed Shrine', {
-      fontSize: '22px', color: '#ce93d8', fontFamily: 'monospace', stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
-    els.push(scene.add.text(cx, cy - 88, 'Pick a relic. The dungeon takes its price now.', {
-      fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
-
-    options.forEach((option, i) => {
-      const x = cx - 220 + i * 220;
-      const card = scene.add.rectangle(x, cy + 20, 200, 190, 0x160f1f, 0.98)
-        .setInteractive({ useHandCursor: true })
-        .setStrokeStyle(1, option.color)
-        .setScrollFactor(0)
-        .setDepth(D);
-      els.push(card);
-      els.push(scene.add.text(x, cy - 50, option.title, {
-        fontSize: '14px', color: `#${option.color.toString(16).padStart(6, '0')}`, fontFamily: 'monospace',
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
-      option.lines.forEach((line, lineIdx) => {
-        els.push(scene.add.text(x - 82, cy - 16 + lineIdx * 24, line, {
-          fontSize: '11px', color: '#c9bed6', fontFamily: 'monospace',
-        }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(D));
-      });
-      const take = () => {
-        option.pay();
-        this.grantRelic(option.relic);
-        this.closeCursedShrine();
-        ctx.emitHUD();
-      };
-      card.on('pointerover', () => card.setFillStyle(0x241432));
-      card.on('pointerout', () => card.setFillStyle(0x160f1f));
-      card.on('pointerdown', take);
-      els.push(scene.add.text(x, cy + 88, 'TAKE BARGAIN', {
-        fontSize: '11px', color: '#ffffff', fontFamily: 'monospace',
-      }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+    this.drawChoiceDialog(this._shrineDialogElements, {
+      title: 'CURSED SHRINE',
+      sub: 'PICK A RELIC. THE DUNGEON TAKES ITS PRICE NOW.',
+      border: COL.orchid,
+      fill: COL.ink,
+      button: 'TAKE BARGAIN',
+      cards: options,
     });
+  }
+
+  private takeBargain(relic: RelicKey, pay: () => void) {
+    if (!this._shrineDialogOpen) return;
+    pay();
+    this.grantRelic(relic);
+    this.closeCursedShrine();
+    this.ctx.emitHUD();
   }
 
   private closeCursedShrine() {
@@ -476,6 +501,7 @@ export class RoomEventController {
     if (roomIdx !== this._lastPlayerRoomIdx) {
       this._lastPlayerRoomIdx = roomIdx;
       player.refreshArmorWard();
+      this.candleReveal(roomIdx);
       if (player.stats.armorTrait === 'warded') {
         ctx.floatText(player.x, player.y - 42, 'WARD READY', 0x80d8ff, 10);
       }
@@ -514,6 +540,32 @@ export class RoomEventController {
     if (room.modifier && !this._triggeredRoomModifiers.has(roomIdx)) {
       this._triggeredRoomModifiers.add(roomIdx);
       this.triggerRoomModifier(roomIdx, room.modifier);
+    }
+  }
+
+  /**
+   * Black Candle (careful-crawl effect): its black flame leans toward danger, so the first time you step into a room every
+   * undiscovered trap on its floor is revealed, the same reveal a rune room gives. Does nothing while the arcade rewards
+   * are on (there it doubles gambit pay instead).
+   */
+  private candleReveal(roomIdx: number) {
+    const ctx = this.ctx;
+    if (ARCADE_ROOM_EVENTS || !ctx.hasRelic('black_candle') || this._candleRooms.has(roomIdx)) return;
+    this._candleRooms.add(roomIdx);
+    const room = ctx.dungeon.rooms[roomIdx];
+    if (!room) return;
+    let found = 0;
+    for (const trap of ctx.dungeon.traps) {
+      const key = `${trap.tx},${trap.ty}`;
+      if (ctx.persist.triggeredTrapKeys.has(key) || ctx.traps.detectedTraps.has(key)) continue;
+      if (trap.tx >= room.x && trap.tx < room.x + room.w && trap.ty >= room.y && trap.ty < room.y + room.h) {
+        ctx.traps.detectTrap(key, trap.tx, trap.ty, trap.type, 'search');
+        found++;
+      }
+    }
+    if (found > 0) {
+      ctx.floatText(ctx.player.x, ctx.player.y - 42, 'CANDLE LEANS', COL.orchid, 10);
+      ctx.status(`The Black Candle leans: ${found} hidden ${found > 1 ? 'traps' : 'trap'} shown.`);
     }
   }
 

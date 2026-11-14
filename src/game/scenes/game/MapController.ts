@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, TILE, MAP_WIDTH, MAP_HEIGHT, FOG_RADIUS, getFloorThemeIdx } from "../../constants";
 import type { GameContext } from "../../GameContext";
+import { ARCADE_ROOM_EVENTS } from "./RoomEventController";
 
 /** Tilemap, room decoration, fog of war, torch glow, camera and zoom. */
 export class MapController {
@@ -142,7 +143,8 @@ export class MapController {
         scene.add.image(cx, cy, 'decal_pillar').setAlpha(0.35).setDepth(2.5);
       }
 
-      if (room.modifier) {
+      // Blood Rune rooms are a retired arcade reward: nothing to mark while it is off.
+      if (room.modifier && (room.modifier !== 'blood_rune' || ARCADE_ROOM_EVENTS)) {
         const modColor = modifierColor[room.modifier] ?? 0xffffff;
         const modLabel = room.modifier === 'blood_rune'
           ? 'BLOOD'
