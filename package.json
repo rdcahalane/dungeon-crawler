@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sim": "jiti scripts/sim-balance.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
