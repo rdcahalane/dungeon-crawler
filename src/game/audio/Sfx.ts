@@ -334,7 +334,7 @@ class SfxEngine {
     const gain = ctx.createGain();
     const now = ctx.currentTime;
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(level, now + fadeInS);
+    gain.gain.linearRampToValueAtTime(level * (def.level ?? 1), now + fadeInS);
     gain.connect(this.musicBus as GainNode);
     const seed = this.musicSeed ?? (Math.random() * 4294967296) >>> 0;
     const p: Player = {

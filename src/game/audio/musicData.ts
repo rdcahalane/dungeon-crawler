@@ -57,6 +57,8 @@ export interface BedDef {
   skippable?: string[];
   /** Sections variation may play twice in a row. */
   repeatable?: string[];
+  /** Loudness trim for the whole bed (default 1). Sparse percussive beds measure quieter than drones. */
+  level?: number;
   /** Chance a section is heard with its lead an octave away (default 0.2). */
   octaveChance?: number;
   /** Chance a section ends on a drum fill (default 0.3). */
@@ -203,6 +205,8 @@ const TAV_A_HEAD = [
 ];
 
 const TAVERN: BedDef = {
+  // Measured 2026-11-14: peaks about 6 dB under the dungeon beds before this trim.
+  level: 1.7,
   meter: [6, 8],
   bpm: 150,
   stepsPerBeat: 2,
@@ -645,6 +649,8 @@ const bossSection = (chords: string, lead: string): SectionDef => ({
 });
 
 const BOSS: BedDef = {
+  // Measured 2026-11-14: peaks about 6 dB under the dungeon beds before this trim.
+  level: 1.9,
   meter: [4, 4],
   bpm: 132,
   stepsPerBeat: 4,

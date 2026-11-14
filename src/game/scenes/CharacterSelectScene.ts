@@ -1,3 +1,4 @@
+import { setTextEntry } from "../textEntry";
 import * as Phaser from "phaser";
 import { CHARACTER_CLASSES, ClassKey } from "../constants";
 import { CharCreationData } from "../entities/Player";
@@ -368,6 +369,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     // Set up keyboard listener for name input
     this._nameInputActive = true;
+    setTextEntry(true);
     this._nameKeydownHandler = (e: KeyboardEvent) => this._onNameKeydown(e);
     this.input.keyboard!.manager.target.addEventListener('keydown', this._nameKeydownHandler);
 
@@ -417,6 +419,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private _cleanupNameInput() {
     this._nameInputActive = false;
+    setTextEntry(false);
     if (this._nameKeydownHandler) {
       this.input.keyboard!.manager.target.removeEventListener('keydown', this._nameKeydownHandler);
       this._nameKeydownHandler = undefined;

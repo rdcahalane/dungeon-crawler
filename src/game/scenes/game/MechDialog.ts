@@ -1,3 +1,4 @@
+import { setTextEntry } from "../../textEntry";
 import * as Phaser from "phaser";
 import type { GameContext } from "../../GameContext";
 import type { OfferOption } from "./MechVerbs";
@@ -47,6 +48,7 @@ export class MechDialog {
     this.typed = "";
     this.cursor = 0;
     ctx.modalOpen = true;
+    setTextEntry(req.kind === "riddle");
     if (scene.input.keyboard) scene.input.keyboard.enabled = false;
     ctx.bus.emit("ui_open", { panel: "mech_dialog" });
     this.build();
@@ -66,6 +68,7 @@ export class MechDialog {
     this.typedText = undefined;
     this.req = undefined;
     ctx.modalOpen = false;
+    setTextEntry(false);
     if (scene.input.keyboard) {
       scene.input.keyboard.enabled = true;
       scene.input.keyboard.resetKeys();

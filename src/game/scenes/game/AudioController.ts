@@ -3,6 +3,7 @@
  * `dc-mute`), music beds per scene, and one sound per gameplay event from the
  * GameScene bus. Event-to-sound tables live in audio/eventSounds.ts.
  */
+import { isTextEntryActive } from "../../textEntry";
 import * as Phaser from "phaser";
 import { Sfx, type MusicBed } from "../../audio/Sfx";
 import {
@@ -89,6 +90,7 @@ export function attachAudio(game: Phaser.Game): void {
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "n" && e.key !== "N") return;
+      if (isTextEntryActive()) return; // typing a riddle answer or a name
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
