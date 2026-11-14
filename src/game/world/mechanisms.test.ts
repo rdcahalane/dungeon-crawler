@@ -293,3 +293,31 @@ describe('views and persistence', () => {
     }
   });
 });
+
+describe('dwell plates and statue spawns', () => {
+  const plate = pos(2, 2);
+  const specs = [
+    mk('pressure_plate', 'dw_plate', plate, { params: { totalMs: 5000, grant: 'ration', spawnAt: pos(3, 2) }, links: ['dw_gate'] }),
+    mk('portcullis', 'dw_gate', pos(5, 2)),
+  ];
+  it('fires only after the player has stood on it for totalMs', () => {
+    const early = replay(specs, [E.step(plate), ...E.wait(4)]);
+    expect(early.state.rt.dw_gate.on).toBe(false);
+    const done = replay(specs, [E.step(plate), ...E.wait(5)]);
+    expect(done.state.rt.dw_gate.on).toBe(true);
+    expect(done.effects.filter((e) => e.type === 'grant')).toHaveLength(1);
+  });
+  it('fires once, resets when left, and ignores items and monsters', () => {
+    const once = replay(specs, [E.step(plate), ...E.wait(20)]);
+    expect(once.effects.filter((e) => e.type === 'grant')).toHaveLength(1);
+    const reset = replay(specs, [E.step(plate), ...E.wait(4), E.leave(plate), E.step(plate), ...E.wait(4)]);
+    expect(reset.state.rt.dw_gate.on).toBe(false);
+    expect(replay(specs, [E.step(plate, 'item'), E.step(plate, 'monster'), ...E.wait(20)]).state.rt.dw_gate.on).toBe(false);
+  });
+  it('a statue with spawn params wakes a monster on a wrong offering only', () => {
+    const statue = [mk('statue_offering', 'st', pos(2, 2), { params: { wants: 'torch', spawn: 'skeleton', spawnAt: pos(3, 3) } })];
+    const wrong = replay(statue, [E.offer('st', 'rope')]);
+    expect(wrong.effects.find((e) => e.type === 'spawn')).toMatchObject({ monster: 'skeleton', tx: 3, ty: 3 });
+    expect(replay(statue, [E.offer('st', 'torch')]).effects.some((e) => e.type === 'spawn')).toBe(false);
+  });
+});

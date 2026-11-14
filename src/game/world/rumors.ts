@@ -59,6 +59,22 @@ export const VAULT_RUMORS: Readonly<Record<string, string>> = {
     "A carved face by a brazier tells the truth while the coals are lit and lies when they are cold. I would get the fire right before I took the advice.",
   narrowing_cell:
     "Deep down is a cell where the walls walk inward when you stand on the bright stone. There is a way to stop them, and you want to find it before you need it.",
+  bell_door:
+    "A door on the upper floors wants its answer said aloud. Look for the poor fellow sitting under an empty bracket, because he has been giving the same hint for years.",
+  lampkeeper:
+    "There's a blind stone woman with her hands held out and soot on her palms. Ask yourself what a person gives who has never once seen the sun.",
+  held_breath:
+    "One hall has a gong that every visitor wants to hit, and a skeleton who regrets it. The only worn stone in there was not worn by walking.",
+  reckoners_row:
+    "Five handles stand in a row, each with a trade on a brass plaque beneath it, and a riddle names one trade. The man who read it right is still in there, sitting comfortably.",
+  dial_of_hours:
+    "Four flags in a hall keep the hours of a single day, and the wall tells you where the sun comes up. A skeleton left chalk marks, and I would trust them as far as they go.",
+  twin_mouths:
+    "Two carved mouths talk in a hall deep down, and one has never told the truth in its life. Listen to what each says about the other, and count the liars.",
+  starved_judge:
+    "A stone judge sits starving on his throne, and a skeleton at his knees died rich. Gold does nothing for a hungry man, living or carved.",
+  sleepers_bier:
+    "Five flags lie under a sleeping king, and four of them lie to you. Count from his feet, and keep your boots off the ones that scorch.",
 };
 
 /** True rumours about the final tomb. */
