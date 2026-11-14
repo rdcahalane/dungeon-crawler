@@ -699,13 +699,18 @@ function onProbe(state: MechState, ev: Extract<MechEvent, { type: 'probe' }>, ef
   }
 }
 
+/** Lowest chance (d100) a search has of finding something hidden, whatever its difficulty. */
+export const SEARCH_FLOOR_PCT = 17;
+
 function onSearch(state: MechState, ev: Extract<MechEvent, { type: 'search' }>, effs: MechEffect[]): void {
   for (const s of state.specs) {
     if (!searchable(s)) continue;
     const r = rtOf(state, s.id);
     if (r.revealed) continue;
     if (!senseTiles(s).some((p) => cheb(p, ev) <= 1)) continue;
-    if (ev.roll <= ev.chance - s.searchDifficulty) reveal(state, s, effs);
+    // Difficulty lowers the odds but never below 1 in 6, the chance anyone has of finding a secret door. Without
+    // the floor a fighter had 2% a try against the tomb's gas-room lever (test play, 2026-11-14).
+    if (ev.roll <= Math.max(SEARCH_FLOOR_PCT, ev.chance - s.searchDifficulty)) reveal(state, s, effs);
   }
 }
 
