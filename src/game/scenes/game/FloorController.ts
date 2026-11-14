@@ -1,12 +1,18 @@
 import * as Phaser from "phaser";
 import type { PlayerStats } from "../../entities/Player";
 import type { SerializedFloor } from "../../systems/DungeonGenerator";
-import { TILE_SIZE, TOMB_FLOOR } from "../../constants";
-import { mathRng } from "../../rules";
+import { TILE_SIZE, TOMB_FLOOR, CHARACTER_CLASSES } from "../../constants";
+import { mathRng, titleFor } from "../../rules";
 import { applyRest, wanderingMonsterArrives } from "./AdndCombat";
 import { onFloorReached } from "../../systems/QuestSystem";
 import { saveGame } from "../../systems/SaveStore";
+import { graveyard, causePhrase, trapCause, type FallenRecord } from "../../systems/Graveyard";
+import { resolveInteract } from "./interactArbiter";
+import type { GameEventScope } from "../../GameEvents";
 import type { GameContext } from "../../GameContext";
+
+/** After the first E on the stairs, how long the second E is accepted. */
+const STAIRS_CONFIRM_MS = 4000;
 
 type RestType = 'short' | 'long';
 
@@ -19,8 +25,37 @@ export class FloorController {
   private _recalling = false;
   private _restBlockedUntil = 0;
   private _sealedMsgUntil = 0;
+  // Stairs ask first: the first E arms the prompt, a second E inside the window takes you down.
+  private _eHeard = false;
+  private _rHeard = false;
+  private _stairsArmedUntil = 0;
+  private _stairsHinted = false;
+  private _descending = false;
+  private _onE?: (ev: KeyboardEvent) => void;
+  private _onR?: (ev: KeyboardEvent) => void;
+  // What last hurt the character, for the epitaph.
+  private _scope: GameEventScope;
+  private _killLine?: { cause: string; at: number };
+  private _lastTrap?: { type: string; at: number };
 
-  constructor(private ctx: GameContext) {}
+  constructor(private ctx: GameContext) {
+    // Raw key events rather than `JustDown`: the chest, the mechanisms and the pack all read E too, and whoever
+    // reads a Key object first would swallow the press. Each frame this controller sees every fresh press.
+    const kb = ctx.scene.input.keyboard;
+    if (kb) {
+      this._onE = (ev: KeyboardEvent) => { if (!ev.repeat) this._eHeard = true; };
+      this._onR = (ev: KeyboardEvent) => { if (!ev.repeat) this._rHeard = true; };
+      kb.on('keydown-E', this._onE);
+      kb.on('keydown-R', this._onR);
+    }
+    // Deaths announce themselves in the status line ("Slain by a fall.", "Killed by a dart volley.") and traps on the bus.
+    this._scope = ctx.bus.scope()
+      .on('status', ({ text }) => {
+        const m = /^(?:Killed|Slain) by (.+?)\.(?:\s|$)/.exec(text);
+        if (m) this._killLine = { cause: m[1], at: ctx.scene.time.now };
+      })
+      .on('trap_triggered', ({ type }) => { this._lastTrap = { type, at: ctx.scene.time.now }; });
+  }
 
   /** True while the rest dialog has the game paused. */
   get restDialogOpen(): boolean {
@@ -29,20 +64,48 @@ export class FloorController {
 
   /** Stairs down, then stairs up, in the old order. */
   update() {
-    this.checkStairs();
+    const ePress = this._eHeard;
+    const rPress = this._rHeard;
+    this._eHeard = false;
+    this._rHeard = false;
+    if (rPress) this.explainRest();
+    this.checkStairs(ePress);
     this.checkStairsUp();
+  }
+
+  // ── R: why you cannot rest here ────────────────────────────────────────────
+
+  /** R used to do nothing. Rest happens at the tavern, or at the stairs up on level 1; say so. */
+  private explainRest() {
+    const ctx = this.ctx;
+    if (ctx.modalOpen || this._restDialogOpen || ctx.rooms.isModalOpen || ctx.player.stats.hp <= 0) return;
+    const up = ctx.dungeon.stairsUpPos;
+    const nearUp = Math.hypot(ctx.player.x - (up.tx + 0.5) * TILE_SIZE, ctx.player.y - (up.ty + 0.5) * TILE_SIZE) < TILE_SIZE * 6;
+    if (ctx.currentFloor === 1 && nearUp) {
+      ctx.status("The stairs up are close. Step onto them to rest, short or long.");
+    } else if (ctx.currentFloor === 1) {
+      ctx.status("You cannot rest down here, the dark has teeth. Rest at the stairs up on this level, or sleep at the inn.");
+    } else {
+      ctx.status(`You cannot rest on level ${ctx.currentFloor}, the dark has teeth. Climb to level 1 and its stairs up, read a recall scroll, or sleep at the inn.`);
+    }
   }
 
   // ── Stairs ────────────────────────────────────────────────────────────────
 
-  private checkStairs() {
+  private checkStairs(ePress: boolean) {
     const ctx = this.ctx;
     const { tx, ty } = ctx.dungeon.stairsPos;
     const sx = tx * TILE_SIZE + TILE_SIZE / 2;
     const sy = ty * TILE_SIZE + TILE_SIZE / 2;
     const dx = ctx.player.x - sx;
     const dy = ctx.player.y - sy;
-    if (Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.7) {
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > TILE_SIZE * 1.5) {
+      // Walked away: the prompt lapses and the hint may show again next time.
+      this._stairsArmedUntil = 0;
+      if (dist > TILE_SIZE * 2.5) this._stairsHinted = false;
+    }
+    if (dist < TILE_SIZE * 0.7) {
       if (ctx.currentFloor >= TOMB_FLOOR) {
         // The tomb is the last floor: its stairs are the way out, and only once the Hollow King is dead.
         if (!ctx.combat.bossSlain) {
@@ -58,12 +121,42 @@ export class FloorController {
         return;
       }
       if (ctx.dungeon.floorObjective?.type === 'CLAIM_KEY' && !ctx.run.floorObjectiveComplete) {
-        ctx.floatText(sx, sy - 28, 'SEALED', 0xce93d8, 12);
-        ctx.status("The stairs are sealed. Defeat the guardian and claim the key.");
+        const now = ctx.scene.time.now;
+        if (now > this._sealedMsgUntil) {
+          this._sealedMsgUntil = now + 2500;
+          ctx.floatText(sx, sy - 28, 'SEALED', 0xce93d8, 12);
+          ctx.status("The stairs are sealed. Defeat the guardian and claim the key.");
+        }
         return;
       }
-      this.nextFloor();
+      this.stairsDown(ePress, sx, sy);
     }
+  }
+
+  /** Stairs down are a decision: E asks, a second E within a few seconds goes. Walking over them does nothing. */
+  private stairsDown(ePress: boolean, sx: number, sy: number) {
+    const ctx = this.ctx;
+    if (this._descending) return;
+    if (!ePress) {
+      if (!this._stairsHinted) {
+        this._stairsHinted = true;
+        ctx.status("Stairs down. Press E when you are ready to descend.");
+      }
+      return;
+    }
+    if (ctx.modalOpen || this._restDialogOpen || ctx.rooms.isModalOpen) return;
+    // One press of E does one thing: a chest, a mechanism or something on the floor within reach takes it first.
+    if (resolveInteract(ctx.loot.nearestChestDistance(), ctx.mech.nearestInteractDistance()) !== 'none') return;
+    if (ctx.loot.pickupInReach()) return;
+    const now = ctx.scene.time.now;
+    if (now <= this._stairsArmedUntil) {
+      this._stairsArmedUntil = 0;
+      this.nextFloor();
+      return;
+    }
+    this._stairsArmedUntil = now + STAIRS_CONFIRM_MS;
+    ctx.floatText(sx, sy - 28, `DESCEND? E`, 0xffd166, 12);
+    ctx.status(`Descend to level ${ctx.currentFloor + 1}? E to confirm`);
   }
 
   private checkStairsUp() {
@@ -339,6 +432,8 @@ export class FloorController {
   // ── Floor Transitions ─────────────────────────────────────────────────────
 
   private nextFloor() {
+    if (this._descending) return;
+    this._descending = true;
     const ctx = this.ctx;
     this.saveCurrentFloor(); // persist current floor before descending
     this.emitFloorExit();
@@ -364,16 +459,38 @@ export class FloorController {
 
   handlePlayerDeath() {
     const ctx = this.ctx;
-    if (!this._deathEmitted) {
-      this._deathEmitted = true;
-      ctx.bus.emit('player_death');
-    }
+    if (this._deathEmitted) return; // already handled; a second call would only queue a second game-over screen
+    this._deathEmitted = true;
+    ctx.bus.emit('player_death');
     ctx.player.setTint(0x888888);
-    // The record stays (it is in the save); the purse does not. Gold carried is lost with the body.
-    const lost = ctx.player.stats.gold;
-    ctx.player.stats.gold = 0;
+    // The record stays (it is in the save); the purse does not. Gold carried is lost with the body, and lies where it fell.
+    const s = ctx.player.stats;
+    const lost = s.gold;
+    s.gold = 0;
     ctx.player.inventory.gold = 0;
     if (lost > 0) ctx.status(`You die. ${lost} gold stays with the body.`);
+
+    const fallen: FallenRecord = {
+      name: s.name?.trim() || CHARACTER_CLASSES[s.classKey].name,
+      classKey: s.classKey,
+      title: titleFor(s.classKey, s.level),
+      level: s.level,
+      floor: ctx.currentFloor,
+      cause: this.deathCause(),
+      gold: lost,
+      kills: ctx.run.kills,
+      date: new Date().toISOString(),
+    };
+    graveyard.add(fallen);
+    graveyard.leaveBones({
+      floor: ctx.currentFloor,
+      tx: Math.floor(ctx.player.x / TILE_SIZE),
+      ty: Math.floor(ctx.player.y / TILE_SIZE),
+      gold: lost,
+      name: fallen.name,
+      date: fallen.date,
+    });
+
     ctx.scene.time.delayedCall(800, () => {
       ctx.scene.scene.start("GameOverScene", {
         floor: ctx.currentFloor,
@@ -382,12 +499,45 @@ export class FloorController {
         gold: ctx.player.stats.runGoldEarned ?? 0,
         bestStreak: ctx.player.stats.runBestStreak ?? 0,
         relics: ctx.player.stats.relics ?? [],
+        fallen,
       });
     });
   }
 
+  /**
+   * What killed the character, as a noun phrase ("a giant spider"), or "" when nobody can say.
+   * Order: a death announced in the status line (mechanisms), a cause passed to `Player.takeDamage`, a trap that just
+   * fired, the nearest live monster, then poison in the blood.
+   */
+  private deathCause(): string {
+    const ctx = this.ctx;
+    const p = ctx.player;
+    const now = ctx.scene.time.now;
+    if (this._killLine && now - this._killLine.at < 2500) return causePhrase(this._killLine.cause);
+    const h = p.lastHurtBy;
+    if (h?.cause && now - h.at < 8000) return causePhrase(h.cause);
+    if (this._lastTrap && now - this._lastTrap.at < 1500 && (!h || this._lastTrap.at >= h.at - 50)) {
+      return trapCause(this._lastTrap.type);
+    }
+    let best: string | undefined;
+    let bestD = TILE_SIZE * 8;
+    for (const e of ctx.enemies) {
+      if (!e.active || e.hp <= 0) continue;
+      if (e.isMimic && !e.mimicRevealed) continue;
+      const d = Math.hypot(p.x - e.x, p.y - e.y);
+      if (d < bestD) { bestD = d; best = e.isElite && !e.def.boss ? `champion ${e.def.name.toLowerCase()}` : e.def.name.toLowerCase(); }
+    }
+    if (best) return causePhrase(best);
+    if (p.hasEffect('POISONED')) return 'poison';
+    return '';
+  }
+
   /** Destroys the rest dialog if open. Called on scene shutdown / floor change. */
   destroy() {
+    this._scope.dispose();
+    const kb = this.ctx.scene.input?.keyboard;
+    if (this._onE) kb?.off('keydown-E', this._onE);
+    if (this._onR) kb?.off('keydown-R', this._onR);
     this._restDialogElements.forEach(e => e.destroy());
     this._restDialogElements = [];
     this._restDialogOpen = false;

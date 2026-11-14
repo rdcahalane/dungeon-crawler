@@ -11,6 +11,8 @@ import {
 } from "../../items";
 import { packGroundItems, unpackGroundItems, type SavedGroundItem } from "./groundPersist";
 import { resolveInteract } from "./interactArbiter";
+import { graveyard } from "../../systems/Graveyard";
+import type { Unsubscribe } from "../../GameEvents";
 import {
   HEALING_POTION_DICE, HEALING_POTION_BONUS, foeTagsFor,
 } from "./AdndCombat";
@@ -24,6 +26,8 @@ interface GroundEntry {
   /** The old floor-item spawn key, so a picked-up spawn stays gone when the floor is revisited. */
   spawnKey?: string;
   legacyType?: string;
+  /** A dead character's bones: walking onto them gives the gold and removes the record. */
+  bones?: { name: string };
   /** Dropped by the player: do not walk-pick it back up until they step off the tile. */
   needsLeave?: boolean;
   /** Put down by the player: lifting it again tells the mechanisms (a pressure plate lets go). */
@@ -38,6 +42,14 @@ const THROW_RANGE = 224;
 /** How close the player must stand to a chest to work it with E. */
 const CHEST_REACH = TILE_SIZE * 1.2;
 
+/** Treasure is experience: every gold piece the dungeon pays is worth this much XP. Shop, inn and quest gold in the tavern is not. */
+export const XP_PER_GOLD = 1;
+
+/** "+12 gp +12 xp", the text on a gold pickup. */
+export function goldGainText(gold: number): string {
+  return `+${gold} gp +${gold * XP_PER_GOLD} xp`;
+}
+
 /**
  * Items on the floor (all of it from `src/game/items`), chests, picking things up, and using or moving what is
  * in the inventory: belt, potions (F), equip, unequip, drop.
@@ -48,8 +60,14 @@ export class LootController {
 
   private _eKey?: Phaser.Input.Keyboard.Key;
   private _fKey?: Phaser.Input.Keyboard.Key;
+  private _offGoldXp?: Unsubscribe;
 
   constructor(private ctx: GameContext) {
+    // Every gold piece `ctx.addGold` pays out in the dungeon is also experience. The bus fires once per payout
+    // (floor gold, chests, room and objective rewards), and the tavern never goes through it.
+    this._offGoldXp = ctx.bus.on('gold', ({ amount }) => {
+      if (amount > 0) ctx.player?.gainXP(amount * XP_PER_GOLD);
+    });
     // The optional members other lanes call through the context.
     ctx.useBelt = (i: number) => this.useBelt(i);
     ctx.dropItem = (id: string) => this.dropItem(id);
@@ -220,6 +238,51 @@ export class LootController {
       const entry = this.placeItem(s.item, s.tx * TILE_SIZE + TILE_SIZE / 2, s.ty * TILE_SIZE + TILE_SIZE / 2);
       if (s.dropped) entry.dropped = true;
     }
+
+    this.spawnBones();
+  }
+
+  // ── Bones ─────────────────────────────────────────────────────────────────
+
+  /**
+   * If an earlier character died on this floor, their bones lie here with the gold they carried. The recorded tile came
+   * from a different layout (floors are generated fresh for each new character), so the pile goes on the nearest walkable
+   * tile, never within two tiles of where you arrive. The tomb is one fixed map, so there it lands exactly where they fell.
+   */
+  private spawnBones() {
+    const ctx = this.ctx;
+    const rec = graveyard.bonesOn(ctx.currentFloor);
+    if (!rec) return;
+    const start = ctx.dungeon.playerStart;
+    const ok = (tx: number, ty: number) =>
+      ctx.isWalkable(tx, ty) && Math.max(Math.abs(tx - start.tx), Math.abs(ty - start.ty)) > 2;
+    let spot: { tx: number; ty: number } | null = ok(rec.tx, rec.ty) ? { tx: rec.tx, ty: rec.ty } : null;
+    for (let r = 1; !spot && r <= 40; r++) {
+      for (let dy = -r; dy <= r && !spot; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          if (ok(rec.tx + dx, rec.ty + dy)) { spot = { tx: rec.tx + dx, ty: rec.ty + dy }; break; }
+        }
+      }
+    }
+    if (!spot) return;
+    const scene = ctx.scene;
+    const x = spot.tx * TILE_SIZE + TILE_SIZE / 2;
+    const y = spot.ty * TILE_SIZE + TILE_SIZE / 2;
+    const tex = scene.textures.exists('mech_bones') ? 'mech_bones' : 'item_gem';
+    const sprite = scene.add.sprite(x, y, tex).setDepth(3);
+    sprite.setDisplaySize(TILE_SIZE - 6, TILE_SIZE - 6);
+    const label = this.makeLabel(x, y, `Bones of ${rec.name}`, COLORS.GOLD_TEXT);
+    this.ground.push({ sprite, label, gold: rec.gold, bones: { name: rec.name } });
+  }
+
+  /** True when walking or pressing E would pick something up right now. The stairs ask this so one E never does two jobs. */
+  pickupInReach(): boolean {
+    const p = this.ctx.player;
+    if (!p) return false;
+    return this.ground.some((g) =>
+      g.sprite.active && !g.needsLeave &&
+      Phaser.Math.Distance.Between(p.x, p.y, g.sprite.x, g.sprite.y) < TILE_SIZE * 1.0);
   }
 
   /** Items on the floor right now, for the floor save. */
@@ -345,7 +408,7 @@ export class LootController {
         player.takeDamage(Math.max(1, Math.floor(player.stats.maxHp * 0.04)));
         ctx.floatText(chest.x, chest.y - 38, 'PACT PAID', 0xce93d8, 11);
       }
-      ctx.floatText(chest.x, chest.y - 20, `+${paid} gold`, COLORS.GOLD_TEXT);
+      ctx.floatText(chest.x, chest.y - 20, goldGainText(paid), COLORS.GOLD_TEXT);
     }
     // The items spill onto the floor around the chest; walk over them or press E.
     this.scatterDrop({ gold: 0, items }, chest.x, chest.y);
@@ -381,7 +444,7 @@ export class LootController {
       if (g.needsLeave && d > TILE_SIZE * 1.0) g.needsLeave = false;
       if (g.fullWarned && d > TILE_SIZE * 1.6) g.fullWarned = false;
 
-      const walkOver = d < (g.gold !== undefined ? GOLD_MAGNET : PICKUP_RANGE) && !g.needsLeave;
+      const walkOver = d < (g.gold !== undefined && !g.bones ? GOLD_MAGNET : PICKUP_RANGE) && !g.needsLeave;
       const press = pressed && !pressedUsed && d < TILE_SIZE * 1.0;
       if (!walkOver && !press) continue;
 
@@ -404,9 +467,26 @@ export class LootController {
       return true;
     }
 
+    if (g.bones) {
+      const taken = graveyard.takeBones(ctx.currentFloor);
+      const gold = taken?.gold ?? g.gold ?? 0;
+      const name = taken?.name ?? g.bones.name;
+      if (gold > 0) {
+        ctx.addGold(gold);
+        ctx.floatText(player.x, player.y - 24, goldGainText(gold), COLORS.GOLD_TEXT, 11);
+        ctx.status(`You find the bones of ${name}. ${gold} gold pieces are yours now.`);
+      } else {
+        ctx.status(`You find the bones of ${name}. Nothing left worth taking.`);
+      }
+      ctx.bus.emit('bones_claimed', { name, gold });
+      this.removeEntry(g);
+      this.afterInventoryChange();
+      return true;
+    }
+
     if (g.gold !== undefined) {
       ctx.addGold(g.gold);
-      ctx.floatText(player.x, player.y - 24, `+${g.gold} gp`, COLORS.GOLD_TEXT, 11);
+      ctx.floatText(player.x, player.y - 24, goldGainText(g.gold), COLORS.GOLD_TEXT, 11);
       this.removeEntry(g);
       this.afterInventoryChange();
       return true;
@@ -614,6 +694,8 @@ export class LootController {
   }
 
   destroy() {
+    this._offGoldXp?.();
+    this._offGoldXp = undefined;
     for (const g of this.ground) g.label?.destroy();
     this.ground = [];
     this.chests = [];

@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { listSaves, loadGame } from "../systems/SaveStore";
 import { CLASS_COL, COL, asciiOnly, flatPanel, retroButton, uiText } from "../gfx/retroUi";
+import { graveyard, causePhrase, type FallenRecord } from "../systems/Graveyard";
 
 interface SaveMeta {
   slot: number;
@@ -10,7 +11,10 @@ interface SaveMeta {
   updatedAt: string;
 }
 
-type Mode = "title" | "slots" | "howto";
+type Mode = "title" | "slots" | "howto" | "fallen";
+
+/** Entries on one page of the Hall of the Fallen (three 16px lines each). */
+const FALLEN_PER_PAGE = 5;
 
 const CLASSES = ["fighter", "thief", "wizard", "cleric"] as const;
 
@@ -23,7 +27,8 @@ export const HOW_TO_PLAY: ReadonlyArray<readonly [string, string]> = [
   ["G", "SEARCH THE NEARBY WALLS AND FLOOR"],
   ["P + DIRECTION", "PROBE AHEAD WITH THE TEN-FOOT POLE"],
   ["L", "LISTEN AT A DOOR"],
-  ["E", "INTERACT: PULL, PUSH, READ, OPEN"],
+  ["E", "INTERACT. ON STAIRS, E TWICE TO DESCEND"],
+  ["R", "REST (TAVERN, OR STAIRS UP ON LEVEL 1)"],
   ["I", "INVENTORY AND EQUIPMENT"],
   ["F2", "CRT SCANLINES ON OR OFF"],
   ["N", "SOUND ON OR OFF"],
@@ -37,6 +42,7 @@ export class MainMenuScene extends Phaser.Scene {
   private statusText?: Phaser.GameObjects.BitmapText;
   private walkEvents: Phaser.Time.TimerEvent[] = [];
   private startKeys: Phaser.Input.Keyboard.Key[] = [];
+  private fallenPage = 0;
 
   constructor() {
     super({ key: "MainMenuScene" });
@@ -64,11 +70,17 @@ export class MainMenuScene extends Phaser.Scene {
         kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
       ];
       kb.on("keydown-H", () => this.mode === "title" && this.show("howto"));
+      kb.on("keydown-F", () => this.mode === "title" && this.openFallen(0));
+      kb.on("keydown-LEFT", () => this.mode === "fallen" && this.openFallen(this.fallenPage - 1));
+      kb.on("keydown-RIGHT", () => this.mode === "fallen" && this.openFallen(this.fallenPage + 1));
       kb.on("keydown-ESC", () => this.mode !== "title" && this.show("title"));
       for (const k of this.startKeys) k.on("down", () => this.mode === "title" && this.show("slots"));
     }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off("keydown-H");
+      this.input.keyboard?.off("keydown-F");
+      this.input.keyboard?.off("keydown-LEFT");
+      this.input.keyboard?.off("keydown-RIGHT");
       this.input.keyboard?.off("keydown-ESC");
       for (const k of this.startKeys) k.removeAllListeners();
       for (const e of this.walkEvents) e.remove(false);
@@ -88,7 +100,14 @@ export class MainMenuScene extends Phaser.Scene {
     this.statusText = undefined;
     if (mode === "title") this.drawTitle();
     else if (mode === "slots") this.drawSlots();
+    else if (mode === "fallen") this.drawFallen();
     else this.drawHowTo();
+  }
+
+  private openFallen(page: number) {
+    const pages = Math.max(1, Math.ceil(graveyard.list().length / FALLEN_PER_PAGE));
+    this.fallenPage = Math.min(pages - 1, Math.max(0, page));
+    this.show("fallen");
   }
 
   private add2<T extends Phaser.GameObjects.GameObject>(o: T): T {
@@ -136,9 +155,12 @@ export class MainMenuScene extends Phaser.Scene {
     const hit = this.add2(this.add.rectangle(cx, 430, 420, 56, 0x000000, 0).setInteractive({ useHandCursor: true }));
     hit.on("pointerdown", () => this.show("slots"));
 
-    const how = retroButton(this, cx, 504, 240, 40, "HOW TO PLAY (H)", () => this.show("howto"), { size: 16 });
+    const how = retroButton(this, cx - 130, 504, 240, 40, "HOW TO PLAY (H)", () => this.show("howto"), { size: 16 });
     this.add2(how.box);
     this.add2(how.label);
+    const fallen = retroButton(this, cx + 130, 504, 240, 40, "THE FALLEN (F)", () => this.openFallen(0), { size: 16 });
+    this.add2(fallen.box);
+    this.add2(fallen.label);
 
     this.statusText = this.add2(uiText(this, cx, 560, this.statusLine, { size: 8, color: COL.grey, originX: 0.5, originY: 0.5 }));
     this.add2(
@@ -157,9 +179,9 @@ export class MainMenuScene extends Phaser.Scene {
     this.add2(uiText(this, cx, 72, "HOW TO PLAY", { size: 32, color: COL.gold, originX: 0.5, originY: 0.5 }));
     this.add2(flatPanel(this, cx, 316, 880, 380, { fill: COL.dusk, border: COL.slate }));
     HOW_TO_PLAY.forEach(([keys, what], i) => {
-      const y = 142 + i * 32;
-      this.add2(uiText(this, 80, y, keys, { size: 16, color: COL.gold }));
-      this.add2(uiText(this, 330, y, what, { size: 16, color: COL.silver }));
+      const y = 140 + i * 30;
+      this.add2(uiText(this, 60, y, keys, { size: 16, color: COL.gold }));
+      this.add2(uiText(this, 290, y, what, { size: 16, color: COL.silver }));
     });
     this.add2(
       uiText(this, cx, 534, "LIGHT IS A RESOURCE. LOOK FOR CLUES BEFORE YOU STEP.", {
@@ -172,6 +194,51 @@ export class MainMenuScene extends Phaser.Scene {
     const back = retroButton(this, cx, height - 70, 200, 40, "BACK (ESC)", () => this.show("title"));
     this.add2(back.box);
     this.add2(back.label);
+  }
+
+  /** The Hall of the Fallen: the last twenty dead on this device, newest first, five to a page. */
+  private drawFallen() {
+    const { width, height } = this.scale;
+    const cx = width / 2;
+    const all = graveyard.list();
+    const pages = Math.max(1, Math.ceil(all.length / FALLEN_PER_PAGE));
+    this.add2(uiText(this, cx, 56, "THE FALLEN", { size: 32, color: COL.gold, originX: 0.5, originY: 0.5 }));
+    this.add2(flatPanel(this, cx, 296, 880, 396, { fill: COL.dusk, border: COL.slate }));
+
+    if (all.length === 0) {
+      this.add2(uiText(this, cx, 280, "NO ONE HAS FALLEN YET.", { size: 16, color: COL.silver, originX: 0.5, originY: 0.5 }));
+      this.add2(uiText(this, cx, 310, "GIVE IT TIME.", { size: 16, color: COL.grey, originX: 0.5, originY: 0.5 }));
+    }
+
+    const first = this.fallenPage * FALLEN_PER_PAGE;
+    all.slice(first, first + FALLEN_PER_PAGE).forEach((r, i) => {
+      const y = 114 + i * 76;
+      const n = first + i + 1;
+      this.add2(uiText(this, 56, y, this.fallenHeading(n, r), { size: 16, color: CLASS_COL[r.classKey] ?? COL.silver }));
+      const how = causePhrase(r.cause) ? `SLAIN BY ${causePhrase(r.cause).toUpperCase()}` : "CAUSE UNKNOWN";
+      this.add2(uiText(this, 56, y + 22, `${how} ON LEVEL ${r.floor} WITH ${r.gold} GP`.slice(0, 68), { size: 16, color: COL.cream }));
+      const day = String(r.date).slice(0, 10);
+      this.add2(uiText(this, 56, y + 44, `CHARACTER LEVEL ${r.level}  ${r.kills} SLAIN  ${day}`.slice(0, 68), { size: 16, color: COL.grey }));
+    });
+
+    const back = retroButton(this, cx - 250, height - 52, 200, 40, "BACK (ESC)", () => this.show("title"));
+    this.add2(back.box);
+    this.add2(back.label);
+    if (pages > 1) {
+      const prev = retroButton(this, cx + 20, height - 52, 80, 40, "<", () => this.openFallen(this.fallenPage - 1), { size: 24 });
+      this.add2(prev.box);
+      this.add2(prev.label);
+      this.add2(uiText(this, cx + 100, height - 52, `PAGE ${this.fallenPage + 1} OF ${pages}`, { size: 16, color: COL.silver, originX: 0.5, originY: 0.5 }));
+      const next = retroButton(this, cx + 180, height - 52, 80, 40, ">", () => this.openFallen(this.fallenPage + 1), { size: 24 });
+      this.add2(next.box);
+      this.add2(next.label);
+    }
+  }
+
+  private fallenHeading(n: number, r: FallenRecord): string {
+    const who = asciiOnly(r.name).toUpperCase().slice(0, 18);
+    const title = r.title ? ` THE ${asciiOnly(r.title).toUpperCase()}` : "";
+    return `${n}. ${who}${title}`.slice(0, 68);
   }
 
   private drawSlots() {

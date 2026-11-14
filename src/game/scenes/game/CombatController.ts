@@ -1,3 +1,4 @@
+import { ARCADE_ROOM_EVENTS } from "./RoomEventController";
 import * as Phaser from "phaser";
 import type { PlayerStats, CharCreationData } from "../../entities/Player";
 import { TILE, TILE_SIZE, COLORS, PLAYER_STATS, ENEMY_TYPES, EnemyTypeKey } from "../../constants";
@@ -388,7 +389,7 @@ export class CombatController {
       ctx.floatText(player.x, player.y - 28, 'miss', 0x888899, 10);
       return;
     }
-    player.takeDamage(round.total);
+    player.takeDamage(round.total, false, enemy.def.name);
     if (player.stats.hp <= 0) return;
     this.applyOnHitSpecials(enemy);
     const b = equipmentBonuses(player.inventory);
@@ -787,7 +788,7 @@ export class CombatController {
     player.stats.runBestStreak = Math.max(player.stats.runBestStreak ?? 0, run.killStreak);
     player.stats.runDeepestFloor = Math.max(player.stats.runDeepestFloor ?? 0, ctx.currentFloor);
 
-    if (run.killStreak >= 3) {
+    if (ARCADE_ROOM_EVENTS && run.killStreak >= 3) {
       const bonusGold = Math.min(10, run.killStreak);
       const bonusXP = Math.min(5, run.killStreak - 2);
       ctx.addGold(bonusGold);
@@ -796,7 +797,7 @@ export class CombatController {
       ctx.floatText(player.x, player.y - 54, `STREAK x${run.killStreak} +${bonusGold}g`, 0xffd166, 12);
     }
 
-    if (run.killStreak >= 5) {
+    if (ARCADE_ROOM_EVENTS && run.killStreak >= 5) {
       const hpGain = Math.max(1, Math.floor(player.stats.maxHp * 0.04));
       player.heal(hpGain);
       ctx.floatText(player.x, player.y - 70, 'ADRENALINE!', 0xffd166, 12);

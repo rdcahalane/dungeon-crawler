@@ -59,6 +59,8 @@ export interface GameEventMap {
   wandering_monster: { enemyKey: string; tx: number; ty: number };
   /** One game turn (60 seconds of dungeon time) went by. */
   game_turn: { turn: number };
+  /** The player walked onto the bones of an earlier character and took what they carried. */
+  bones_claimed: { name: string; gold: number };
 }
 
 export type GameEventName = keyof GameEventMap;
@@ -67,7 +69,7 @@ export const GAME_EVENT_NAMES: readonly GameEventName[] = [
   'player_swing', 'player_hit', 'player_miss', 'player_hurt', 'player_death', 'enemy_death',
   'item_pickup', 'gold', 'chest_open', 'door_secret_found', 'trap_triggered', 'spell_cast', 'spell_fizzle',
   'heal', 'level_up', 'floor_enter', 'floor_exit', 'rest', 'ui_open', 'ui_close', 'status',
-  'detect_traps', 'knock', 'item_dropped', 'torch_out',
+  'detect_traps', 'knock', 'item_dropped', 'torch_out', 'bones_claimed',
   'monster_surprised', 'monster_reaction', 'monster_morale', 'wandering_monster', 'game_turn',
 ];
 
