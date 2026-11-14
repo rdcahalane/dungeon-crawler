@@ -47,6 +47,8 @@ export interface NarratorDeps {
   unlocked?: boolean;
   /** Where to listen for the first input; defaults to `window`. */
   eventTarget?: Pick<Window, "addEventListener" | "removeEventListener"> | null;
+  /** Lower the music while speaking (true) and bring it back (false). Defaults to `Sfx.duckMusic`. */
+  duck?: (on: boolean) => void;
 }
 
 export const RATE = 0.82;
@@ -100,6 +102,7 @@ export class Narrator {
   private make: ((text: string) => UtteranceLike) | null;
   private storage: Pick<Storage, "getItem" | "setItem"> | null;
   private sound: () => { volume: number; muted: boolean };
+  private duck: (on: boolean) => void;
   private voice: VoiceLike | undefined;
   private on: boolean;
   private unlockedFlag: boolean;
@@ -117,6 +120,7 @@ export class Narrator {
     if (!this.make) this.synth = null; // no utterance class: nothing to speak with
     this.storage = deps.storage !== undefined ? deps.storage : safeStorage();
     this.sound = deps.sound ?? (() => ({ volume: Sfx.getVolume(), muted: Sfx.isMuted() }));
+    this.duck = deps.duck ?? ((on) => Sfx.duckMusic(on));
     this.on = this.readEnabled();
     this.unlockedFlag = !!deps.unlocked;
     this.unlockTarget = deps.eventTarget !== undefined ? deps.eventTarget : typeof window !== "undefined" ? window : null;
@@ -190,14 +194,17 @@ export class Narrator {
     const finish = () => {
       if (this.token !== mine) return;
       this.busy = false;
+      this.duck(false);
       onDone?.();
     };
     u.onend = finish;
     u.onerror = finish;
     try {
+      this.duck(true); // the music drops to a murmur while the voice reads
       this.synth.speak(u as never);
     } catch {
       this.busy = false;
+      this.duck(false);
       return false;
     }
     return true;
@@ -225,6 +232,7 @@ export class Narrator {
 
   private cancelCurrent(): void {
     this.token++;
+    if (this.busy) this.duck(false);
     this.busy = false;
     try {
       this.synth?.cancel();

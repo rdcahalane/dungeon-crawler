@@ -24,7 +24,7 @@ function mem(init?: string) {
 const make = (text: string): UtteranceLike => ({ text, voice: null, lang: "", rate: 1, pitch: 1, volume: 1, onend: null, onerror: null });
 
 function mk(synth: FakeSynth | null, extra: Partial<ConstructorParameters<typeof Narrator>[0]> = {}) {
-  return new Narrator({ synth, makeUtterance: make, storage: mem(), sound: () => ({ volume: 0.5, muted: false }), unlocked: true, eventTarget: null, ...extra });
+  return new Narrator({ synth, makeUtterance: make, storage: mem(), sound: () => ({ volume: 0.5, muted: false }), unlocked: true, eventTarget: null, duck: () => {}, ...extra });
 }
 
 describe("pickVoice", () => {
@@ -136,5 +136,20 @@ describe("Narrator", () => {
     listeners.get("keydown")?.();
     expect(n.speak("x")).toBe(true);
     expect(listeners.size).toBe(0);
+  });
+});
+
+describe("music ducking", () => {
+  it("lowers the music while speaking and brings it back when the voice ends or is cut off", () => {
+    const calls: boolean[] = [];
+    const synth = new FakeSynth([v("Daniel")]);
+    const n = mk(synth, { duck: (on) => calls.push(on) });
+    expect(n.speak("The stair goes down.")).toBe(true);
+    expect(calls).toEqual([true]);
+    synth.spoken[0].onend?.();
+    expect(calls).toEqual([true, false]);
+    n.speak("Again.");
+    n.stop();
+    expect(calls).toEqual([true, false, true, false]);
   });
 });

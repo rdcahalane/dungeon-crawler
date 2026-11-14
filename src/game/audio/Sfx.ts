@@ -61,11 +61,18 @@ interface Player {
   endAt: number | null;
 }
 
+/** Music level while the narrator speaks: almost silent, so the voice is clear. */
+export const DUCK_LEVEL = 0.06;
+const DUCK_DOWN_S = 0.35;
+const DUCK_UP_S = 1.2;
+
 class SfxEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private sfxBus: GainNode | null = null;
   private musicBus: GainNode | null = null;
+  private duckGain: GainNode | null = null;
+  private ducked = false;
   private noiseBuf: AudioBuffer | null = null;
 
   private volume = 0.5;
@@ -126,6 +133,22 @@ class SfxEngine {
   mute(m: boolean): void {
     this.muted = m;
     this.applyGain();
+  }
+
+  /** Drop the music to almost nothing (true) or bring it back (false). Used while the narrator speaks. */
+  duckMusic(on: boolean): void {
+    this.ducked = on;
+    const g = this.duckGain;
+    const ctx = this.ctx;
+    if (!g || !ctx) return;
+    const now = ctx.currentTime;
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), now);
+    g.gain.linearRampToValueAtTime(on ? DUCK_LEVEL : 1, now + (on ? DUCK_DOWN_S : DUCK_UP_S));
+  }
+
+  isDucked(): boolean {
+    return this.ducked;
   }
 
   isMuted(): boolean {
@@ -218,7 +241,11 @@ class SfxEngine {
     this.sfxBus.connect(master);
     this.musicBus = ctx.createGain();
     this.musicBus.gain.value = 0.7;
-    this.musicBus.connect(master);
+    // A separate stage after the music bus, so ducking for the narrator never fights the bed crossfades.
+    this.duckGain = ctx.createGain();
+    this.duckGain.gain.value = this.ducked ? DUCK_LEVEL : 1;
+    this.musicBus.connect(this.duckGain);
+    this.duckGain.connect(master);
     // one second of white noise, reused by every noise voice
     const len = ctx.sampleRate;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
