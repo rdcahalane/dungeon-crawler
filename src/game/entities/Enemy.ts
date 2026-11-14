@@ -2,8 +2,9 @@ import * as Phaser from "phaser";
 import { TILE_SIZE, ENEMY_TYPES, EnemyTypeKey } from "../constants";
 import { MONSTERS, hasSpecial, mathRng, rollMonsterHp, isTurnable } from "../rules";
 import type { BossPhase, MonsterDef } from "../rules";
+import { bodySizePx, isLargeSize, meleeDistances, type MeleeDistances } from "../rules/largeMonsters";
 import {
-  AFRAID_BACKOFF_PX, AFRAID_RUN_PX, MELEE_HOLD_PX, WARY_PATIENCE_MS, WARY_PROXIMITY_PX, fleeDurationMs,
+  AFRAID_BACKOFF_PX, AFRAID_RUN_PX, WARY_PATIENCE_MS, WARY_PROXIMITY_PX, fleeDurationMs,
   type Reaction,
 } from "../rules/encounter";
 
@@ -46,6 +47,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   public aggroRange: number;
   public attackCooldown: number;
   public isElite: boolean;
+  /** Centre-to-centre melee distances (approach, strike, hold), edge-based for large monsters. */
+  public melee: MeleeDistances;
   /** Set on monsters a boss summoned, so the boss can count them. */
   public summonedBy?: Enemy;
 
@@ -131,15 +134,18 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     const size = elite ? Math.ceil(def.size * 1.25) : def.size;
     this.setDisplaySize(size, size);
+    this.melee = meleeDistances(size, this.attackRange);
     // Small monsters draw just above the player sprite (depth 49) and the floor items (3), so a rat at your
     // feet is seen. Everything else keeps the old depth, under the torch glow.
     const small = size <= SMALL_MONSTER_SIZE;
     this.setDepth(small ? 49.4 : 9);
 
     // The body is in unscaled texture pixels: the old `size - 12` made a 16px rat a 2px body that sat inside the
-    // player. Keep the old world size for big monsters, never below 14px.
+    // player. Keep the old world size for mid-size monsters, never below 14px. Large ones (48 and 64) get about
+    // 70% of the sprite: a 64px body is 45px, so it can never squeeze down a one-tile corridor, but it also does
+    // not snag on every corner of a room. Large monsters draw at normal depth, below the player (49).
     const body = this.body as Phaser.Physics.Arcade.Body;
-    const bodyWorld = Math.max(14, (size - 12) * this.scaleX);
+    const bodyWorld = isLargeSize(size) ? bodySizePx(size) : Math.max(14, (size - 12) * this.scaleX);
     body.setSize(bodyWorld / this.scaleX, bodyWorld / this.scaleY);
 
     // Mimic starts invisible (disguised as chest in the loot controller)
@@ -374,9 +380,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         const base = Math.atan2(dy, dx) + this._erraticAngle;
         body.setVelocity(Math.cos(base) * this.speed, Math.sin(base) * this.speed);
       } else {
-        if (distToPlayer > this.attackRange + 8) {
+        if (distToPlayer > this.melee.approach) {
           body.setVelocity((dx / moveLen) * this.speed, (dy / moveLen) * this.speed);
-        } else if (distToPlayer < MELEE_HOLD_PX) {
+        } else if (distToPlayer < this.melee.hold) {
           // Stand beside the player, not inside the sprite: ease back out to the hold distance.
           const back = Math.min(this.speed, 90) * 0.6;
           body.setVelocity(-(dx / moveLen) * back, -(dy / moveLen) * back);
@@ -571,8 +577,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const dx = playerX - this.x;
     const dy = playerY - this.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    // Monsters hold MELEE_HOLD_PX from the player's centre, so reach is never less than that plus a bite's length.
-    return dist <= Math.max(this.attackRange + TILE_SIZE / 2, MELEE_HOLD_PX + 10);
+    // Monsters hold their standoff distance from the player's centre, so reach is never less than that plus a
+    // bite's length. Large monsters measure edge to edge (see rules/largeMonsters).
+    return dist <= this.melee.strike;
   }
 
   /** Start the cooldown and flash. The combat controller rolls the attacks. */

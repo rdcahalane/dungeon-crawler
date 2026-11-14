@@ -53,14 +53,15 @@ export const WANDER_MAX_TILES = 18;
  */
 export const FEARLESS_KEYS: ReadonlySet<MonsterKey> = new Set<MonsterKey>([
   'SKELETON', 'ZOMBIE', 'GHOUL', 'WIGHT', 'WRAITH', 'GHOST', 'BONE_KNIGHT', 'HOLLOW_KING', 'OOZE', 'MIMIC',
+  'OSSUARY_HULK',
 ]);
 
 /**
  * Creatures that can weigh an intruder and answer with more than teeth: the goblin, kobold, orc, dark elf and
- * cultist. Animals, vermin, trolls, gargoyles and the undead are always hostile.
+ * cultist, plus ogres and barrow giants (slow, but they can be bargained with). Animals, vermin, trolls, gargoyles and the undead are always hostile.
  */
 export const INTELLIGENT_KEYS: ReadonlySet<MonsterKey> = new Set<MonsterKey>([
-  'BASIC', 'FAST', 'TANK', 'DARK_ELF', 'CULTIST',
+  'BASIC', 'FAST', 'TANK', 'DARK_ELF', 'CULTIST', 'OGRE', 'BARROW_GIANT',
 ]);
 
 /** True when this monster never makes a morale check (undead, oozes, mimics, the boss, summoned things, morale 12). */

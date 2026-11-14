@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENEMY_TYPES, type EnemyTypeKey } from '../constants';
+import { ENEMY_TYPES, enemyPoolForFloor, type EnemyTypeKey } from '../constants';
 import {
   MONSTERS,
   MONSTER_KEYS,
@@ -8,7 +8,10 @@ import {
   canHarm,
   getMonster,
   hasSpecial,
+  isLargeMonster,
   isTurnable,
+  LARGE_MONSTER_KEYS,
+  largeMonstersForFloor,
   monstersForFloor,
   rollMonsterHp,
   thac0ForHd,
@@ -175,5 +178,76 @@ describe('weapon immunity', () => {
     expect(canHarm(MONSTERS.WIGHT, { plus: 0, silver: true })).toBe(true);
     expect(canHarm(MONSTERS.WIGHT, { plus: 0 })).toBe(false);
     expect(canHarm(MONSTERS.BASIC, { plus: 0 })).toBe(true);
+  });
+});
+
+describe('large monsters', () => {
+  const expected: Record<string, { floors: [number, number]; size: number; hd: number }> = {
+    OGRE: { floors: [4, 9], size: 48, hd: 4 },
+    CAVE_BEAR: { floors: [3, 8], size: 48, hd: 5 },
+    GIANT_SCORPION: { floors: [5, 10], size: 48, hd: 5 },
+    BARROW_GIANT: { floors: [8, 12], size: 64, hd: 8 },
+    OSSUARY_HULK: { floors: [9, 12], size: 64, hd: 9 },
+    CAVE_WYRM: { floors: [10, 12], size: 64, hd: 10 },
+  };
+
+  it('has six, all large, with their own textures', () => {
+    expect(LARGE_MONSTER_KEYS).toHaveLength(6);
+    for (const k of LARGE_MONSTER_KEYS) {
+      const m = MONSTERS[k];
+      expect(isLargeMonster(m), k).toBe(true);
+      expect([48, 64]).toContain(m.size);
+      expect(m.textureKey).toBe(`enemy_${k.toLowerCase()}`);
+    }
+    expect(new Set(LARGE_MONSTER_KEYS.map((k) => MONSTERS[k].textureKey)).size).toBe(6);
+  });
+
+  it('only the large ones are large', () => {
+    for (const k of MONSTER_KEYS) {
+      expect(isLargeMonster(MONSTERS[k]), k).toBe((LARGE_MONSTER_KEYS as readonly string[]).includes(k));
+    }
+  });
+
+  it('sit in their floor ranges with fitting hit dice, size and slow, heavy swings', () => {
+    for (const k of LARGE_MONSTER_KEYS) {
+      const m = MONSTERS[k];
+      const want = expected[k];
+      expect([m.minFloor, m.maxFloor]).toEqual(want.floors);
+      expect(m.size).toBe(want.size);
+      expect(m.hd).toBe(want.hd);
+      expect(m.attackCooldownMs).toBeGreaterThanOrEqual(1300);
+      expect(m.attackCooldownMs).toBeLessThanOrEqual(2200);
+      expect(m.speed).toBeLessThan(100); // the player walks at 180
+      expect(m.hpDice.startsWith(`${m.hd}d8`)).toBe(true);
+      expect(m.xp).toBeGreaterThan(MONSTERS.TROLL.hd >= m.hd ? MONSTERS.BASIC.xp : MONSTERS.TANK.xp);
+      for (let f = m.minFloor; f <= m.maxFloor!; f++) expect(largeMonstersForFloor(f)).toContain(k);
+      expect(largeMonstersForFloor(m.minFloor - 1)).not.toContain(k);
+      expect(largeMonstersForFloor(m.maxFloor! + 1)).not.toContain(k);
+    }
+  });
+
+  it('keeps early floors untouched and the tomb free of random giants', () => {
+    expect(largeMonstersForFloor(1)).toEqual([]);
+    expect(largeMonstersForFloor(2)).toEqual([]);
+    expect(largeMonstersForFloor(13)).toEqual([]);
+  });
+
+  it('is rare: no rarity above one, and the deepest are rarer still', () => {
+    for (const k of LARGE_MONSTER_KEYS) expect(MONSTERS[k].rarity ?? 1).toBeLessThanOrEqual(1);
+    expect(MONSTERS.CAVE_WYRM.rarity!).toBeLessThan(MONSTERS.OGRE.rarity!);
+  });
+
+  it('specials match the brief', () => {
+    expect(hasSpecial(MONSTERS.GIANT_SCORPION, 'poison')?.save).toBe('death');
+    expect(hasSpecial(MONSTERS.CAVE_WYRM, 'caster')?.spells).toContain('fire_breath');
+    expect(MONSTERS.OSSUARY_HULK.undead).toBe(true);
+    expect(MONSTERS.OSSUARY_HULK.morale).toBe(12);
+    expect(isTurnable(MONSTERS.OSSUARY_HULK)).toBe(true);
+  });
+
+  it('are not in the random room pool (they are placed on their own)', () => {
+    for (let f = 1; f <= 12; f++) {
+      for (const k of enemyPoolForFloor(f)) expect(isLargeMonster(MONSTERS[k]), `${k} on floor ${f}`).toBe(false);
+    }
   });
 });

@@ -191,7 +191,11 @@ export class InputController {
         if (!fog[ty * MAP_WIDTH + tx]) continue;
       }
       const d = Math.hypot(e.x - wx, e.y - wy);
-      if (d <= Math.max(ENEMY_PICK_PX, e.displayWidth / 2) && d < bestD) { best = e; bestD = d; }
+      // A large body is picked anywhere on its square, not just inside a circle around its centre.
+      const onBody = e.displayWidth >= 48
+        ? Math.abs(e.x - wx) <= e.displayWidth / 2 && Math.abs(e.y - wy) <= e.displayHeight / 2
+        : d <= Math.max(ENEMY_PICK_PX, e.displayWidth / 2);
+      if (onBody && d < bestD) { best = e; bestD = d; }
     }
     return best;
   }

@@ -1,4 +1,4 @@
-import { MONSTERS, monstersForFloor, hasSpecial } from "./rules/bestiary";
+import { MONSTERS, monstersForFloor, hasSpecial, isLargeMonster } from "./rules/bestiary";
 import { diceAverage } from "./rules/dice";
 
 export const TILE_SIZE = 32;
@@ -222,7 +222,8 @@ export type EnemyTypeKey =
   | 'BASIC' | 'FAST' | 'TANK'
   | 'SKELETON' | 'ZOMBIE' | 'GIANT_RAT' | 'GIANT_SPIDER'
   | 'TROLL' | 'DARK_ELF' | 'GHOST' | 'MIMIC'
-  | 'GHOUL' | 'WIGHT' | 'WRAITH' | 'GARGOYLE' | 'OOZE' | 'CULTIST' | 'BONE_KNIGHT' | 'GIANT_BAT' | 'HOLLOW_KING';
+  | 'GHOUL' | 'WIGHT' | 'WRAITH' | 'GARGOYLE' | 'OOZE' | 'CULTIST' | 'BONE_KNIGHT' | 'GIANT_BAT' | 'HOLLOW_KING'
+  | 'OGRE' | 'CAVE_BEAR' | 'GIANT_SCORPION' | 'BARROW_GIANT' | 'OSSUARY_HULK' | 'CAVE_WYRM';
 
 const ENEMY_COLORS: Record<EnemyTypeKey, number> = {
   BASIC: COLORS.ENEMY_BASIC, FAST: COLORS.ENEMY_FAST, TANK: COLORS.ENEMY_TANK,
@@ -231,6 +232,8 @@ const ENEMY_COLORS: Record<EnemyTypeKey, number> = {
   GHOST: COLORS.ENEMY_GHOST, MIMIC: COLORS.ENEMY_MIMIC,
   GHOUL: 0x8bc34a, WIGHT: 0x9fa8da, WRAITH: 0xb39ddb, GARGOYLE: 0x90a4ae, OOZE: 0x76ff03,
   CULTIST: 0xd84315, BONE_KNIGHT: 0xcfd8dc, GIANT_BAT: 0x6d4c41, HOLLOW_KING: 0xffd54f,
+  OGRE: 0xe6dcb4, CAVE_BEAR: 0xe0c4a8, GIANT_SCORPION: 0xf0b890, BARROW_GIANT: 0xf0dcc8, OSSUARY_HULK: 0xf0ecd8,
+  CAVE_WYRM: 0xc8f0c0,
 };
 
 function deriveEnemyType(key: EnemyTypeKey): EnemyTypeDef {
@@ -275,6 +278,8 @@ export const ENEMY_TYPES = Object.fromEntries(
 export function enemyPoolForFloor(floor: number): EnemyTypeKey[] {
   const pool = monstersForFloor(floor).filter((k) => {
     if (k === 'MIMIC') return false;
+    // Large monsters are placed on their own (rarely, and only where they fit), not scattered into rooms.
+    if (isLargeMonster(MONSTERS[k])) return false;
     const hd = MONSTERS[k].hd;
     if (floor <= 1) return hd <= 1;
     if (floor >= 7) return hd > 1;

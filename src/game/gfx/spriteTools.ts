@@ -61,10 +61,10 @@ export function flipH(rows: readonly string[]): Rows {
 }
 
 /**
- * Second walk frame. "legs": the left foot lifts one pixel (bottom 4 rows,
+ * Second walk frame. "legs": the left foot lifts one pixel (bottom `legRows` rows, 4 for a 16x16 sprite,
  * left half). "bob": the whole sprite rises one pixel (first row must be empty).
  */
-export function walkFrame(rows: readonly string[], mode: "legs" | "bob"): Rows {
+export function walkFrame(rows: readonly string[], mode: "legs" | "bob", legRows = 4): Rows {
   const w = rows[0].length;
   const h = rows.length;
   if (mode === "bob") {
@@ -74,7 +74,7 @@ export function walkFrame(rows: readonly string[], mode: "legs" | "bob"): Rows {
   }
   const out = rows.map((r) => r.split(""));
   const half = Math.floor(w / 2);
-  for (let r = h - 4; r < h; r++) {
+  for (let r = h - legRows; r < h; r++) {
     for (let x = 0; x < half; x++) {
       out[r][x] = r + 1 < h ? rows[r + 1][x] : ".";
     }
