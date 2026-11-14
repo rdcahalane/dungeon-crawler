@@ -15,7 +15,7 @@
 /** Event name to payload. `undefined` means the event carries no data. */
 export interface GameEventMap {
   player_swing: undefined;
-  /** `crit` is true for a thief sneak attack (the only multiplier the current combat has). */
+  /** `crit` is true for a natural 20 or a thief backstab. */
   player_hit: { enemyKey: string; damage: number; crit: boolean };
   player_miss: undefined;
   player_hurt: { damage: number };
@@ -37,15 +37,18 @@ export interface GameEventMap {
   ui_open: { panel: string };
   ui_close: { panel: string };
   status: { text: string };
-  /** Optional (audio lane): the player's torch burned out. */
+  /** The held light burnt out. */
   torch_out: undefined;
-  /** Optional additions (mechanism lane). Not part of GAME_EVENT_NAMES, which lists the original contract. */
-  /** Another lane emits this when the player drops an item on a tile; the mechanism engine treats it as an item step. */
+  /** An item was dropped on the floor at this tile (pressure plates listen). */
   item_dropped: { itemId: string; defKey: string; tx: number; ty: number };
-  /** Another lane emits this when an item is picked up from a tile; the mechanism engine treats it as a leave. */
+  /** An item was picked up from a tile (pressure plates listen). */
   item_picked: { defKey: string; tx: number; ty: number };
-  /** A tomb mechanism asks for a named sound effect (`lever`, `trap`, `portcullis_up`...). The audio lane maps keys. */
+  /** A tomb mechanism asks for a named sound effect; the audio lane maps keys. */
   mech_sfx: { key: string };
+  /** Find Traps: reveal hidden mechanisms within `radiusTiles` of the player for `durationMs`. */
+  detect_traps: { radiusTiles: number; durationMs: number };
+  /** Knock: open the locked or stuck thing on this tile. */
+  knock: { tx: number; ty: number };
 }
 
 export type GameEventName = keyof GameEventMap;
@@ -54,6 +57,7 @@ export const GAME_EVENT_NAMES: readonly GameEventName[] = [
   'player_swing', 'player_hit', 'player_miss', 'player_hurt', 'player_death', 'enemy_death',
   'item_pickup', 'gold', 'chest_open', 'door_secret_found', 'trap_triggered', 'spell_cast', 'spell_fizzle',
   'heal', 'level_up', 'floor_enter', 'floor_exit', 'rest', 'ui_open', 'ui_close', 'status',
+  'detect_traps', 'knock', 'item_dropped', 'torch_out',
 ];
 
 export type GameEventHandler<K extends GameEventName> = (payload: GameEventMap[K]) => void;

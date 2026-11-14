@@ -11,6 +11,7 @@
 import type * as Phaser from "phaser";
 import type { Player, PlayerStats } from "./entities/Player";
 import type { Enemy } from "./entities/Enemy";
+import type { EquipSlot } from "./items";
 import type { DungeonData } from "./systems/DungeonGenerator";
 import type { GameEventBus } from "./GameEvents";
 import type { MapController } from "./scenes/game/MapController";
@@ -87,6 +88,16 @@ export interface GameContext {
   dropItem?(itemId: string): void;
   equipItem?(itemId: string): void;
   unequipSlot?(slot: string): void;
+
+  // ── B2 additions (optional; set by `LootController`, so callers use `ctx.useBelt?.(i)`) ──
+  /** Use the consumable on belt slot `i` (0 to 3). Applies the effect, spends one, refreshes the HUD. */
+  useBelt?(index: number): void;
+  /** Drop an item from the pack, belt or body onto the player's tile; emits the bus event `item_dropped`. */
+  dropItem?(itemId: string): void;
+  /** Equip an item from the pack (the old piece goes to the pack); explains failures with a status line. */
+  equipItem?(itemId: string): void;
+  /** Take the item in an equipment slot off into the pack. */
+  unequipSlot?(slot: EquipSlot): void;
 
   // ── Controllers ──────────────────────────────────────────────────────────
   map: MapController;

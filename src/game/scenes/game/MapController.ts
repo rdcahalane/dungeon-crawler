@@ -9,6 +9,7 @@ export class MapController {
   private fogBrushImg!: Phaser.GameObjects.Image;
   private fogState!: Uint8Array;
   private lastFogTile = { tx: -1, ty: -1 };
+  private lastRadius = -1;
 
   // ── Torch glow ─────────────────────────────────────────────────────────────
   private torchInner!: Phaser.GameObjects.Image;
@@ -203,9 +204,16 @@ export class MapController {
     this.lastFogTile = { tx, ty };
   }
 
+  /** Sight radius in tiles: the held light, a light spell, or one tile of darkness. */
+  private get sightRadius(): number {
+    return this.ctx.player ? this.ctx.player.lightRadiusTiles() : FOG_RADIUS;
+  }
+
   private revealFog(ptx: number, pty: number) {
-    const r = FOG_RADIUS;
+    const r = this.sightRadius;
+    this.lastRadius = r;
     const brushRadius = r * TILE_SIZE;
+    this.fogBrushImg.setDisplaySize(brushRadius * 2, brushRadius * 2);
 
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -252,13 +260,15 @@ export class MapController {
   /** Torch flicker, then fog reveal when the player crosses a tile. Same order as the old update loop. */
   update(curTx: number, curTy: number) {
     const player = this.ctx.player;
-    // Torch glow flicker
-    const flicker = 0.5 + Math.sin(this.ctx.scene.time.now * 0.008) * 0.04 + (Math.random() - 0.5) * 0.025;
-    this.torchInner.setPosition(player.x, player.y).setAlpha(flicker);
-    this.torchOuter.setPosition(player.x, player.y).setAlpha(flicker * 0.55);
+    // Torch glow flicker, sized to the light actually burning (a dead torch leaves a faint ember)
+    const lit = player.hasLight();
+    const k = Math.max(0.3, this.sightRadius / FOG_RADIUS);
+    const flicker = (lit ? 0.5 : 0.12) + Math.sin(this.ctx.scene.time.now * 0.008) * 0.04 + (Math.random() - 0.5) * 0.025;
+    this.torchInner.setPosition(player.x, player.y).setAlpha(flicker).setScale(1.6 * k);
+    this.torchOuter.setPosition(player.x, player.y).setAlpha(flicker * 0.55).setScale(2.8 * k);
 
-    // Fog of war
-    if (curTx !== this.lastFogTile.tx || curTy !== this.lastFogTile.ty) {
+    // Fog of war: re-reveal on a new tile, or when the light grew or shrank
+    if (curTx !== this.lastFogTile.tx || curTy !== this.lastFogTile.ty || this.sightRadius !== this.lastRadius) {
       this.lastFogTile = { tx: curTx, ty: curTy };
       this.revealFog(curTx, curTy);
     }

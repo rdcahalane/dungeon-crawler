@@ -261,7 +261,8 @@ describe("effect resolution", () => {
   it("spawn names map to legacy enemies, unknown ones to skeletons", () => {
     expect(enemyKeyFor("skeleton")).toBe("SKELETON");
     expect(enemyKeyFor("giant spider")).toBe("GIANT_SPIDER");
-    expect(enemyKeyFor("wight")).toBe("SKELETON");
+    expect(enemyKeyFor("wight")).toBe("WIGHT");
+    expect(enemyKeyFor("no such thing")).toBe("SKELETON");
   });
 
   it("every item the vaults and the tomb grant resolves to a real item", () => {

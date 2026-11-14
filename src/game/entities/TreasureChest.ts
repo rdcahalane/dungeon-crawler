@@ -1,5 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, COLORS, ChestTier, ChestState, TrapTypeKey } from "../constants";
+import { d100 } from "../rules";
+import { mathRng } from "../rules";
 import { LootTable, LootResult } from "../systems/LootTable";
 
 export interface ChestInteractResult {
@@ -102,7 +104,7 @@ export class TreasureChest extends Phaser.GameObjects.Container {
    * Try to open the chest. Returns result describing what happened.
    * clasKey and relevant ability scores are needed for lock-picking/bashing.
    */
-  tryOpen(classKey: string, strMod: number, dexMod: number, level: number, floor: number): ChestInteractResult {
+  tryOpen(classKey: string, strMod: number, dexMod: number, level: number, floor: number, openLocksPct = 0): ChestInteractResult {
     if (this.chestState === 'open') {
       return { opened: false, message: 'Already open.' };
     }
@@ -131,11 +133,13 @@ export class TreasureChest extends Phaser.GameObjects.Container {
     let canOpen = false;
 
     if (classKey === 'thief') {
-      // Thief: disable check (1d20 + dex mod + level >= DC 10/12/15)
-      const dc = this.tier === 'wooden' ? 10 : this.tier === 'iron' ? 12 : 15;
-      const roll = Math.floor(Math.random() * 20) + 1 + dexMod + level;
-      canOpen = roll >= dc;
-      if (!canOpen) return { opened: false, message: `Failed to pick lock! (rolled ${roll}, needed ${dc})` };
+      // Thief: "open locks" in percent (d100 at or under the skill, eased on a wooden chest, harder on a golden one).
+      const adj = this.tier === 'wooden' ? 20 : this.tier === 'iron' ? 0 : -15;
+      const need = Math.max(5, Math.min(97, openLocksPct + adj));
+      const roll = d100(mathRng);
+      canOpen = roll <= need;
+      if (!canOpen) return { opened: false, message: `Failed to pick lock! (rolled ${roll}, needed ${need} or less)` };
+      void dexMod; void level;
     } else if (classKey === 'fighter') {
       // Fighter: bash (1d20 + str mod >= DC 12/15/18)
       const dc = this.tier === 'wooden' ? 12 : this.tier === 'iron' ? 15 : 18;
@@ -157,6 +161,17 @@ export class TreasureChest extends Phaser.GameObjects.Container {
 
     const loot = LootTable.rollLoot(floor, this.tier);
     return { opened: true, loot, message: `Opened ${this.tier} chest!` };
+  }
+
+  /** Knock and the like: open without a roll or a trap. Null if it is already open or is a mimic. */
+  forceOpen(floor: number): ChestInteractResult | null {
+    if (this.chestState === 'open' || this.isMimic) return null;
+    this.chestState = 'open';
+    this.lockIcon.setText('✓');
+    this.lockIcon.setColor('#69f0ae');
+    this.sprite.setFillStyle(0x555555);
+    this.promptText.setVisible(false);
+    return { opened: true, loot: LootTable.rollLoot(floor, this.tier), message: `The ${this.tier} chest springs open.` };
   }
 
   // Thief auto-detects traps when within 4 tiles

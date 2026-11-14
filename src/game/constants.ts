@@ -1,3 +1,6 @@
+import { MONSTERS, monstersForFloor, hasSpecial } from "./rules/bestiary";
+import { diceAverage } from "./rules/dice";
+
 export const TILE_SIZE = 32;
 export const MAP_WIDTH = 64;
 export const MAP_HEIGHT = 48;
@@ -110,8 +113,8 @@ export const CHARACTER_CLASSES: Record<ClassKey, ClassDef> = {
     refGood: false,
     willGood: false,
     primaryStats: ['str', 'con'],
-    startingEquipment: 'Long Sword (+3 ATK), Chain Mail (+4 AC)',
-    classAbility: 'Cleave — on kill, instantly attack an adjacent enemy',
+    startingEquipment: 'Long Sword, Chain Mail, Shield, torches',
+    classAbility: 'Cleave: on a kill, swing again at a neighbour. Hit dice d10.',
     classAbilityKey: 'cleave',
     startingMana: 0,
     manaPerLevel: 0,
@@ -130,8 +133,8 @@ export const CHARACTER_CLASSES: Record<ClassKey, ClassDef> = {
     refGood: true,
     willGood: false,
     primaryStats: ['dex', 'int'],
-    startingEquipment: 'Dagger (+1 ATK), Leather Armor (+2 AC)',
-    classAbility: 'Sneak Attack — +1d6/2 levels when attacking from outside aggro range',
+    startingEquipment: 'Short Sword, Leather Armor, thieves\' tools, rope',
+    classAbility: 'Backstab: double damage on a foe that has not noticed you.',
     classAbilityKey: 'sneak_attack',
     startingMana: 0,
     manaPerLevel: 0,
@@ -150,8 +153,8 @@ export const CHARACTER_CLASSES: Record<ClassKey, ClassDef> = {
     refGood: false,
     willGood: true,
     primaryStats: ['int', 'dex'],
-    startingEquipment: 'Staff (+2 ATK), Robe (+0 AC), Spellbook',
-    classAbility: 'Arcane Recovery — mana regen 2/sec when not hit for 5s',
+    startingEquipment: 'Dagger, Cloak, Spellbook, torches',
+    classAbility: 'Memorized spells (rest to recover) and an endless Magic Dart.',
     classAbilityKey: 'arcane_recovery',
     startingMana: 40,
     manaPerLevel: 10,
@@ -170,8 +173,8 @@ export const CHARACTER_CLASSES: Record<ClassKey, ClassDef> = {
     refGood: false,
     willGood: true,
     primaryStats: ['wis', 'con'],
-    startingEquipment: 'Mace (+2 ATK), Scale Mail (+3 AC), Holy Symbol',
-    classAbility: 'Turn Undead — T key forces undead within 200px to flee',
+    startingEquipment: 'Mace, Chain Mail, Shield, holy water',
+    classAbility: 'Turn Undead (T) by the cleric table. Prays for spells.',
     classAbilityKey: 'turn_undead',
     startingMana: 30,
     manaPerLevel: 8,
@@ -184,12 +187,18 @@ export const CHARACTER_CLASSES: Record<ClassKey, ClassDef> = {
 };
 
 // ── Enemy Types ─────────────────────────────────────────────────────────────
+//
+// The numbers that matter (hit dice, AC, THAC0, attacks, XP, specials) live in `rules/bestiary.ts`. This table is
+// derived from it and keeps only what presentation and the legacy code paths still read (colour, size, aggro).
 
 export interface EnemyTypeDef {
   key: string;
   color: number;
+  /** Average hit points (first-edition scale). Informational; `Enemy` rolls its own. */
   hp: number;
+  /** Average damage of the first attack. Informational. */
   attack: number;
+  /** Descending armor class. */
   defense: number;
   speed: number;
   xp: number;
@@ -204,7 +213,7 @@ export interface EnemyTypeDef {
   poisonDuration?: number; // ms
   isRanged?: boolean;   // attacks from range, keeps distance
   isMimic?: boolean;    // disguised as chest, reveals at aggro range
-  ignoresArmor?: boolean; // bypasses player defense
+  ignoresArmor?: boolean; // bypasses player armor
   immunePoison?: boolean;
   textureKey?: string;  // overrides default 'enemy' texture
 }
@@ -212,89 +221,72 @@ export interface EnemyTypeDef {
 export type EnemyTypeKey =
   | 'BASIC' | 'FAST' | 'TANK'
   | 'SKELETON' | 'ZOMBIE' | 'GIANT_RAT' | 'GIANT_SPIDER'
-  | 'TROLL' | 'DARK_ELF' | 'GHOST' | 'MIMIC';
+  | 'TROLL' | 'DARK_ELF' | 'GHOST' | 'MIMIC'
+  | 'GHOUL' | 'WIGHT' | 'WRAITH' | 'GARGOYLE' | 'OOZE' | 'CULTIST' | 'BONE_KNIGHT' | 'GIANT_BAT' | 'HOLLOW_KING';
 
-export const ENEMY_TYPES: Record<EnemyTypeKey, EnemyTypeDef> = {
-  BASIC: {
-    key: 'basic', color: COLORS.ENEMY_BASIC, textureKey: 'enemy_basic',
-    hp: 30, attack: 8, defense: 0, speed: 80, xp: 15, size: 22,
-    aggroRange: 160, attackRange: 20, attackCooldown: 1000,
-  },
-  FAST: {
-    key: 'fast', color: COLORS.ENEMY_FAST, textureKey: 'enemy_fast',
-    hp: 18, attack: 6, defense: 0, speed: 140, xp: 20, size: 16,
-    aggroRange: 200, attackRange: 16, attackCooldown: 600,
-  },
-  TANK: {
-    key: 'tank', color: COLORS.ENEMY_TANK, textureKey: 'enemy_tank',
-    hp: 80, attack: 14, defense: 4, speed: 50, xp: 35, size: 28,
-    aggroRange: 120, attackRange: 24, attackCooldown: 1500,
-  },
-  SKELETON: {
-    key: 'skeleton', color: COLORS.ENEMY_SKELETON, textureKey: 'enemy_skeleton',
-    hp: 25, attack: 10, defense: 2, speed: 70, xp: 20, size: 22,
-    aggroRange: 200, attackRange: 20, attackCooldown: 900,
-    isUndead: true, fleeOnTurnUndead: true, immunePoison: true,
-  },
-  ZOMBIE: {
-    key: 'zombie', color: COLORS.ENEMY_ZOMBIE, textureKey: 'enemy_zombie',
-    hp: 60, attack: 14, defense: 2, speed: 40, xp: 25, size: 26,
-    aggroRange: 150, attackRange: 22, attackCooldown: 1800,
-    isUndead: true, fleeOnTurnUndead: true, immunePoison: true,
-  },
-  GIANT_RAT: {
-    key: 'giant_rat', color: COLORS.ENEMY_GIANT_RAT, textureKey: 'enemy_giant_rat',
-    hp: 12, attack: 5, defense: 0, speed: 150, xp: 10, size: 16,
-    aggroRange: 180, attackRange: 16, attackCooldown: 500,
-  },
-  GIANT_SPIDER: {
-    key: 'giant_spider', color: COLORS.ENEMY_GIANT_SPIDER, textureKey: 'enemy_giant_spider',
-    hp: 20, attack: 7, defense: 1, speed: 100, xp: 18, size: 20,
-    aggroRange: 170, attackRange: 18, attackCooldown: 700,
-    poisonDmg: 3, poisonDuration: 5000,
-  },
-  TROLL: {
-    key: 'troll', color: COLORS.ENEMY_TROLL, textureKey: 'enemy_troll',
-    hp: 100, attack: 18, defense: 5, speed: 60, xp: 50, size: 30,
-    aggroRange: 130, attackRange: 26, attackCooldown: 1200,
-    regenRate: 2,
-  },
-  DARK_ELF: {
-    key: 'dark_elf', color: COLORS.ENEMY_DARK_ELF, textureKey: 'enemy_dark_elf',
-    hp: 30, attack: 12, defense: 2, speed: 90, xp: 30, size: 22,
-    aggroRange: 220, attackRange: 180, attackCooldown: 1500,
-    isRanged: true,
-  },
-  GHOST: {
-    key: 'ghost', color: COLORS.ENEMY_GHOST, textureKey: 'enemy_ghost',
-    hp: 25, attack: 15, defense: 0, speed: 80, xp: 40, size: 24,
-    aggroRange: 160, attackRange: 20, attackCooldown: 1000,
-    isUndead: true, fleeOnTurnUndead: true, ignoresArmor: true,
-    immunePoison: true,
-  },
-  MIMIC: {
-    key: 'mimic', color: COLORS.ENEMY_MIMIC, textureKey: 'enemy_mimic',
-    hp: 70, attack: 20, defense: 3, speed: 60, xp: 45, size: 28,
-    aggroRange: 80, attackRange: 24, attackCooldown: 900,
-    isMimic: true,
-  },
+const ENEMY_COLORS: Record<EnemyTypeKey, number> = {
+  BASIC: COLORS.ENEMY_BASIC, FAST: COLORS.ENEMY_FAST, TANK: COLORS.ENEMY_TANK,
+  SKELETON: COLORS.ENEMY_SKELETON, ZOMBIE: COLORS.ENEMY_ZOMBIE, GIANT_RAT: COLORS.ENEMY_GIANT_RAT,
+  GIANT_SPIDER: COLORS.ENEMY_GIANT_SPIDER, TROLL: COLORS.ENEMY_TROLL, DARK_ELF: COLORS.ENEMY_DARK_ELF,
+  GHOST: COLORS.ENEMY_GHOST, MIMIC: COLORS.ENEMY_MIMIC,
+  GHOUL: 0x8bc34a, WIGHT: 0x9fa8da, WRAITH: 0xb39ddb, GARGOYLE: 0x90a4ae, OOZE: 0x76ff03,
+  CULTIST: 0xd84315, BONE_KNIGHT: 0xcfd8dc, GIANT_BAT: 0x6d4c41, HOLLOW_KING: 0xffd54f,
 };
 
-// Floor-based enemy pools
-export const FLOOR_ENEMY_POOLS: EnemyTypeKey[][] = [
-  [],                                                               // idx 0 unused
-  ['BASIC', 'GIANT_RAT', 'GIANT_SPIDER'],                          // floor 1-3
-  ['BASIC', 'GIANT_RAT', 'GIANT_SPIDER'],
-  ['BASIC', 'GIANT_RAT', 'GIANT_SPIDER'],
-  ['FAST', 'SKELETON', 'DARK_ELF', 'BASIC'],                       // floor 4-6
-  ['FAST', 'SKELETON', 'DARK_ELF', 'BASIC'],
-  ['FAST', 'SKELETON', 'DARK_ELF', 'TANK'],
-  ['ZOMBIE', 'GHOST', 'SKELETON', 'TANK'],                         // floor 7-9
-  ['ZOMBIE', 'GHOST', 'SKELETON', 'DARK_ELF'],
-  ['ZOMBIE', 'GHOST', 'SKELETON', 'TROLL'],
-];
-// Floor 10+: trolls, mimics, ghosts
-export const FLOOR_10_PLUS_POOL: EnemyTypeKey[] = ['TROLL', 'MIMIC', 'GHOST', 'DARK_ELF'];
+function deriveEnemyType(key: EnemyTypeKey): EnemyTypeDef {
+  const m = MONSTERS[key];
+  const first = m.attacks[0];
+  const regen = hasSpecial(m, 'regen');
+  const poison = hasSpecial(m, 'poison');
+  const incorporeal = hasSpecial(m, 'incorporeal');
+  return {
+    key: key.toLowerCase(),
+    color: ENEMY_COLORS[key],
+    hp: Math.round(diceAverage(m.hpDice)),
+    attack: Math.round(first ? diceAverage(first.dice) : 1),
+    defense: m.ac,
+    speed: m.speed,
+    xp: m.xp,
+    size: m.size,
+    aggroRange: m.aggroRange,
+    attackRange: m.attackRange,
+    attackCooldown: m.attackCooldownMs,
+    isUndead: m.undead,
+    fleeOnTurnUndead: m.undead && !hasSpecial(m, 'unturnable'),
+    regenRate: regen?.hpPerSec,
+    poisonDmg: poison?.dps,
+    poisonDuration: poison?.durationMs,
+    isRanged: !!hasSpecial(m, 'ranged'),
+    isMimic: !!hasSpecial(m, 'mimic'),
+    ignoresArmor: incorporeal?.ignoresArmor,
+    immunePoison: m.undead,
+    textureKey: m.textureKey,
+  };
+}
+
+export const ENEMY_TYPES = Object.fromEntries(
+  (Object.keys(MONSTERS) as EnemyTypeKey[]).map((k) => [k, deriveEnemyType(k)]),
+) as Record<EnemyTypeKey, EnemyTypeDef>;
+
+/**
+ * Monsters that can be placed at random on `floor`: the bestiary's floor window, minus mimics (they come from
+ * chests) and, on floor 1, anything above one hit die. From floor 7 the one-hit-die fodder drops out.
+ */
+export function enemyPoolForFloor(floor: number): EnemyTypeKey[] {
+  const pool = monstersForFloor(floor).filter((k) => {
+    if (k === 'MIMIC') return false;
+    const hd = MONSTERS[k].hd;
+    if (floor <= 1) return hd <= 1;
+    if (floor >= 7) return hd > 1;
+    return true;
+  });
+  return pool.length > 0 ? pool : ['BASIC'];
+}
+
+// Floor-based enemy pools (index = floor; idx 0 unused), now derived from the bestiary windows.
+export const FLOOR_ENEMY_POOLS: EnemyTypeKey[][] = [[], ...Array.from({ length: 9 }, (_, i) => enemyPoolForFloor(i + 1))];
+// Floors 10 to 12 (the tomb on 13 is fixed).
+export const FLOOR_10_PLUS_POOL: EnemyTypeKey[] = enemyPoolForFloor(11);
 
 // ── Spells ──────────────────────────────────────────────────────────────────
 
@@ -406,7 +398,7 @@ export const TRAP_TYPES: Record<TrapTypeKey, TrapDef> = {
 
 // ── Status Effects ───────────────────────────────────────────────────────────
 
-export type StatusEffectKey = 'POISONED' | 'SLOWED' | 'BLESSED' | 'SHIELDED' | 'RUSHED';
+export type StatusEffectKey = 'POISONED' | 'SLOWED' | 'BLESSED' | 'SHIELDED' | 'RUSHED' | 'HELD';
 
 export interface StatusEffectDef {
   key: StatusEffectKey;
@@ -421,6 +413,7 @@ export const STATUS_EFFECT_DEFS: Record<StatusEffectKey, StatusEffectDef> = {
   BLESSED: { key: 'BLESSED', label: 'Blessed', color: 0xffd700, icon: 'B' },
   SHIELDED: { key: 'SHIELDED', label: 'Shielded', color: 0x7e57c2, icon: 'Sh' },
   RUSHED: { key: 'RUSHED', label: 'Rushed', color: 0xffd166, icon: 'R' },
+  HELD: { key: 'HELD', label: 'Held', color: 0xb0bec5, icon: 'H' },
 };
 
 export interface StatusEffect {

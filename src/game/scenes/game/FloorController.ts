@@ -1,7 +1,9 @@
 import * as Phaser from "phaser";
 import type { PlayerStats } from "../../entities/Player";
 import type { SerializedFloor } from "../../systems/DungeonGenerator";
-import { TILE_SIZE } from "../../constants";
+import { TILE_SIZE, TOMB_FLOOR } from "../../constants";
+import { mathRng } from "../../rules";
+import { applyRest, wanderingMonsterArrives } from "./AdndCombat";
 import { onFloorReached } from "../../systems/QuestSystem";
 import { saveGame } from "../../systems/SaveStore";
 import type { GameContext } from "../../GameContext";
@@ -14,6 +16,9 @@ export class FloorController {
   private _restDialogElements: Phaser.GameObjects.GameObject[] = [];
   private _exitEmitted = false;
   private _deathEmitted = false;
+  private _recalling = false;
+  private _restBlockedUntil = 0;
+  private _sealedMsgUntil = 0;
 
   constructor(private ctx: GameContext) {}
 
@@ -38,6 +43,20 @@ export class FloorController {
     const dx = ctx.player.x - sx;
     const dy = ctx.player.y - sy;
     if (Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.7) {
+      if (ctx.currentFloor >= TOMB_FLOOR) {
+        // The tomb is the last floor: its stairs are the way out, and only once the Hollow King is dead.
+        if (!ctx.combat.bossSlain) {
+          const now = ctx.scene.time.now;
+          if (now > this._sealedMsgUntil) {
+            this._sealedMsgUntil = now + 2500;
+            ctx.floatText(sx, sy - 28, 'SEALED', 0xce93d8, 12);
+            ctx.status("The way out is barred. The Hollow King still wears his crown.");
+          }
+          return;
+        }
+        this.winGame();
+        return;
+      }
       if (ctx.dungeon.floorObjective?.type === 'CLAIM_KEY' && !ctx.run.floorObjectiveComplete) {
         ctx.floatText(sx, sy - 28, 'SEALED', 0xce93d8, 12);
         ctx.status("The stairs are sealed. Defeat the guardian and claim the key.");
@@ -57,7 +76,7 @@ export class FloorController {
     if (Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.9) {
       if (ctx.currentFloor === 1) {
         // Show rest dialog before leaving the dungeon
-        this.showRestDialog();
+        if (ctx.scene.time.now >= this._restBlockedUntil) this.showRestDialog();
       } else {
         // Mid-dungeon ascent: save this floor then go up
         this.saveCurrentFloor();
@@ -94,9 +113,9 @@ export class FloorController {
     const s = this.ctx.player.stats;
     const D = 200; // depth for all dialog elements
 
-    // Half-lost HP/mana for short rest preview
+    // Half the missing hit points for the short rest preview
     const shortHpGain = Math.floor((s.maxHp - s.hp) / 2);
-    const shortMpGain = Math.floor((s.maxMana - s.mana) / 2);
+    const hasRation = this.ctx.player.inventory.count('ration') > 0;
 
     const els = this._restDialogElements;
 
@@ -119,7 +138,7 @@ export class FloorController {
 
     // Short Rest card
     this.addRestCard(cx - 135, cy + 20, '⚕ SHORT REST', [
-      `+${shortHpGain} HP  +${shortMpGain} MP`,
+      `+${shortHpGain} HP, spells stay spent`,
       'Dead enemies stay dead',
       'Traps stay cleared',
       'Chests stay open',
@@ -128,11 +147,11 @@ export class FloorController {
 
     // Long Rest card
     this.addRestCard(cx + 135, cy + 20, '🛌 LONG REST', [
-      `Full HP  Full MP`,
-      'Enemies respawn',
-      'Traps reset',
+      hasRation ? 'Full HP, drain mended, spells back' : 'No ration: half HP, spells back',
+      hasRation ? 'Eats a ration' : 'You wake hungry',
+      'Enemies respawn, traps reset',
       'Chests refill',
-      'Same layout on return',
+      'Wanderers may find you first',
     ], 0x2a1a2a, 0xcc44ff, () => this.doRest('long'));
   }
 
@@ -184,18 +203,38 @@ export class FloorController {
     const player = ctx.player;
     const s = player.stats;
 
+    // Something may wander in while you sleep: the rest is broken off and you must deal with it.
+    if (wanderingMonsterArrives(type, mathRng)) {
+      this.closeRestDialog();
+      this._restBlockedUntil = ctx.scene.time.now + 4000;
+      const foe = ctx.combat.spawnWanderingMonster();
+      ctx.status(foe ? "Something stirs in the dark. Your rest is broken." : "You start awake, but nothing comes.");
+      return;
+    }
+
+    const state = { hp: s.hp, maxHp: s.maxHp, drained: s.drained ?? 0 };
+    const hasRation = player.inventory.count('ration') > 0 && type === 'long';
+    const summary = applyRest(state, player.spellbook, type, hasRation);
+    s.hp = state.hp;
+    s.drained = state.drained;
+    if (summary.ateRation) player.inventory.consume('ration', 1);
+    if (type === 'long') {
+      player.removeEffect('POISONED');
+      player.removeEffect('HELD');
+    }
+    player.recomputeDerived();
+    s.hp = Math.min(state.hp, s.maxHp);
+    ctx.status(
+      type === 'short'
+        ? `You bind your wounds (+${summary.healed} HP).`
+        : `You sleep${summary.ateRation ? ' and eat a ration' : ', hungry'}: +${summary.healed} HP` +
+          `${summary.drainRestored > 0 ? `, ${summary.drainRestored} drained HP mended` : ''}, spells memorized again.`,
+    );
+
     if (type === 'short') {
-      // Restore half of lost HP and mana
-      const hpGain = Math.floor((s.maxHp - s.hp) / 2);
-      const mpGain = Math.floor((s.maxMana - s.mana) / 2);
-      if (hpGain > 0) player.heal(hpGain);
-      if (mpGain > 0) player.restoreMana(mpGain);
       // Save dungeon state as-is (preserved)
       this.saveCurrentFloor();
     } else {
-      // Full restore
-      player.heal(s.maxHp - s.hp);
-      if (s.maxMana > 0) player.restoreMana(s.maxMana - s.mana);
       // Reset dungeon state: clear kills/traps/chests but keep layout and revealed doors
       ctx.persist.deadEnemyIndices.clear();
       ctx.persist.triggeredTrapKeys.clear();
@@ -204,10 +243,7 @@ export class FloorController {
       this.saveCurrentFloor(); // saves the reset state
     }
 
-    this._restDialogElements.forEach(e => e.destroy());
-    this._restDialogElements = [];
-    this._restDialogOpen = false;
-    ctx.bus.emit('ui_close', { panel: 'rest' });
+    this.closeRestDialog();
     ctx.bus.emit('rest');
     this.emitFloorExit();
 
@@ -215,6 +251,53 @@ export class FloorController {
       if (t === 1) {
         const persistedStats = this._buildPersistedStats(0); // floor 0 = Tavern
         ctx.scene.scene.start("TavernScene", { persistedStats, saveSlot: ctx.saveSlot });
+      }
+    });
+  }
+
+  private closeRestDialog() {
+    this._restDialogElements.forEach(e => e.destroy());
+    this._restDialogElements = [];
+    this._restDialogOpen = false;
+    this.ctx.bus.emit('ui_close', { panel: 'rest' });
+  }
+
+  /** Scroll of Recall: save the floor and go straight back to the tavern with the character as they are. */
+  recallToTavern() {
+    if (this._recalling) return;
+    this._recalling = true;
+    const ctx = this.ctx;
+    this.saveCurrentFloor();
+    this.emitFloorExit();
+    ctx.scene.cameras.main.fade(400, 0, 0, 0, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
+      if (t === 1) {
+        const persistedStats = this._buildPersistedStats(0); // floor 0 = Tavern
+        ctx.scene.scene.start("TavernScene", { persistedStats, saveSlot: ctx.saveSlot });
+      }
+    });
+  }
+
+  /** Climbing out of the Tomb of the Hollow King with the king dead: the run is won. */
+  private winGame() {
+    if (this._recalling) return;
+    this._recalling = true;
+    const ctx = this.ctx;
+    this.saveCurrentFloor();
+    this.emitFloorExit();
+    const stats = this._buildPersistedStats(ctx.currentFloor);
+    this.autoSave(stats).catch(() => {});
+    ctx.scene.cameras.main.fade(600, 255, 244, 200, false, (_cam: Phaser.Cameras.Scene2D.Camera, t: number) => {
+      if (t === 1) {
+        ctx.scene.scene.start("GameOverScene", {
+          floor: ctx.currentFloor,
+          kills: ctx.run.kills,
+          level: ctx.player.stats.level,
+          gold: ctx.player.stats.runGoldEarned ?? 0,
+          bestStreak: ctx.player.stats.runBestStreak ?? 0,
+          relics: ctx.player.stats.relics ?? [],
+          victory: true,
+          stats,
+        });
       }
     });
   }
@@ -284,6 +367,11 @@ export class FloorController {
       ctx.bus.emit('player_death');
     }
     ctx.player.setTint(0x888888);
+    // The record stays (it is in the save); the purse does not. Gold carried is lost with the body.
+    const lost = ctx.player.stats.gold;
+    ctx.player.stats.gold = 0;
+    ctx.player.inventory.gold = 0;
+    if (lost > 0) ctx.status(`You die. ${lost} gold stays with the body.`);
     ctx.scene.time.delayedCall(800, () => {
       ctx.scene.scene.start("GameOverScene", {
         floor: ctx.currentFloor,

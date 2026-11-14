@@ -210,7 +210,8 @@ export function generateQuestBoard(
       description: tmpl.descFn(tier),
       objectives: tmpl.objectivesFn(tier).map(o => ({ ...o })),
       rewardGold: tmpl.goldFn(tier),
-      rewardXP: tmpl.xpFn(tier),
+      // Templates were written for the old XP scale; first-edition levels (fighter level 2 at 100 XP) want about a third.
+      rewardXP: Math.max(5, Math.round(tmpl.xpFn(tier) * 0.35)),
       rarity: tmpl.rarityFn(tier),
       status: 'available',
       expiresAt: generatedAt + WEEK_MS,
