@@ -2,8 +2,9 @@
 import * as Phaser from "phaser";
 import { STATUS_EFFECT_DEFS } from "../../constants";
 import type { StatusEffect } from "../../constants";
+import { fitLines } from "./fitLines";
 import { hudLog, layoutLog } from "./messageLog";
-import { GLYPH_W, LINE, SCREEN_H, SCREEN_W, UI, drawBox, hex, iconAt, label, setLabel, wrap } from "./theme";
+import { GLYPH_W, LINE, SCREEN_H, SCREEN_W, UI, ascii, drawBox, hex, iconAt, label, setLabel } from "./theme";
 import { uiState, type HoverInfo } from "./uiState";
 
 // ── HP orb ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -105,7 +106,10 @@ export interface FloorData {
 const FLOOR_W = 340;
 /** Characters that fit a row of the floor panel. */
 const FLOOR_COLS = Math.floor((FLOOR_W - 24) / GLYPH_W);
-const FLOOR_ROWS = 5;
+/** Head line, three lines of description, the kills row and the quests row. */
+const FLOOR_ROWS = 6;
+/** Lines of objective description the floor panel shows. */
+const DETAIL_LINES = 3;
 /** Bottom edge of the tallest the floor panel can get (the minimap sits just under it). */
 export const FLOOR_PANEL_MAX_BOTTOM = 8 + 40 + FLOOR_ROWS * LINE + 8;
 
@@ -138,7 +142,7 @@ export class FloorPanel {
         const head = `${obj.title.toUpperCase()} ${obj.complete ? "DONE" : `${obj.progress}/${obj.target}`}`;
         const col = obj.complete ? UI.lime : UI.cream;
         rows.push([head.length > FLOOR_COLS ? `${head.slice(0, FLOOR_COLS - 2)}..` : head, col]);
-        for (const l of wrap(obj.detail, FLOOR_COLS).slice(0, 2)) rows.push([l, UI.silver]);
+        for (const l of fitLines(ascii(obj.detail), FLOOR_COLS, DETAIL_LINES)) rows.push([l, UI.silver]);
       }
       rows.push([`KILLS ${d.kills}  I B M`, UI.grey]);
       if (d.activeQuests > 0) rows.push([`QUESTS ${d.activeQuests}`, UI.green]);

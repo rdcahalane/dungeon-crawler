@@ -10,6 +10,7 @@ import {
   WeaponTrait,
   abilityMod,
 } from "../constants";
+import { facingFromVelocity } from "./facing";
 import { Inventory, starterKit, fromLegacyInventory, equipmentBonuses, getDef } from "../items";
 import {
   Spellbook, isCaster, mathRng, mulberry32, titleFor, thac0For, xpForLevel, MAX_LEVEL, xpBonusPercent,
@@ -604,7 +605,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       const spd = this.getEffectiveSpeed();
       vx = (vx / len) * spd;
       vy = (vy / len) * spd;
-      this.stats.facing = { x: vx > 0 ? 1 : vx < 0 ? -1 : 0, y: vy > 0 ? 1 : vy < 0 ? -1 : 0 };
+      this.stats.facing = facingFromVelocity(vx, vy, this.stats.facing);
     }
 
     body.setVelocity(vx, vy);
