@@ -607,6 +607,8 @@ export function starterKit(classKey: ClassKey): Inventory {
   }
   // First-edition adventurers carried a ten-foot pole; the probe verb (P) is central to the tomb.
   stow('ten_foot_pole');
+  // Iron spikes too: the tomb's closing-walls room is stopped with one (an iron tongue holds a stone mouth).
+  stow('iron_spikes', 3);
   const potion = mk('healing_potion');
   potion.quantity = 2;
   inv.belt[0] = potion;
