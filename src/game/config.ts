@@ -6,6 +6,7 @@ import { TavernScene } from "./scenes/TavernScene";
 import { GameScene } from "./scenes/GameScene";
 import { GameOverScene } from "./scenes/GameOverScene";
 import { HUDScene } from "./scenes/HUDScene";
+import { GalleryScene } from "./gfx/GalleryScene";
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -23,5 +24,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [PreloadScene, MainMenuScene, CharacterSelectScene, TavernScene, GameScene, HUDScene, GameOverScene],
+  scene: [PreloadScene, MainMenuScene, CharacterSelectScene, TavernScene, GameScene, HUDScene, GameOverScene, GalleryScene],
 };

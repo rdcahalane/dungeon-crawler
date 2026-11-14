@@ -18,7 +18,8 @@ export class PreloadScene extends Phaser.Scene {
 
   create() {
     this.createTextures();
-    this.scene.start("MainMenuScene");
+    const gallery = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("gallery") === "1";
+    this.scene.start(gallery ? "GalleryScene" : "MainMenuScene");
   }
 
   private createTextures() {
