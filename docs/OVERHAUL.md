@@ -1,10 +1,11 @@
 # Dungeon Crawler overhaul: design and build contract
 
-Status: waves A, B, the polish pass and Wave D are merged on branch `overhaul` (2026-11-14). Playable end to end.
-Wave D was played: rolled abilities, innkeeper rumours, hirelings, morale, reaction and surprise, treasure as XP, the
-epitaph, the Hall of the Fallen and the bones. Open: sound has not been heard by a person; floors 5 and deeper are
-untuned for a character in found gear; wandering monsters, the riddle door, rune floor, teleporters and the boss fight
-have tests but have not been played; shrine cards overflow their boxes.
+Status: waves A, B, D, E and F are merged on branch `overhaul` (2026-11-14). Playable end to end.
+Played: all four classes, the tavern, hirelings, the tomb's runes, riddle door, gas room, teleporters, closing walls
+and the king's door, wandering monsters, the narrator and one riddle vault. Balance from the sim (`npm run sim`,
+`docs/balance-report.md`). Open: the voice and the music have been measured, not heard by a person; the Hollow King
+fight was played once before retuning and only simulated after; most of the 23 vaults are covered by solver tests,
+not played.
 Dev shortcuts: `/?quick=fighter&floor=3&level=3` (straight into a floor, 13 is the tomb), `/?gallery=1` (sprites, font, sounds).
 
 ## Where the game is today
