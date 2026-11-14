@@ -61,7 +61,8 @@ export class Hireling extends Phaser.GameObjects.Sprite {
 
   /** Per frame: keep the label on the head and run the two-frame walk. */
   tick(deltaMs: number): void {
-    this.tag.setPosition(Math.round(this.x), Math.round(this.y - TILE_SIZE / 2 - 2));
+    // The two labels sit at different heights so they stay readable when the hirelings stand together.
+    this.tag.setPosition(Math.round(this.x), Math.round(this.y - TILE_SIZE / 2 - 2 - (this.def.fights ? 18 : 0)));
     this.swingMs = Math.max(0, this.swingMs - deltaMs);
     const second = `${this.def.textureKey}_f2`;
     if (this.moving && this.scene.textures.exists(second)) {

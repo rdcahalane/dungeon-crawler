@@ -111,7 +111,7 @@ export class PartyController {
     if (split.share <= 0 || !split.by) return 0;
     const m = this.members.find((h) => h.info === split.by);
     const first = firstName(split.by.name);
-    this.ctx.status(`${first} keeps his third: ${split.share} gp. You get ${split.yours}.`);
+    this.ctx.status(`${first} keeps a third: ${split.share} gp. You get ${split.yours}.`);
     if (m) this.ctx.floatText(m.x, m.y - 40, `${first.toUpperCase()} +${split.share} GP`, 0xf4c42c, 11);
     return split.share;
   }
@@ -276,7 +276,7 @@ export class PartyController {
       return;
     }
     if (r.failure === "lost") {
-      ctx.status(`${m.info.name} panics and bolts into the dark. You will not see him again.`);
+      ctx.status(`${m.info.name} panics and bolts into the dark. You will not see them again.`);
       ctx.floatText(m.x, m.y - 40, "RUNS!", 0xd8382c, 12);
       ctx.bus.emit("hireling_fled", { kind: m.info.kind, name: m.info.name, lost: true });
       this.remove(m);
@@ -288,7 +288,7 @@ export class PartyController {
     ctx.bus.emit("hireling_fled", { kind: m.info.kind, name: m.info.name, lost: false });
     m.fleeMs = FLEE_MS;
     m.path = [];
-    ctx.status(`${first} loses his nerve and runs from the fight.`);
+    ctx.status(`${first} loses their nerve and runs from the fight.`);
     ctx.floatText(m.x, m.y - 40, "FLEES!", 0xd8382c, 12);
   }
 

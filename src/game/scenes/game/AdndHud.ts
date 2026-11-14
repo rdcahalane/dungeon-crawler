@@ -1,3 +1,4 @@
+import { hirelingLightRadius } from "../../rules/hirelings";
 import type { PlayerStats } from "../../entities/Player";
 import type { Inventory, } from "../../items";
 import { getDef } from "../../items";
@@ -35,7 +36,8 @@ export function buildHudExtras(
     thac0: stats.thac0 ?? 20,
     ac: stats.ac ?? 10,
     saves: stats.saves ?? { death: 20, petrify: 20, wands: 20, breath: 20, spells: 20 },
-    torchSeconds: light,
+    // A living torchbearer carries the light: the gauge reads LINK instead of a countdown.
+    torchSeconds: hirelingLightRadius(stats.party) > 0 ? Infinity : light,
     title: stats.title ?? '',
     gold: stats.gold,
   };

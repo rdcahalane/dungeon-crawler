@@ -24,7 +24,8 @@ export function asciiOnly(text: string): string {
       continue;
     }
     const c = ch.charCodeAt(0);
-    out += c >= 32 && c <= 126 && ch.length === 1 ? ch : "?";
+    // Newlines pass through: multi-line text is joined with them before it gets here.
+    out += ch === "\n" ? ch : c >= 32 && c <= 126 && ch.length === 1 ? ch : "?";
   }
   return out;
 }

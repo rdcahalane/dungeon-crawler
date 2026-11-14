@@ -1,9 +1,11 @@
 # Dungeon Crawler overhaul: design and build contract
 
-Status: waves A, B and the first polish pass are merged on branch `overhaul` (2026-11-14). Playable end to end.
-Open: sound has not been heard by a person; balance and shop prices are untuned; vault solves with levers, riddles,
-teleporters and falls are covered by tests but not yet played through; main menu and gallery still use 8px text.
-Dev shortcuts: `/?quick=fighter&floor=3` (straight into a floor, 13 is the tomb), `/?gallery=1` (sprites, font, sounds).
+Status: waves A, B, the polish pass and Wave D are merged on branch `overhaul` (2026-11-14). Playable end to end.
+Wave D was played: rolled abilities, innkeeper rumours, hirelings, morale, reaction and surprise, treasure as XP, the
+epitaph, the Hall of the Fallen and the bones. Open: sound has not been heard by a person; floors 5 and deeper are
+untuned for a character in found gear; wandering monsters, the riddle door, rune floor, teleporters and the boss fight
+have tests but have not been played; shrine cards overflow their boxes.
+Dev shortcuts: `/?quick=fighter&floor=3&level=3` (straight into a floor, 13 is the tomb), `/?gallery=1` (sprites, font, sounds).
 
 ## Where the game is today
 

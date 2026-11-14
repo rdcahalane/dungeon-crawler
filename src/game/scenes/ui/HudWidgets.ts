@@ -175,7 +175,7 @@ export class TorchGold {
   }
 
   update(torchSeconds: number | undefined, gold: number | undefined, now: number): void {
-    if (torchSeconds !== undefined && torchSeconds > this.maxSec) this.maxSec = torchSeconds;
+    if (torchSeconds !== undefined && torchSeconds !== Infinity && torchSeconds > this.maxSec) this.maxSec = torchSeconds;
     const low = torchSeconds !== undefined && torchSeconds < 30;
     const blink = low && Math.floor(now / 350) % 2 === 0;
     const sig = `${torchSeconds === undefined ? "-" : Math.ceil(torchSeconds)}|${gold ?? "-"}|${blink}`;
@@ -188,10 +188,10 @@ export class TorchGold {
     const y = SCREEN_H - 24;
     drawBox(g, x, y, 112, 12, UI.black, UI.slate, null);
     if (torchSeconds === undefined) { setLabel(this.time, ""); return; }
-    const frac = Math.max(0, Math.min(1, torchSeconds / this.maxSec));
+    const frac = torchSeconds === Infinity ? 1 : Math.max(0, Math.min(1, torchSeconds / this.maxSec));
     g.fillStyle(blink ? UI.blood : low ? UI.red : UI.orange, 1).fillRect(x + 2, y + 2, Math.round(108 * frac), 8);
-    const s = Math.max(0, Math.ceil(torchSeconds));
-    setLabel(this.time, torchSeconds <= 0 ? "DARK" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`, low ? UI.red : UI.silver);
+    const s = torchSeconds === Infinity ? 0 : Math.max(0, Math.ceil(torchSeconds));
+    setLabel(this.time, torchSeconds === Infinity ? "LINK" : torchSeconds <= 0 ? "DARK" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`, low ? UI.red : UI.silver);
     this.icon.setVisible(!blink);
   }
 }
