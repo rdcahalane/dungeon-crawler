@@ -58,6 +58,16 @@ export class SpellInputController {
     this.spellHotkeys.forEach((key, i) => {
       if (!Phaser.Input.Keyboard.JustDown(key)) return;
       if (!book) return; // fighters and thieves have nothing on 1 to 4 (the belt lane may bind them)
+      this.castSlot(i);
+    });
+  }
+
+  /** Cast the spell on hotbar slot `i` (0 to 3) at the pointer. Used by the hotkeys and by right click. */
+  castSlot(i: number): void {
+    const ctx = this.ctx;
+    const book = ctx.player.spellbook;
+    if (!this.spellSystem || !book) return;
+    {
       if (ctx.player.hasEffect('HELD')) return;
       if (this.spellSystem.isCooling('cast')) return;
 
@@ -76,7 +86,7 @@ export class SpellInputController {
       ctx.floatText(ctx.player.x, ctx.player.y - 30, `${def.name}!`, SPELL_COLORS[def.key] ?? 0xffffff, 12);
       ctx.bus.emit('spell_cast', { key: def.key });
       ctx.emitHUD();
-    });
+    }
   }
 
   /** Cast a spell from a scroll: the effect without a slot. False when it has nothing to act on. */

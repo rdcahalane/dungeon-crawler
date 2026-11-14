@@ -3,7 +3,6 @@ import { TILE_SIZE, TOMB_FLOOR } from "../../constants";
 import { mathRng, type Rng } from "../../rules";
 import { getDef, hasDef, displayName, type ItemInstance } from "../../items";
 import { onFloorReached } from "../../systems/QuestSystem";
-import { Enemy } from "../../entities/Enemy";
 import type { GameContext } from "../../GameContext";
 import { enemyKeyFor, TONE_COLOR, type EffectPlayer, type MechTone } from "./MechEffects";
 import type { DriverHost } from "./MechDriver";
@@ -80,10 +79,8 @@ export class MechHost implements DriverHost {
     if (!ctx.enemyGroup) return;
     const x = tx * TILE_SIZE + TILE_SIZE / 2;
     const y = ty * TILE_SIZE + TILE_SIZE / 2;
-    const enemy = new Enemy(ctx.scene, x, y, enemyKeyFor(monster));
-    ctx.enemies.push(enemy);
-    ctx.enemyGroup.add(enemy);
-    ctx.scene.physics.add.collider(enemy, ctx.wallGroup);
+    // Through the combat controller so the monster gets its first-edition stat block.
+    ctx.combat.addEnemy(enemyKeyFor(monster), tx, ty);
     ctx.floatText(x, y - 28, "!", 0xff5a5f, 16);
   }
 

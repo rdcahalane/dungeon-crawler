@@ -95,7 +95,27 @@ export class MechanismController {
 
     this.scope = ctx.bus.scope()
       .on("item_dropped", (e) => this.emit({ type: "step", tx: e.tx, ty: e.ty, weight: "item" }))
-      .on("item_picked", (e) => this.emit({ type: "leave", tx: e.tx, ty: e.ty }));
+      .on("item_picked", (e) => this.emit({ type: "leave", tx: e.tx, ty: e.ty }))
+      // Find Traps: a sure search of every tile in the radius.
+      .on("detect_traps", (e) => {
+        const p = ctx.player;
+        if (!p) return;
+        const ptx = Math.floor(p.x / TILE_SIZE);
+        const pty = Math.floor(p.y / TILE_SIZE);
+        for (let dy = -e.radiusTiles; dy <= e.radiusTiles; dy += 2) {
+          for (let dx = -e.radiusTiles; dx <= e.radiusTiles; dx += 2) {
+            this.emit({ type: "search", tx: ptx + dx, ty: pty + dy, roll: 1, chance: 200 });
+          }
+        }
+      })
+      // Knock: the lock on that tile gives way.
+      .on("knock", (e) => {
+        for (const m of ctx.dungeon.mechanisms ?? []) {
+          if (m.kind === "locked_door" && Math.abs(m.tx - e.tx) <= 1 && Math.abs(m.ty - e.ty) <= 1) {
+            this.emit({ type: "interact", id: m.id, verb: "open", roll: 1, chance: 200 });
+          }
+        }
+      });
 
     this.onKeyDown = (e: KeyboardEvent) => {
       // Raw key presses (not Phaser Key state): no stuck keys after a dialog, no fight with other lanes over JustDown.
