@@ -429,8 +429,9 @@ export class CombatController {
       ctx.floatText(player.x, player.y - 28, 'miss', 0x888899, 10);
       return;
     }
-    player.takeDamage(round.total, false, enemy.def.name);
-    if (player.stats.hp <= 0) return;
+    // A blow swallowed by the hit-grace window does not poison or paralyze either (the balance sim caught this).
+    const landed = player.takeDamage(round.total, false, enemy.def.name);
+    if (!landed || player.stats.hp <= 0) return;
     this.applyOnHitSpecials(enemy);
     const b = equipmentBonuses(player.inventory);
     if (b.thorns > 0 && !enemy.isRanged) this.damageEnemy(enemy, b.thorns, {});

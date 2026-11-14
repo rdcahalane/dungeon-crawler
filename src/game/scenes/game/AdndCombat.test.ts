@@ -106,6 +106,17 @@ describe("weapons, immunities and backstab", () => {
     expect(landed).toBe(true);
   });
 
+  it("a plain missile cannot hurt a gargoyle, but the wizard's dart can", () => {
+    const sheet = sheetFor("fighter");
+    const garg = getMonster("GARGOYLE");
+    const rng = mulberry32(5);
+    const target = { ac: garg.ac, def: garg, key: "GARGOYLE" };
+    expect(resolvePlayerAttack(sheet, target, rng, "missile").kind).toBe("immune");
+    const kinds = new Set<string>();
+    for (let i = 0; i < 40; i++) kinds.add(resolvePlayerAttack(sheet, target, rng, "missile", "1d4").kind);
+    expect(kinds.has("immune")).toBe(false);
+  });
+
   it("a thief backstabs an unaware foe for double damage at level 1", () => {
     const sheet = sheetFor("thief");
     const goblin = getMonster("BASIC");

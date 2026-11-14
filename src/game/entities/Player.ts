@@ -708,9 +708,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * Apply damage that already passed its to-hit roll. Armor works through AC before this point, so it no longer
    * subtracts here; `bypassArmor` is kept for old callers (traps) and means nothing now.
    */
-  takeDamage(amount: number, bypassArmor = false, cause?: string) {
+  /** Returns false when the hit was swallowed by the hit-grace window (or the character is already dead). */
+  takeDamage(amount: number, bypassArmor = false, cause?: string): boolean {
     void bypassArmor;
-    if (this.invincible > 0 || this.stats.hp <= 0) return;
+    if (this.invincible > 0 || this.stats.hp <= 0) return false;
     this.lastHurtBy = { cause, at: this.scene.time.now };
 
     const dmg = Math.max(1, Math.round(amount));
@@ -727,6 +728,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.stats.hp <= 0) {
       this.onDead?.();
     }
+    return true;
   }
 
   /** Kept so old callers compile; the armor ward trait no longer exists. */

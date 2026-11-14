@@ -155,7 +155,10 @@ export function resolvePlayerAttack(
   overrideDice?: string,
 ): PlayerAttackOutcome {
   const weapon = weaponProfile(sheet.inventory);
-  if (target.def && style === 'melee' && !canHarm(target.def, { plus: weapon.plus, silver: weapon.silver })) {
+  // Plain arrows and sling stones obey the magic-weapon rule like a plain sword; the wizard's dart (overrideDice)
+  // is a spell and always bites.
+  const isSpellDart = style === 'missile' && overrideDice !== undefined;
+  if (target.def && !isSpellDart && !canHarm(target.def, { plus: weapon.plus, silver: weapon.silver })) {
     return { kind: 'immune' };
   }
   const toHit = playerToHitBonus(sheet, style) + (target.surprised ? SURPRISE_TO_HIT_BONUS : 0);
