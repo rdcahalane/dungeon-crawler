@@ -6,14 +6,14 @@ import * as Phaser from "phaser";
 import { SPELL_DEFS, spellsFor, type SpellDef } from "../../rules/spells";
 import { PanelBase } from "./PanelBase";
 import type { PanelHost } from "./panelHost";
-import { UI, drawBox, label, wrap } from "./theme";
+import { LINE, UI, drawBox, label, wrap } from "./theme";
 
 type Entry =
   | { type: "header"; level: number; used: number; max: number }
   | { type: "spell"; def: SpellDef };
 
-const ROW_H = 18;
-const VISIBLE = 17;
+const ROW_H = 22;
+const VISIBLE = 12;
 
 export class SpellbookPanel extends PanelBase {
   private sel = 0;
@@ -21,7 +21,7 @@ export class SpellbookPanel extends PanelBase {
   private msg = "";
 
   constructor(scene: Phaser.Scene, private host: PanelHost, onClose: () => void) {
-    super(scene, 120, 56, 720, 528, "SPELLBOOK", UI.violet, onClose);
+    super(scene, 120, 32, 720, 584, "SPELLBOOK", UI.violet, onClose);
   }
 
   private entries(): Entry[] {
@@ -63,19 +63,19 @@ export class SpellbookPanel extends PanelBase {
       if (selIdx >= this.scroll + VISIBLE) this.scroll = selIdx - VISIBLE + 1;
     }
 
-    this.dyn.add(label(scene, x0, this.y + 30, `${book.classKey.toUpperCase()} LEVEL ${book.level}`, { color: UI.gold }));
-    this.dyn.add(label(scene, this.x + 380, this.y + 30, "SET", { color: UI.grey }));
-    this.dyn.add(label(scene, this.x + 450, this.y + 30, "READY", { color: UI.grey }));
+    this.dyn.add(label(scene, x0, this.y + 34, `${book.classKey.toUpperCase()} LEVEL ${book.level}`, { color: UI.gold }));
+    this.dyn.add(label(scene, this.x + 380, this.y + 34, "SET", { color: UI.grey }));
+    this.dyn.add(label(scene, this.x + 450, this.y + 34, "READY", { color: UI.grey }));
 
     if (es.length === 0) {
-      this.dyn.add(label(scene, x0, this.y + 60, "NO SPELL SLOTS YET.", { color: UI.grey }));
+      this.dyn.add(label(scene, x0, this.y + 62, "NO SPELL SLOTS YET.", { color: UI.grey }));
     }
     es.slice(this.scroll, this.scroll + VISIBLE).forEach((e, i) => {
-      const y = this.y + 46 + i * ROW_H;
+      const y = this.y + 58 + i * ROW_H;
       if (e.type === "header") {
         g.fillStyle(UI.dusk, 1).fillRect(x0 - 4, y - 2, this.w - 32, ROW_H - 2);
-        this.dyn.add(label(scene, x0, y + 2, `LEVEL ${e.level} SPELLS`, { color: UI.sky }));
-        this.dyn.add(label(scene, this.x + 380, y + 2, `${e.used}/${e.max} SLOTS`, { color: e.used >= e.max ? UI.gold : UI.silver }));
+        this.dyn.add(label(scene, x0, y + 1, `LEVEL ${e.level} SPELLS`, { color: UI.sky }));
+        this.dyn.add(label(scene, this.x + 380, y + 1, `${e.used}/${e.max} SLOTS`, { color: e.used >= e.max ? UI.gold : UI.silver }));
         return;
       }
       const key = e.def.key;
@@ -83,30 +83,31 @@ export class SpellbookPanel extends PanelBase {
       const ready = book.remaining(key);
       const picked = e.def.key === selDef?.key;
       if (picked) g.lineStyle(2, UI.gold, 1).strokeRect(x0 - 4, y - 2, this.w - 32, ROW_H - 2);
-      this.dyn.add(label(scene, x0 + 8, y + 2, e.def.name, { color: total > 0 ? UI.white : UI.silver }));
-      this.dyn.add(label(scene, this.x + 380, y + 2, String(total), { color: UI.silver }));
-      this.dyn.add(label(scene, this.x + 450, y + 2, String(ready), { color: ready > 0 ? UI.lime : total > 0 ? UI.red : UI.grey }));
-      this.addButton(this.x + 520, y - 1, 22, 14, "-", () => this.change(key, -1), ready > 0);
-      this.addButton(this.x + 548, y - 1, 22, 14, "+", () => this.change(key, 1), book.freeSlots(e.def.level) > 0);
+      this.dyn.add(label(scene, x0 + 8, y + 1, e.def.name.slice(0, 24), { color: total > 0 ? UI.white : UI.silver }));
+      this.dyn.add(label(scene, this.x + 380, y + 1, String(total), { color: UI.silver }));
+      this.dyn.add(label(scene, this.x + 450, y + 1, String(ready), { color: ready > 0 ? UI.lime : total > 0 ? UI.red : UI.grey }));
+      this.addButton(this.x + 516, y - 1, 28, 20, "-", () => this.change(key, -1), ready > 0);
+      this.addButton(this.x + 548, y - 1, 28, 20, "+", () => this.change(key, 1), book.freeSlots(e.def.level) > 0);
       // pips: filled = ready, hollow = spent
-      for (let k = 0; k < total; k++) {
-        const px = this.x + 590 + k * 10;
-        g.fillStyle(k < ready ? UI.lime : UI.slate, 1).fillRect(px, y + 2, 7, 7);
+      for (let k = 0; k < Math.min(total, 10); k++) {
+        const px = this.x + 592 + k * 11;
+        g.fillStyle(k < ready ? UI.lime : UI.slate, 1).fillRect(px, y + 4, 8, 8);
       }
       this.addRowHit(this.x + 20, y - 2, this.w - 200, ROW_H - 2, spells.findIndex((s) => s.key === key));
     });
 
     // detail
-    drawBox(g, this.x + 16, this.y + 360, this.w - 32, 132, UI.ink, UI.slate, UI.dusk);
+    drawBox(g, this.x + 16, this.y + 336, this.w - 32, 204, UI.ink, UI.slate, UI.dusk);
     if (selDef) {
-      this.dyn.add(label(scene, this.x + 26, this.y + 368, selDef.name, { size: 16, color: UI.white }));
-      this.dyn.add(label(scene, this.x + 26, this.y + 388, `LEVEL ${selDef.level}  RANGE ${selDef.range.toUpperCase()}`, { color: UI.sky }));
-      wrap(SPELL_DEFS[selDef.key]?.description ?? "", 100).slice(0, 6).forEach((l, i) => {
-        this.dyn.add(label(scene, this.x + 26, this.y + 404 + i * 10, l, { color: UI.silver }));
+      this.dyn.add(label(scene, this.x + 26, this.y + 344, selDef.name, { color: UI.white }));
+      this.dyn.add(label(scene, this.x + 26, this.y + 364, `LEVEL ${selDef.level}  RANGE ${selDef.range.toUpperCase()}`, { color: UI.sky }));
+      wrap(SPELL_DEFS[selDef.key]?.description ?? "", 54).slice(0, 5).forEach((l, i) => {
+        this.dyn.add(label(scene, this.x + 26, this.y + 386 + i * LINE, l, { color: UI.silver }));
       });
     }
-    if (this.msg) this.dyn.add(label(scene, this.x + 26, this.y + 478, this.msg, { color: UI.gold }));
-    this.dyn.add(label(scene, this.x + 20, this.y + 502, "SLOTS RETURN WHEN YOU REST.   UP/DOWN PICK  LEFT/RIGHT OR -/+ SET  B OR ESC CLOSE", { color: UI.grey }));
+    if (this.msg) this.dyn.add(label(scene, this.x + 26, this.y + 496, this.msg.slice(0, 54), { color: UI.gold }));
+    this.dyn.add(label(scene, this.x + 26, this.y + 516, "SLOTS RETURN WHEN YOU REST.", { color: UI.grey }));
+    this.dyn.add(label(scene, this.x + 20, this.y + 550, "UP/DOWN PICK  +/- SET  B OR ESC CLOSE", { color: UI.grey }));
   }
 
   private rowHits: Array<{ x: number; y: number; w: number; h: number; idx: number }> = [];

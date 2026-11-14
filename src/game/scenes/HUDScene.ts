@@ -11,6 +11,9 @@ import { HotbarView } from "./ui/HotbarView";
 import { InventoryPanel } from "./ui/InventoryPanel";
 import { SpellbookPanel } from "./ui/SpellbookPanel";
 import { QuestPanel } from "./ui/QuestPanel";
+import { ShopPanel } from "./ui/ShopPanel";
+import { InnkeeperPanel } from "./ui/InnkeeperPanel";
+import type { TavernHost } from "./ui/tavernHost";
 import { Minimap } from "./ui/Minimap";
 import { buildHotbar, isCasterClass, legacySpellSlots, type SpellSlotInfo } from "./ui/hotbar";
 import { hudLog } from "./ui/messageLog";
@@ -69,7 +72,7 @@ export interface HUDData {
 interface GameSceneLike extends Phaser.Scene { gameContext?: GameContext; gameEvents?: GameEventBus }
 interface TavernSceneLike extends Phaser.Scene { player?: Player }
 
-type Panel = "inventory" | "spellbook" | "quest";
+type Panel = "inventory" | "spellbook" | "quest" | "shop" | "inn";
 
 export class HUDScene extends Phaser.Scene {
   /** True while a HUD panel is open (or just closed): the game ignores clicks then. */
@@ -88,8 +91,9 @@ export class HUDScene extends Phaser.Scene {
   private inv?: InventoryPanel;
   private book?: SpellbookPanel;
   private quest?: QuestPanel;
+  private shop?: ShopPanel;
+  private innkeeper?: InnkeeperPanel;
   private last?: HUDData;
-  private keys!: Record<"Q" | "I" | "B" | "M" | "ESC", Phaser.Input.Keyboard.Key>;
   private cleanups: Array<() => void> = [];
 
   constructor() {
@@ -100,22 +104,23 @@ export class HUDScene extends Phaser.Scene {
     uiState.reset();
     registerRetroFont(this);
     this.last = undefined;
-    this.inv = this.book = this.quest = undefined;
+    this.inv = this.book = this.quest = this.shop = this.innkeeper = undefined;
 
     this.orb = new HpOrb(this);
     this.identity = new IdentityPanel(this);
     this.floorPanel = new FloorPanel(this);
     this.torch = new TorchGold(this);
     this.target = new TargetBar(this);
-    this.effects = new EffectIcons(this, 12, 470);
-    this.logView = new MessageLogView(this, 8, 508);
+    this.effects = new EffectIcons(this, 12, 430);
+    this.logView = new MessageLogView(this, 8, 478);
     this.hotbar = new HotbarView(this, (i) => this.useBelt(i));
     this.minimap = new Minimap(this);
     this.buildButtons();
 
-    const K = Phaser.Input.Keyboard.KeyCodes;
-    const kb = this.input.keyboard!;
-    this.keys = { Q: kb.addKey(K.Q), I: kb.addKey(K.I), B: kb.addKey(K.B), M: kb.addKey(K.M), ESC: kb.addKey(K.ESC) };
+    // I, B, M, Q and Esc ride a raw window listener, not the Phaser key plugin: that is how the mechanism lane reads keys,
+    // it needs no focus on the canvas and it cannot be switched off by another scene's dialog.
+    window.addEventListener("keydown", this.onKeyDown);
+    this.cleanups.push(() => window.removeEventListener("keydown", this.onKeyDown));
 
     this.attachToGameScene();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
@@ -167,6 +172,8 @@ export class HUDScene extends Phaser.Scene {
     this.cleanups = [];
     this.inv?.destroy();
     this.book?.destroy();
+    this.shop?.destroy();
+    this.innkeeper?.destroy();
     this.minimap.destroy();
     this.hotbar.destroy();
     uiState.reset();
@@ -193,12 +200,13 @@ export class HUDScene extends Phaser.Scene {
       game.cameras.main.setZoom(next);
       setLabel(this.zoomLabel, `${Math.round(next * 100)}%`);
     };
-    this.button(830, 534, 26, 22, "-", () => zoom(-0.15), "zoom-");
-    this.button(926, 534, 26, 22, "+", () => zoom(0.15), "zoom+");
-    this.zoomLabel = label(this, 891, 545, "100%", { color: UI.grey, ox: 0.5, oy: 0.5, depth: 8 });
-    this.button(800, 562, 48, 20, "INV", () => this.toggle("inventory"), "btn-inv");
-    this.button(852, 562, 48, 20, "BOOK", () => this.toggle("spellbook"), "btn-book");
-    this.button(904, 562, 48, 20, "MAP", () => this.toggleMap(), "btn-map");
+    // Bottom-right cluster, 16px text: zoom row at y 530, panel buttons at y 560, gold and torch below at 584.
+    this.button(776, 530, 32, 26, "-", () => zoom(-0.15), "zoom-");
+    this.button(920, 530, 32, 26, "+", () => zoom(0.15), "zoom+");
+    this.zoomLabel = label(this, 864, 543, "100%", { color: UI.grey, ox: 0.5, oy: 0.5, depth: 8 });
+    this.button(776, 560, 56, 24, "INV", () => this.toggle("inventory"), "btn-inv");
+    this.button(836, 560, 56, 24, "BOOK", () => this.toggle("spellbook"), "btn-book");
+    this.button(896, 560, 56, 24, "MAP", () => this.toggleMap(), "btn-map");
   }
 
   // ── Panels ─────────────────────────────────────────────────────────────────
@@ -235,20 +243,48 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private isOpen(panel: Panel): boolean {
-    return panel === "inventory" ? !!this.inv?.opened : panel === "spellbook" ? !!this.book?.opened : !!this.quest;
+    switch (panel) {
+      case "inventory": return !!this.inv?.opened;
+      case "spellbook": return !!this.book?.opened;
+      case "shop": return !!this.shop?.opened;
+      case "inn": return !!this.innkeeper?.opened;
+      default: return !!this.quest;
+    }
   }
 
   private close(panel: Panel) {
     if (!this.isOpen(panel)) return;
     if (panel === "inventory") this.inv?.close();
     else if (panel === "spellbook") this.book?.close();
+    else if (panel === "shop") this.shop?.close();
+    else if (panel === "inn") this.innkeeper?.close();
     else { this.quest?.destroy(); this.quest = undefined; }
     uiState.setPanel(false);
     this.gameScene()?.gameEvents?.emit("ui_close", { panel });
   }
 
   private closeAll() {
-    for (const p of ["inventory", "spellbook", "quest"] as Panel[]) this.close(p);
+    for (const p of ["inventory", "spellbook", "quest", "shop", "inn"] as Panel[]) this.close(p);
+  }
+
+  /** The tavern asks for its innkeeper dialog or the shop (`TavernScene` calls this). */
+  openTavernPanel(kind: "inn" | "shop", host: TavernHost): void {
+    this.closeAll();
+    if (kind === "shop") {
+      this.shop?.destroy();
+      this.shop = new ShopPanel(this, host, () => this.close("shop"));
+      this.shop.open();
+    } else {
+      this.innkeeper?.destroy();
+      this.innkeeper = new InnkeeperPanel(
+        this, host,
+        () => this.openTavernPanel("shop", host),
+        () => this.toggle("spellbook"),
+        () => this.close("inn"),
+      );
+      this.innkeeper.open();
+    }
+    uiState.setPanel(true, true);
   }
 
   private toggleMap() {
@@ -294,14 +330,25 @@ export class HUDScene extends Phaser.Scene {
     this.minimap.update(this.ctx(), now);
     if (this.last) this.orb.update(this.last.hp, this.last.maxHp, now);
 
-    const modal = this.ctx()?.modalOpen === true;
-    const JD = Phaser.Input.Keyboard.JustDown;
-    if (JD(this.keys.ESC)) this.closeAll();
-    if (modal) return;
-    if (JD(this.keys.I)) this.toggle("inventory");
-    if (JD(this.keys.B) && !this.inv?.opened) this.toggle("spellbook");
-    if (JD(this.keys.M) && !uiState.panelOpen) this.toggleMap();
-    // Q: quest log, tavern only (it is free in the dungeon, but kept as it was)
-    if (JD(this.keys.Q) && !this.scene.isActive("GameScene")) this.toggle("quest");
   }
+
+  /**
+   * I inventory, B spellbook, M map, Q quest log (tavern only), Esc closes panels. Stands down while a puzzle dialog or a
+   * tavern dialog owns the keyboard, and while a text field has focus.
+   */
+  private onKeyDown = (e: KeyboardEvent): void => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.code === "Escape") { this.closeAll(); return; }
+    if (this.ctx()?.modalOpen === true || uiState.externalModal) return;
+    switch (e.code) {
+      case "KeyI": this.toggle("inventory"); break;
+      case "KeyB": if (!this.inv?.opened) this.toggle("spellbook"); break;
+      case "KeyM": if (!uiState.panelOpen) this.toggleMap(); break;
+      // Q: quest log, tavern only (it is free in the dungeon, but kept as it was)
+      case "KeyQ": if (!this.scene.isActive("GameScene")) this.toggle("quest"); break;
+      default: break;
+    }
+  };
 }

@@ -35,6 +35,8 @@ export interface FloorPersist {
   revealedDoorKeys: Set<string>;
   /** Saved `MechanismController.serialize()` output for this floor, if any (read by the mechanism lane). */
   mechStateJson?: string;
+  /** Saved ground items for this floor, restored by `LootController.spawnItems()`. */
+  groundItems?: import("./scenes/game/groundPersist").SavedGroundItem[];
 }
 
 /** Counters for the current visit to a floor. Reset on every `create()` like the old scene fields were. */

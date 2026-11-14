@@ -38,17 +38,32 @@ In development builds the running game is exposed as `window.__game`.
 | Input | Action |
 |---|---|
 | WASD / arrow keys, or click the floor | Move |
-| Space or click | Attack (hold to keep attacking) |
-| 1 to 4 | Cast a spell |
+| Space, or click a monster | Attack (hold to keep attacking) |
+| 1 to 4 | Cast the spell in that hotbar slot |
+| Right click | Cast hotbar slot 1 at the pointer |
+| 5 to 8 | Use the belt slot |
 | F | Drink a healing potion |
 | G | Search |
 | P then a direction | Probe ahead with the ten-foot pole |
 | L | Listen at a door |
-| E | Interact (pull, push, read, open) |
+| E | Interact (pull, push, read, open a chest, pick up). With a chest and a mechanism both in reach, the nearer one gets the press |
 | I | Inventory |
+| B | Spellbook (casters) |
+| M | Map |
+| Q (in the tavern) | Quest log |
+| T (cleric) / D (thief) | Turn undead / disarm a found trap |
+| + and - | Zoom |
+| Esc | Close a panel |
 | F2 | CRT on or off |
 | N | Sound on or off |
 | H (title screen) | How to play |
+
+## The tavern
+
+- **Shop.** Talk to the innkeeper (E at the bar) and choose "Buy and sell gear". Two tabs, BUY and SELL (Tab switches; arrows pick, Enter buys or sells one, click a row then the button). Torches, poles, rope, spikes, sacks, holy water, rations, thieves' tools, healing potions and recall scrolls are always on the shelf; weapons, armor and magic stock grow with your level. SELL lists your pack at what the merchant will pay.
+- **Inn.** Also at the bar: a room for the night costs 5 gp (full hit points, drained hit points mended, spell slots restored; casters get the spellbook open afterward), or sleep in the common room for free (half the missing hit points, spell slots restored).
+- **Notice board.** Accept quests; rewards are paid when you return.
+- Walk onto the glowing portal to go down. A scroll of recall brings you back.
 
 ## Layout
 

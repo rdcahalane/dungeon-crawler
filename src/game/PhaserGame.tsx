@@ -22,7 +22,19 @@ export default function PhaserGame() {
           ...gameConfig,
           parent: containerRef.current!,
         };
-        gameRef.current = new Phaser.Game(config);
+        const game = new Phaser.Game(config);
+        gameRef.current = game;
+        // Keys must work from the first frame, before anyone clicks: make the canvas focusable and focus it.
+        const focusCanvas = () => {
+          const canvas = game.canvas;
+          if (!canvas) return;
+          canvas.setAttribute("tabindex", "0");
+          canvas.style.outline = "none";
+          canvas.focus({ preventScroll: true });
+          canvas.addEventListener("pointerdown", () => canvas.focus({ preventScroll: true }));
+        };
+        if (game.canvas) focusCanvas();
+        else game.events.once(Phaser.Core.Events.READY, focusCanvas);
         if (process.env.NODE_ENV !== "production") {
           (window as unknown as { __game?: Phaser.Game }).__game = gameRef.current;
         }

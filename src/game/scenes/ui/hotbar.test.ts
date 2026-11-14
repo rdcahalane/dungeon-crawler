@@ -79,3 +79,22 @@ describe("legacySpellSlots", () => {
     expect(out.map((s) => s.remaining)).toEqual([1, 0]);
   });
 });
+
+describe("hotbar short labels and names", () => {
+  it("every label drawn in a slot is at most four characters, and the full name is kept for the tooltip", () => {
+    const slots = [
+      { key: "magic_missile", name: "Magic Missile", level: 1, remaining: 1, max: 1 },
+      { key: "sleep", name: "Sleep", level: 1, remaining: 1, max: 1 },
+      { key: "clw", name: "Cure Light Wounds", level: 1, remaining: 1, max: 1 },
+      { key: "hp", name: "Hold Person Extended Long Name", level: 2, remaining: 0, max: 1 },
+    ];
+    const bar = buildHotbar(slots, "wizard");
+    expect(bar.map((b) => b.short)).toEqual(["MM", "SLEE", "CLW", "HPEL"]);
+    expect(bar.map((b) => b.name)).toEqual(slots.map((s) => s.name));
+    for (const cls of ["fighter", "thief"]) {
+      const a = buildHotbar(undefined, cls)[0];
+      expect(a.short.length).toBeLessThanOrEqual(4);
+      expect(a.name.length).toBeGreaterThan(0);
+    }
+  });
+});

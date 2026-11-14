@@ -19,7 +19,16 @@ export abstract class PanelBase {
   protected g: Phaser.GameObjects.Graphics;
   protected buttons: Btn[] = [];
   private isOpen = false;
-  private keyHandler = (e: KeyboardEvent): void => { if (this.isOpen) this.onKey(e); };
+  /** Raw DOM keys, not the Phaser plugin: they work from the first frame, whatever has focus. */
+  private keyHandler = (e: KeyboardEvent): void => {
+    if (!this.isOpen || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (PanelBase.TAKEN.has(e.code)) e.preventDefault();
+    this.onKey(e);
+  };
+  /** Keys a panel uses that the browser would otherwise act on (page scroll, focus change). */
+  private static readonly TAKEN = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab", "Space"]);
   private downHandler = (p: Phaser.Input.Pointer): void => { if (this.isOpen) this.pointer("down", p.x, p.y); };
   private upHandler = (p: Phaser.Input.Pointer): void => { if (this.isOpen) this.pointer("up", p.x, p.y); };
   private moveHandler = (p: Phaser.Input.Pointer): void => { if (this.isOpen) this.pointer("move", p.x, p.y); };
@@ -33,9 +42,9 @@ export abstract class PanelBase {
     const dim = scene.add.rectangle(0, 0, SCREEN_W, SCREEN_H, UI.black, 0.55).setOrigin(0, 0);
     this.g = scene.add.graphics();
     drawBox(this.g, x, y, w, h, UI.ink, accent, UI.dusk);
-    this.g.fillStyle(accent, 1).fillRect(x + 2, y + 2, w - 4, 20);
+    this.g.fillStyle(accent, 1).fillRect(x + 2, y + 2, w - 4, 24);
     this.root.add([dim, this.g]);
-    this.root.add(label(scene, x + 10, y + 7, title, { size: 8, color: UI.ink }));
+    this.root.add(label(scene, x + 10, y + 6, title, { color: UI.ink }));
     this.dyn = scene.add.container(0, 0);
     this.root.add(this.dyn);
   }
@@ -49,7 +58,7 @@ export abstract class PanelBase {
     this.onOpen();
     this.render();
     const inp = this.scene.input;
-    inp.keyboard?.on("keydown", this.keyHandler);
+    window.addEventListener("keydown", this.keyHandler);
     inp.on("pointerdown", this.downHandler);
     inp.on("pointerup", this.upHandler);
     inp.on("pointermove", this.moveHandler);
@@ -60,7 +69,7 @@ export abstract class PanelBase {
     this.isOpen = false;
     this.root.setVisible(false);
     const inp = this.scene.input;
-    inp.keyboard?.off("keydown", this.keyHandler);
+    window.removeEventListener("keydown", this.keyHandler);
     inp.off("pointerdown", this.downHandler);
     inp.off("pointerup", this.upHandler);
     inp.off("pointermove", this.moveHandler);
@@ -78,7 +87,7 @@ export abstract class PanelBase {
     this.buttons = [];
     this.build();
     // close button, always last so it is on top
-    this.addButton(this.x + this.w - 26, this.y + 3, 18, 16, "X", () => this.onClose());
+    this.addButton(this.x + this.w - 32, this.y + 4, 24, 20, "X", () => this.onClose());
   }
 
   protected onOpen(): void { /* hook */ }
@@ -107,7 +116,7 @@ export abstract class PanelBase {
     drawBox(gg, x, y, w, h, enabled ? UI.dusk : UI.ink, enabled ? UI.silver : UI.slate, enabled ? UI.slate : null);
     this.dyn.add(gg);
     this.dyn.add(label(this.scene, x + w / 2, y + h / 2, text, {
-      size: 8, color: enabled ? UI.white : UI.grey, ox: 0.5, oy: 0.5,
+      color: enabled ? UI.white : UI.grey, ox: 0.5, oy: 0.5,
     }));
     return b;
   }

@@ -7,12 +7,13 @@ import { FOG_RADIUS, MAP_HEIGHT, MAP_WIDTH, TILE, TILE_SIZE } from "../../consta
 import type { GameContext } from "../../GameContext";
 import { ExploredTracker } from "./explored";
 import { UI, SCREEN_W, drawBox, label } from "./theme";
+import { FLOOR_PANEL_MAX_BOTTOM } from "./HudWidgets";
 import { uiState } from "./uiState";
 
 const PX = 3;
 const W = MAP_WIDTH * PX;
 const H = MAP_HEIGHT * PX;
-const BOX = { x: SCREEN_W - 8 - (W + 8), y: 100, w: W + 8, h: H + 8 + 12 };
+const BOX = { x: SCREEN_W - 8 - (W + 8), y: FLOOR_PANEL_MAX_BOTTOM + 6, w: W + 8, h: H + 8 + 20 };
 
 export class Minimap {
   private g: Phaser.GameObjects.Graphics;
@@ -24,7 +25,7 @@ export class Minimap {
 
   constructor(private scene: Phaser.Scene) {
     this.g = scene.add.graphics().setDepth(40).setVisible(false);
-    this.title = label(scene, BOX.x + 6, BOX.y + BOX.h - 12, "MAP", { color: UI.gold, depth: 41 }).setVisible(false);
+    this.title = label(scene, BOX.x + 6, BOX.y + BOX.h - 19, "MAP", { color: UI.gold, depth: 41 }).setVisible(false);
   }
 
   get visible(): boolean { return this.on; }

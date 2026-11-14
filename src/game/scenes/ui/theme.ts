@@ -17,6 +17,13 @@ export const UI = {
 export const SCREEN_W = 960;
 export const SCREEN_H = 640;
 
+/** Body text is 16px (a 12px-wide glyph) everywhere in the HUD; 8px text was too small to read. */
+export const TEXT = 16;
+/** Pixel width of one glyph at the body size. */
+export const GLYPH_W = 12;
+/** Line pitch for stacked 16px text. */
+export const LINE = 18;
+
 /** The bitmap font covers ASCII 32 to 126 only. Anything else becomes `?`. */
 export function ascii(s: string): string {
   let out = "";
@@ -37,7 +44,7 @@ export interface LabelOpts {
 
 export function label(scene: Phaser.Scene, x: number, y: number, text: string, o: LabelOpts = {}): Phaser.GameObjects.BitmapText {
   const t = retroText(scene, Math.round(x), Math.round(y), ascii(text), {
-    size: o.size ?? 8, color: o.color ?? UI.silver, originX: o.ox ?? 0, originY: o.oy ?? 0,
+    size: o.size ?? TEXT, color: o.color ?? UI.silver, originX: o.ox ?? 0, originY: o.oy ?? 0,
   });
   if (o.depth !== undefined) t.setDepth(o.depth);
   return t;

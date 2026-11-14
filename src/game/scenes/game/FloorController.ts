@@ -324,6 +324,8 @@ export class FloorController {
     };
     const mech = this.ctx.mech.serialize();
     if (mech !== undefined) sf.mechStateJson = mech;
+    const ground = this.ctx.loot.serializeGround();
+    if (ground.length > 0) sf.groundItems = ground;
     return sf;
   }
 

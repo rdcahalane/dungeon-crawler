@@ -9,6 +9,8 @@ import {
   getDef, displayName, rarityColor, rollDrop, rollItem, makeItem,
   type Drop, type EquipSlot, type ItemInstance, type UseEffect, type ItemDef,
 } from "../../items";
+import { packGroundItems, unpackGroundItems, type SavedGroundItem } from "./groundPersist";
+import { resolveInteract } from "./interactArbiter";
 import {
   HEALING_POTION_DICE, HEALING_POTION_BONUS, foeTagsFor,
 } from "./AdndCombat";
@@ -24,6 +26,8 @@ interface GroundEntry {
   legacyType?: string;
   /** Dropped by the player: do not walk-pick it back up until they step off the tile. */
   needsLeave?: boolean;
+  /** Put down by the player: lifting it again tells the mechanisms (a pressure plate lets go). */
+  dropped?: boolean;
   fullWarned?: boolean;
 }
 
@@ -31,6 +35,8 @@ const PICKUP_RANGE = TILE_SIZE * 0.8;
 const GOLD_MAGNET = TILE_SIZE * 1.5;
 /** Reach of a thrown flask of holy water. */
 const THROW_RANGE = 224;
+/** How close the player must stand to a chest to work it with E. */
+const CHEST_REACH = TILE_SIZE * 1.2;
 
 /**
  * Items on the floor (all of it from `src/game/items`), chests, picking things up, and using or moving what is
@@ -207,6 +213,34 @@ export class LootController {
       else item = rollItem({ floor: ctx.currentFloor, kind: 'treasure' }, mathRng);
       this.placeItem(item, ix, iy, { spawnKey: key });
     }
+
+    // Things left lying on this floor on an earlier visit. The mechanism state is saved separately and already counts
+    // any that sit on a pressure plate, so nothing is announced to it here.
+    for (const s of unpackGroundItems(ctx.persist.groundItems)) {
+      const entry = this.placeItem(s.item, s.tx * TILE_SIZE + TILE_SIZE / 2, s.ty * TILE_SIZE + TILE_SIZE / 2);
+      if (s.dropped) entry.dropped = true;
+    }
+  }
+
+  /** Items on the floor right now, for the floor save. */
+  serializeGround(): SavedGroundItem[] {
+    const live = this.ground
+      .filter((g) => g.sprite.active && g.item)
+      .map((g) => ({ item: g.item, x: g.sprite.x, y: g.sprite.y, spawnKey: g.spawnKey, dropped: g.dropped }));
+    return packGroundItems(live, TILE_SIZE);
+  }
+
+  /** Pixels to the nearest unopened chest within reach of E, or `Infinity` when there is none. */
+  nearestChestDistance(): number {
+    const p = this.ctx.player;
+    if (!p) return Infinity;
+    let best = Infinity;
+    for (const chest of this.chests) {
+      if (!chest.active) continue;
+      const d = Math.hypot(p.x - chest.x, p.y - chest.y);
+      if (d <= CHEST_REACH && d < best) best = d;
+    }
+    return best;
   }
 
   // ── Chests ────────────────────────────────────────────────────────────────
@@ -258,6 +292,9 @@ export class LootController {
     const player = ctx.player;
     if (!this._eKey) this._eKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     const s = player.stats;
+    // One press of E does one thing: if a mechanism is nearer than the chest it takes the press instead.
+    const chestFirst = resolveInteract(this.nearestChestDistance(), ctx.mech.nearestInteractDistance()) === 'chest';
+    const nearest = this.nearestChestDistance();
 
     for (let i = this.chests.length - 1; i >= 0; i--) {
       const chest = this.chests[i];
@@ -265,10 +302,11 @@ export class LootController {
 
       const dx = player.x - chest.x;
       const dy = player.y - chest.y;
-      const inRange = Math.sqrt(dx * dx + dy * dy) <= TILE_SIZE * 1.2;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const inRange = dist <= CHEST_REACH;
       chest.setPromptVisible(inRange);
 
-      if (inRange && Phaser.Input.Keyboard.JustDown(this._eKey)) {
+      if (inRange && dist <= nearest && chestFirst && Phaser.Input.Keyboard.JustDown(this._eKey)) {
         const openPct = thiefSkill(s.classKey, s.level, 'openLocks') + (player.inventory.has('thieves_tools') ? 10 : 0);
         const result = chest.tryOpen(s.classKey, abilityMod(s.str), abilityMod(s.dex), s.level, ctx.currentFloor, openPct);
         if (result.message) ctx.status(result.message);
@@ -389,6 +427,11 @@ export class LootController {
     ctx.status(`Picked up ${displayName(item, { quantity: true })}.`);
     ctx.floatText(player.x, player.y - 24, displayName(item), rarityColor(item), 11);
     ctx.bus.emit('item_pickup', { type: item.defKey });
+    if (g.dropped) {
+      ctx.bus.emit('item_picked', {
+        defKey: item.defKey, tx: Math.floor(g.sprite.x / TILE_SIZE), ty: Math.floor(g.sprite.y / TILE_SIZE),
+      });
+    }
     this.removeEntry(g);
     this.afterInventoryChange();
     return true;
@@ -434,7 +477,7 @@ export class LootController {
     if (!r.ok) { ctx.status(r.message); return; }
     const tx = Math.floor(player.x / TILE_SIZE);
     const ty = Math.floor(player.y / TILE_SIZE);
-    this.placeItem(r.item, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, { needsLeave: true });
+    this.placeItem(r.item, tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, { needsLeave: true, dropped: true });
     ctx.status(`Dropped ${displayName(r.item, { quantity: true })}.`);
     ctx.bus.emit('item_dropped', { itemId: r.item.id, defKey: r.item.defKey, tx, ty });
     this.afterInventoryChange();

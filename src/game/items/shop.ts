@@ -1,4 +1,4 @@
-import { ITEM_DEFS, instantiate } from './catalog';
+import { ITEM_DEFS, getDef, instantiate } from './catalog';
 import { buyValue, rollItem, sellValue } from './generate';
 import type { Inventory, Result } from './inventory';
 import { chance, int, newId, pick } from './rngutil';
@@ -10,6 +10,12 @@ export interface ShopEntry {
   /** Price per unit in gp. */
   unitPrice: number;
 }
+
+/** Adventuring staples the tavern always has on the shelf, at any level and for any class. */
+export const STAPLE_KEYS: readonly string[] = [
+  'torch', 'ten_foot_pole', 'rope', 'iron_spikes', 'sack', 'holy_water', 'ration',
+  'thieves_tools', 'healing_potion', 'scroll_recall',
+];
 
 /**
  * Tavern stock for a character level. Staples always; heavier armor and better kit unlock by level;
@@ -27,6 +33,15 @@ export function shopStock(level: number, rng: Rng): ShopEntry[] {
     push(item);
     // Single-copy gear can have a second on the shelf.
     if (d.stackLimit === 1 && d.shop.qty > 1 && chance(rng, 0.5)) push(instantiate(d.key, newId(rng)));
+  }
+
+  // The staples are guaranteed, whatever the catalog's own shop level says.
+  for (const key of STAPLE_KEYS) {
+    if (out.some((e) => e.item.defKey === key)) continue;
+    const d = getDef(key);
+    const item = instantiate(key, newId(rng));
+    item.quantity = Math.min(d.stackLimit, Math.max(1, d.shop?.qty ?? 3));
+    push(item);
   }
 
   const magicCount = lv < 3 ? 0 : Math.min(4, 1 + Math.floor((lv - 3) / 3));
@@ -64,4 +79,43 @@ export function sell(inv: Inventory, itemId: string, qty?: number): Result<{ ear
   if (!r.ok) return r;
   inv.gold += price * n;
   return { ok: true, earned: price * n };
+}
+
+/** The gold the player actually spends: `PlayerStats.gold`. The inventory's own `gold` is a mirror of it. */
+export interface Purse { gold: number }
+
+/**
+ * Buy against the player's purse. `purse.gold` is the single source of truth: it is copied to the inventory for the
+ * transaction and the result copied back, so the two can never drift apart.
+ */
+export function buyWithPurse(inv: Inventory, purse: Purse, entry: ShopEntry, qty = 1): Result<{ spent: number }> {
+  inv.gold = purse.gold;
+  const r = buy(inv, entry, qty);
+  purse.gold = inv.gold;
+  return r;
+}
+
+/** Sell against the player's purse (same rule as `buyWithPurse`). */
+export function sellWithPurse(inv: Inventory, purse: Purse, itemId: string, qty?: number): Result<{ earned: number }> {
+  inv.gold = purse.gold;
+  const r = sell(inv, itemId, qty);
+  purse.gold = inv.gold;
+  return r;
+}
+
+export interface SellLine {
+  item: ItemInstance;
+  /** gp each. */
+  unitPrice: number;
+}
+
+/** What the SELL tab lists: the pack, minus anything the merchant would pay nothing for (keys and the like). */
+export function sellList(inv: Inventory): SellLine[] {
+  const out: SellLine[] = [];
+  for (const it of inv.pack) {
+    if (!it) continue;
+    const unitPrice = sellValue(it);
+    if (unitPrice > 0) out.push({ item: it, unitPrice });
+  }
+  return out;
 }

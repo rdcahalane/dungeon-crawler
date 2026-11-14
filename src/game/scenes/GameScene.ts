@@ -95,6 +95,7 @@ export class GameScene extends Phaser.Scene {
         pickedItemKeys: new Set(sf.pickedItemKeys),
         revealedDoorKeys: new Set(sf.revealedDoorKeys),
         mechStateJson: sf.mechStateJson,
+        groundItems: sf.groundItems,
       };
     } else {
       this.persist = GameScene.emptyPersist();
@@ -158,6 +159,16 @@ export class GameScene extends Phaser.Scene {
     }
     this.emitHUD();
     this.bus.emit('floor_enter', { floor: this.currentFloor, theme: getFloorThemeIdx(this.currentFloor) });
+    this.showFirstFloorHint(ctx);
+  }
+
+  /** Floor 1, once per character: say how the careful verbs work. Delayed so the HUD has attached to the log. */
+  private showFirstFloorHint(ctx: GameContext) {
+    if (this.currentFloor !== 1) return;
+    const stats = ctx.player.stats;
+    if (stats.seenHints?.includes('verbs')) return;
+    stats.seenHints = [...(stats.seenHints ?? []), 'verbs'];
+    this.time.delayedCall(900, () => ctx.status('P: probe ahead with your pole. G: search. L: listen.'));
   }
 
   /** Builds this floor's context and all controllers. Fields not known yet (player, groups) are filled by the controllers. */

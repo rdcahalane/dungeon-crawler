@@ -7,6 +7,9 @@ import { CharCreationData } from "../entities/Player";
 import { thac0For, saveTarget, hitDie, titleFor, spellSlots, SAVE_CATEGORIES } from "../rules";
 import { starterKit, displayName } from "../items";
 import { playerArmorClass, playerThac0, startingHp } from "./game/AdndCombat";
+import { CLASS_COL, COL, flatPanel, uiText } from "../gfx/retroUi";
+import { wrap } from "./ui/theme";
+import { Sfx } from "../audio/Sfx";
 
 type ScoreMethod = 'standard' | 'pointbuy' | 'roll';
 
@@ -14,12 +17,12 @@ const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 const ABILITY_NAMES: (keyof CharCreationData)[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 const ABILITY_LABELS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 const ABILITY_DESCRIPTIONS = [
-  'Strength — melee damage, bashing',
-  'Dexterity — armor class, missiles, thieving',
-  'Constitution — hit points per level',
-  'Intelligence — wizard spells known',
-  'Wisdom — cleric bonus spells, saves',
-  'Charisma — reaction of strangers',
+  'Strength: melee damage, bashing',
+  'Dexterity: armor class, missiles, thieving',
+  'Constitution: hit points per level',
+  'Intelligence: wizard spells known',
+  'Wisdom: cleric bonus spells, saves',
+  'Charisma: reaction of strangers',
 ];
 
 const POINT_BUY_COSTS: Record<number, number> = {
@@ -67,13 +70,10 @@ export class CharacterSelectScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
 
-    // Dim background
-    this.add.rectangle(width / 2, height / 2, width, height, 0x0a0a14);
+    // Flat dark backdrop, no gradients.
+    this.add.rectangle(width / 2, height / 2, width, height, COL.black);
 
-    // Flavour text
-    this.add.text(width / 2, 18, '"The dungeon awaits. Few return."', {
-      fontSize: '13px', color: '#666688', fontFamily: 'monospace', fontStyle: 'italic',
-    }).setOrigin(0.5);
+    uiText(this, width / 2, 12, '"THE DUNGEON AWAITS. FEW RETURN."', { size: 16, color: COL.grey, originX: 0.5 });
 
     this.container = this.add.container(0, 0);
     this.renderStep();
@@ -98,166 +98,132 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private renderClassPicker() {
     const { width, height } = this.scale;
-
-    const title = this.add.text(width / 2, 55, 'CHOOSE YOUR CLASS', {
-      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
-
-    const step = this.add.text(width / 2, 90, 'Step 1 of 4', {
-      fontSize: '12px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
+    this._heading('CHOOSE YOUR CLASS', 'STEP 1 OF 4', COL.gold);
 
     const classKeys = Object.keys(CHARACTER_CLASSES) as ClassKey[];
-    const cardW = 190;
-    const cardH = 280;
-    const spacing = 210;
-    const startX = width / 2 - (spacing * 1.5);
+    const cardW = 216;
+    const cardH = 440;
+    const gap = 12;
+    const startX = (width - (cardW * 4 + gap * 3)) / 2 + cardW / 2;
+    const cy = 100 + cardH / 2;
 
     classKeys.forEach((key, i) => {
       const cls = CHARACTER_CLASSES[key];
-      const cx = startX + i * spacing;
-      const cy = height / 2 + 20;
-
+      const cx = startX + i * (cardW + gap);
       const isSelected = key === this.selectedClass;
-      const borderColor = isSelected ? cls.color : 0x333355;
-      const bgColor = isSelected ? 0x151530 : 0x0e0e1e;
+      const tone = CLASS_COL[key] ?? COL.silver;
+      const bgColor = isSelected ? COL.dusk : COL.ink;
 
-      const bg = this.add.rectangle(cx, cy, cardW, cardH, bgColor)
-        .setInteractive()
-        .setStrokeStyle(2, borderColor);
+      const bg = flatPanel(this, cx, cy, cardW, cardH, { fill: bgColor, border: isSelected ? tone : COL.slate })
+        .setInteractive({ useHandCursor: true });
       this.container.add(bg);
 
-      // Class name
-      const nameText = this.add.text(cx, cy - cardH / 2 + 22, cls.name, {
-        fontSize: '18px', color: `#${cls.color.toString(16).padStart(6, '0')}`,
-        fontFamily: 'monospace', fontStyle: 'bold',
-      }).setOrigin(0.5);
-      this.container.add(nameText);
+      // The class sprite, 3x (the sprite is 32px, so 96px on screen, nearest-neighbour).
+      const sprite = this.add.image(cx, cy - cardH / 2 + 62, `player_${key}`).setScale(3);
+      this.container.add(sprite);
 
-      // First-edition numbers: hit die, THAC0, the five saves, level title, starting kit.
-      const sv = (c: typeof SAVE_CATEGORIES[number]) => saveTarget(key, 1, c);
-      const stats = [
-        `Hit die d${hitDie(key)}   THAC0 ${thac0For(key, 1)}`,
-        `Level 1: ${titleFor(key, 1)}`,
-        `Death ${sv('death')}  Petrify ${sv('petrify')}`,
-        `Wands ${sv('wands')}  Breath ${sv('breath')}`,
-        `Spells ${sv('spells')}`,
-      ].join('\n');
+      this.container.add(uiText(this, cx, cy - cardH / 2 + 124, cls.name.toUpperCase(), {
+        size: 24, color: tone, originX: 0.5,
+      }));
 
-      const statsText = this.add.text(cx, cy - cardH / 2 + 76, stats, {
-        fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
-        align: 'center', lineSpacing: 4,
-      }).setOrigin(0.5);
-      this.container.add(statsText);
-
-      // Gear: the real starting kit
+      // First-edition numbers: hit die, THAC0, level title, the death save, gold and slots, starting kit.
       const kit = starterKit(key);
       const slots = spellSlots(key, 1).reduce((a, b) => a + b, 0);
-      const gear = [
-        kit.equipped().filter(i => i.defKey !== 'torch').map(i => displayName(i)).join(', '),
-        `${kit.gold} gp${slots > 0 ? `, ${slots} spell slot${slots > 1 ? 's' : ''}` : ''}`,
-      ].join('\n');
-      const gearText = this.add.text(cx, cy + 22, gear, {
-        fontSize: '10px', color: '#888888', fontFamily: 'monospace',
-        align: 'center', wordWrap: { width: cardW - 16 },
-      }).setOrigin(0.5);
-      this.container.add(gearText);
+      const lines = [
+        `D${hitDie(key)}  THAC0 ${thac0For(key, 1)}`,
+        titleFor(key, 1).toUpperCase().slice(0, 16),
+        `DEATH SAVE ${saveTarget(key, 1, 'death')}`,
+        `${kit.gold} GP${slots > 0 ? `  ${slots} SLOT${slots > 1 ? 'S' : ''}` : ''}`,
+      ];
+      this.container.add(uiText(this, cx, cy - cardH / 2 + 158, lines.join('\n'), {
+        size: 16, color: COL.silver, originX: 0.5, center: true,
+      }));
+
+      const gear = kit.equipped().filter(it => it.defKey !== 'torch').map(it => displayName(it)).join(', ');
+      this.container.add(uiText(this, cx, cy - cardH / 2 + 246, wrap(gear.toUpperCase(), 16).slice(0, 3).join('\n'), {
+        size: 16, color: COL.grey, originX: 0.5, center: true,
+      }));
 
       // Class ability
-      const abilityText = this.add.text(cx, cy + cardH / 2 - 50, cls.classAbility, {
-        fontSize: '10px', color: '#cccc88', fontFamily: 'monospace',
-        align: 'center', wordWrap: { width: cardW - 16 },
-      }).setOrigin(0.5);
-      this.container.add(abilityText);
+      this.container.add(uiText(this, cx, cy - cardH / 2 + 312, wrap(cls.classAbility.toUpperCase(), 16).slice(0, 7).join('\n'), {
+        size: 16, color: COL.cream, originX: 0.5, center: true,
+      }));
 
-      bg.on('pointerover', () => { if (!isSelected) bg.setFillStyle(0x121228); });
+      bg.on('pointerover', () => { if (!isSelected) bg.setFillStyle(COL.dusk); });
       bg.on('pointerout', () => { if (!isSelected) bg.setFillStyle(bgColor); });
       bg.on('pointerdown', () => {
         this.selectedClass = key;
+        Sfx.play('ui_select');
         this.renderStep();
       });
     });
 
     // Next button
-    const nextBtn = this._makeButton(width / 2, height - 55, 'NEXT →', 200, 42);
+    const nextBtn = this._makeButton(width / 2, height - 50, 'NEXT >', 200, 44);
     nextBtn.bg.on('pointerdown', () => {
       this.step = 2;
       this.renderStep();
     });
-    this.container.add([nextBtn.bg, nextBtn.border, nextBtn.text]);
+    this.container.add([nextBtn.bg, nextBtn.text]);
+  }
+
+  /** Title and step line, centred at the top of every step. */
+  private _heading(title: string, sub: string, color: number) {
+    const { width } = this.scale;
+    this.container.add(uiText(this, width / 2, 36, title, { size: 24, color, originX: 0.5 }));
+    this.container.add(uiText(this, width / 2, 68, sub, { size: 16, color: COL.grey, originX: 0.5 }));
   }
 
   // ── Step 2: Score Method ───────────────────────────────────────────────────
 
   private renderScoreMethod() {
     const { width, height } = this.scale;
-
-    const title = this.add.text(width / 2, 55, 'ABILITY SCORES', {
-      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
-
-    const step = this.add.text(width / 2, 90, 'Step 2 of 4 — Choose how to generate ability scores', {
-      fontSize: '12px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
+    this._heading('ABILITY SCORES', 'STEP 2 OF 4 - HOW TO MAKE THEM', COL.gold);
 
     const methods: { key: ScoreMethod; label: string; desc: string }[] = [
-      { key: 'standard', label: 'Standard Array', desc: '15, 14, 13, 12, 10, 8\nAssign to any ability.\nSimple and balanced.' },
-      { key: 'pointbuy', label: 'Point Buy', desc: '27 points to spend.\nScores range 8–15.\nCustomise your build.' },
-      { key: 'roll', label: 'Roll 4d6', desc: 'Roll four d6, drop lowest.\nRandom — high risk,\nhigh reward.' },
+      { key: 'standard', label: 'STANDARD ARRAY', desc: '15, 14, 13, 12, 10, 8\nASSIGN TO ANY ABILITY.\nSIMPLE AND BALANCED.' },
+      { key: 'pointbuy', label: 'POINT BUY', desc: '27 POINTS TO SPEND.\nSCORES RANGE 8-15.\nCUSTOMISE YOUR BUILD.' },
+      { key: 'roll', label: 'ROLL 4D6', desc: 'ROLL FOUR D6, DROP\nTHE LOWEST. RANDOM:\nHIGH RISK, HIGH REWARD.' },
     ];
 
-    const cardW = 230;
-    const cardH = 200;
-    const spacing = 250;
+    const cardW = 290;
+    const cardH = 220;
+    const spacing = 300;
     const startX = width / 2 - spacing;
 
     methods.forEach(({ key, label, desc }, i) => {
       const cx = startX + i * spacing;
-      const cy = height / 2;
+      const cy = height / 2 - 10;
       const isSelected = key === this.scoreMethod;
 
-      const bg = this.add.rectangle(cx, cy, cardW, cardH, isSelected ? 0x151530 : 0x0e0e1e)
-        .setInteractive()
-        .setStrokeStyle(2, isSelected ? 0x4fc3f7 : 0x333355);
+      const bg = flatPanel(this, cx, cy, cardW, cardH, { fill: isSelected ? COL.dusk : COL.ink, border: isSelected ? COL.sky : COL.slate })
+        .setInteractive({ useHandCursor: true });
       this.container.add(bg);
 
-      const lbl = this.add.text(cx, cy - 60, label, {
-        fontSize: '16px', color: isSelected ? '#4fc3f7' : '#aaaaaa', fontFamily: 'monospace',
-      }).setOrigin(0.5);
-      this.container.add(lbl);
-
-      const descText = this.add.text(cx, cy + 10, desc, {
-        fontSize: '11px', color: '#888888', fontFamily: 'monospace',
-        align: 'center', lineSpacing: 4,
-      }).setOrigin(0.5);
-      this.container.add(descText);
+      this.container.add(uiText(this, cx, cy - 74, label, { size: 16, color: isSelected ? COL.sky : COL.silver, originX: 0.5 }));
+      this.container.add(uiText(this, cx, cy - 32, desc, { size: 16, color: COL.grey, originX: 0.5, center: true }));
 
       bg.on('pointerdown', () => {
         this.scoreMethod = key;
         this._prepareScoreMethod(key);
+        Sfx.play('ui_select');
         this.renderStep();
       });
     });
 
     // Back
-    const backBtn = this._makeButton(width / 2 - 120, height - 55, '← BACK', 160, 38);
+    const backBtn = this._makeButton(width / 2 - 120, height - 50, '< BACK', 180, 44);
     backBtn.bg.on('pointerdown', () => { this.step = 1; this.renderStep(); });
-    this.container.add([backBtn.bg, backBtn.border, backBtn.text]);
+    this.container.add([backBtn.bg, backBtn.text]);
 
     // Next
-    const nextBtn = this._makeButton(width / 2 + 120, height - 55, 'NEXT →', 160, 38);
+    const nextBtn = this._makeButton(width / 2 + 120, height - 50, 'NEXT >', 180, 44);
     nextBtn.bg.on('pointerdown', () => {
       this._prepareScoreMethod(this.scoreMethod);
       this.step = 3;
       this.renderStep();
     });
-    this.container.add([nextBtn.bg, nextBtn.border, nextBtn.text]);
+    this.container.add([nextBtn.bg, nextBtn.text]);
   }
 
   private _prepareScoreMethod(method: ScoreMethod) {
@@ -310,78 +276,72 @@ export class CharacterSelectScene extends Phaser.Scene {
   private renderAssignScores() {
     const { width, height } = this.scale;
     const cls = CHARACTER_CLASSES[this.selectedClass];
+    this._heading(`ASSIGN SCORES - ${cls.name.toUpperCase()}`, 'STEP 3 OF 4 - GIVE EACH SCORE AN ABILITY', CLASS_COL[this.selectedClass] ?? COL.gold);
 
-    const title = this.add.text(width / 2, 55, `ASSIGN SCORES — ${cls.name}`, {
-      fontSize: '22px', color: `#${cls.color.toString(16).padStart(6, '0')}`,
-      fontFamily: 'monospace', stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
-
-    const step = this.add.text(width / 2, 82, 'Step 3 of 4 — Assign each score to an ability', {
-      fontSize: '11px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
+    // What the pointer is over: a one-line description of the ability, at the foot of the screen.
+    this._abilityHint = uiText(this, width / 2, height - 98, '', { size: 16, color: COL.grey, originX: 0.5 });
+    this.container.add(this._abilityHint);
 
     if (this.scoreMethod === 'pointbuy') {
       this._renderPointBuy();
     } else {
       this._renderDragAssign();
-      const autoBtn = this._makeButton(width / 2, height - 100, 'AUTO ASSIGN', 160, 30);
+      const autoBtn = this._makeButton(width / 2 - 100, height - 134, 'AUTO ASSIGN', 200, 32);
       autoBtn.bg.on('pointerdown', () => {
         this._autoAssignScores();
         this.renderStep();
       });
-      this.container.add([autoBtn.bg, autoBtn.border, autoBtn.text]);
+      this.container.add([autoBtn.bg, autoBtn.text]);
     }
 
     // Live preview
-    this._renderPreview(width - 220, height / 2);
+    this._renderPreview(640, 104);
 
     // Back
-    const backBtn = this._makeButton(width / 2 - 130, height - 50, '← BACK', 160, 38);
+    const backBtn = this._makeButton(width / 2 - 130, height - 50, '< BACK', 180, 44);
     backBtn.bg.on('pointerdown', () => { this.step = 2; this.renderStep(); });
-    this.container.add([backBtn.bg, backBtn.border, backBtn.text]);
+    this.container.add([backBtn.bg, backBtn.text]);
 
-    // Begin
+    // Next: only once every score has an ability
     const allAssigned = this.scoreMethod === 'pointbuy'
       ? true
       : this.assigned.every(v => v !== null);
 
-    const nextBtn3 = this._makeButton(width / 2 + 130, height - 50, 'NEXT →', 160, 38);
-    nextBtn3.bg.setFillStyle(allAssigned ? 0x0a2a0a : 0x1a1a2e);
-    nextBtn3.text.setColor(allAssigned ? '#69f0ae' : '#555566');
+    const nextBtn3 = this._makeButton(width / 2 + 130, height - 50, 'NEXT >', 180, 44, allAssigned ? 'go' : 'off');
     if (allAssigned) {
-      nextBtn3.bg.setInteractive();
       nextBtn3.bg.on('pointerdown', () => { this.step = 4; this.renderStep(); });
     }
-    this.container.add([nextBtn3.bg, nextBtn3.border, nextBtn3.text]);
+    this.container.add([nextBtn3.bg, nextBtn3.text]);
+  }
+
+  private _abilityHint?: Phaser.GameObjects.BitmapText;
+
+  private _hint(i: number) {
+    this._abilityHint?.setText((ABILITY_DESCRIPTIONS[i] ?? '').toUpperCase());
   }
 
   private _renderDragAssign() {
-    const leftX = 160;
+    const leftX = 40;
 
     // Score pool
-    const poolTitle = this.add.text(leftX, 115, 'Score Pool:', {
-      fontSize: '12px', color: '#aaaaaa', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(poolTitle);
+    this.container.add(uiText(this, leftX, 108, 'SCORE POOL', { size: 16, color: COL.silver }));
+    this.container.add(uiText(this, leftX, 128, 'PICK ONE, THEN A SLOT', { size: 16, color: COL.grey }));
 
     this.scores.forEach((score, i) => {
       const isUsed = this._isScoreUsedAt(i);
       const isSelected = this.selectedScoreIdx === i;
-      const x = leftX - 60 + (i % 3) * 60;
-      const y = 155 + Math.floor(i / 3) * 50;
+      const x = leftX + 28 + (i % 3) * 68;
+      const y = 184 + Math.floor(i / 3) * 56;
 
-      const bg = this.add.rectangle(x, y, 48, 36, isSelected ? 0x1a3050 : isUsed ? 0x111111 : 0x1a1a2e)
-        .setInteractive()
-        .setStrokeStyle(1, isSelected ? 0x4fc3f7 : isUsed ? 0x333333 : 0x444466)
-        .setAlpha(isUsed ? 0.4 : 1);
+      const bg = flatPanel(this, x, y, 60, 44, {
+        fill: isSelected ? COL.navy : isUsed ? COL.black : COL.dusk,
+        border: isSelected ? COL.sky : isUsed ? COL.dusk : COL.slate,
+      }).setInteractive({ useHandCursor: !isUsed });
       this.container.add(bg);
 
-      const txt = this.add.text(x, y, `${score}`, {
-        fontSize: '16px', color: isUsed ? '#555555' : '#ffffff', fontFamily: 'monospace',
-      }).setOrigin(0.5).setAlpha(isUsed ? 0.4 : 1);
-      this.container.add(txt);
+      this.container.add(uiText(this, x, y, `${score}`, {
+        size: 24, color: isUsed ? COL.slate : COL.white, originX: 0.5, originY: 0.5,
+      }));
 
       if (!isUsed) {
         bg.on('pointerdown', () => {
@@ -392,35 +352,26 @@ export class CharacterSelectScene extends Phaser.Scene {
     });
 
     // Ability assignment slots
-    const slotX = 430;
+    const slotX = 380;
     ABILITY_NAMES.forEach((abilityKey, i) => {
-      const y = 120 + i * 65;
+      const y = 134 + i * 56;
       const assignedScore = this.assigned[i];
 
-      const slot = this.add.rectangle(slotX, y, 220, 52, 0x0e0e1e)
-        .setInteractive()
-        .setStrokeStyle(1, assignedScore !== null ? 0x4fc3f7 : 0x333355);
+      const slot = flatPanel(this, slotX, y, 300, 48, {
+        fill: COL.ink, border: assignedScore !== null ? COL.sky : COL.slate,
+      }).setInteractive({ useHandCursor: true });
       this.container.add(slot);
 
-      const label = this.add.text(slotX - 90, y, ABILITY_LABELS[i], {
-        fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
-      }).setOrigin(0, 0.5);
-      this.container.add(label);
-
-      const scoreDisp = this.add.text(slotX + 20, y, assignedScore !== null ? `${assignedScore}` : '—', {
-        fontSize: '18px', color: assignedScore !== null ? '#ffffff' : '#444444',
-        fontFamily: 'monospace',
-      }).setOrigin(0, 0.5);
-      this.container.add(scoreDisp);
+      this.container.add(uiText(this, slotX - 136, y, ABILITY_LABELS[i], { size: 16, color: COL.silver, originY: 0.5 }));
+      this.container.add(uiText(this, slotX - 40, y, assignedScore !== null ? `${assignedScore}` : '-', {
+        size: 24, color: assignedScore !== null ? COL.white : COL.slate, originY: 0.5,
+      }));
 
       // Modifier
       if (assignedScore !== null) {
         const mod = abilityMod(assignedScore);
         const modStr = mod >= 0 ? `(+${mod})` : `(${mod})`;
-        const modText = this.add.text(slotX + 65, y, modStr, {
-          fontSize: '12px', color: mod >= 0 ? '#69f0ae' : '#ff5252', fontFamily: 'monospace',
-        }).setOrigin(0, 0.5);
-        this.container.add(modText);
+        this.container.add(uiText(this, slotX + 40, y, modStr, { size: 16, color: mod >= 0 ? COL.lime : COL.red, originY: 0.5 }));
       }
 
       // Click to assign or unassign
@@ -437,13 +388,10 @@ export class CharacterSelectScene extends Phaser.Scene {
         }
         this.renderStep();
       });
-
-      const descText = this.add.text(slotX + 95, y, ABILITY_DESCRIPTIONS[i].split(' — ')[1] ?? '', {
-        fontSize: '9px', color: '#555577', fontFamily: 'monospace',
-      }).setOrigin(0, 0.5);
-      this.container.add(descText);
+      slot.on('pointerover', () => this._hint(i));
+      slot.on('pointerout', () => this._abilityHint?.setText(''));
+      void abilityKey;
     });
-
   }
 
   // Track which score index is assigned to which ability slot
@@ -471,49 +419,40 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   private _renderPointBuy() {
-    const { height } = this.scale;
+    this.container.add(uiText(this, 380, 100, `POINTS LEFT: ${this.pointsRemaining}`, {
+      size: 16, color: this.pointsRemaining >= 0 ? COL.gold : COL.red, originX: 0.5,
+    }));
 
-    const ptText = this.add.text(430, 105, `Points remaining: ${this.pointsRemaining}`, {
-      fontSize: '14px', color: this.pointsRemaining >= 0 ? '#ffd700' : '#ff5252',
-      fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(ptText);
-
-    ABILITY_NAMES.forEach((key, i) => {
-      const y = 130 + i * 65;
+    ABILITY_NAMES.forEach((_key, i) => {
+      const y = 140 + i * 56;
       const current = this.pointBuyScores[i];
 
-      const label = this.add.text(250, y, ABILITY_LABELS[i], {
-        fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
-      }).setOrigin(0.5);
-      this.container.add(label);
+      this.container.add(uiText(this, 250, y, ABILITY_LABELS[i], { size: 16, color: COL.silver, originX: 0.5, originY: 0.5 }));
 
       // Minus button
-      const minus = this.add.rectangle(300, y, 28, 28, 0x1a1a2e)
-        .setInteractive().setStrokeStyle(1, 0x444466);
+      const minus = flatPanel(this, 310, y, 36, 36, { fill: COL.dusk, border: COL.slate })
+        .setInteractive({ useHandCursor: true });
       this.container.add(minus);
-      this.container.add(this.add.text(300, y, '−', {
-        fontSize: '16px', color: '#aaaacc', fontFamily: 'monospace',
-      }).setOrigin(0.5));
+      this.container.add(uiText(this, 310, y, '-', { size: 24, color: COL.silver, originX: 0.5, originY: 0.5 }));
 
       // Score display
-      const scoreTxt = this.add.text(340, y, `${current}`, {
-        fontSize: '18px', color: '#ffffff', fontFamily: 'monospace',
-      }).setOrigin(0.5);
-      this.container.add(scoreTxt);
+      this.container.add(uiText(this, 380, y, `${current}`, { size: 24, color: COL.white, originX: 0.5, originY: 0.5 }));
 
       const mod = abilityMod(current);
-      this.container.add(this.add.text(368, y, mod >= 0 ? `+${mod}` : `${mod}`, {
-        fontSize: '11px', color: mod >= 0 ? '#69f0ae' : '#ff5252', fontFamily: 'monospace',
-      }).setOrigin(0, 0.5));
+      this.container.add(uiText(this, 420, y, mod >= 0 ? `+${mod}` : `${mod}`, {
+        size: 16, color: mod >= 0 ? COL.lime : COL.red, originY: 0.5,
+      }));
 
       // Plus button
-      const plus = this.add.rectangle(400, y, 28, 28, 0x1a1a2e)
-        .setInteractive().setStrokeStyle(1, 0x444466);
+      const plus = flatPanel(this, 490, y, 36, 36, { fill: COL.dusk, border: COL.slate })
+        .setInteractive({ useHandCursor: true });
       this.container.add(plus);
-      this.container.add(this.add.text(400, y, '+', {
-        fontSize: '16px', color: '#aaaacc', fontFamily: 'monospace',
-      }).setOrigin(0.5));
+      this.container.add(uiText(this, 490, y, '+', { size: 24, color: COL.silver, originX: 0.5, originY: 0.5 }));
+
+      for (const b of [minus, plus]) {
+        b.on('pointerover', () => this._hint(i));
+        b.on('pointerout', () => this._abilityHint?.setText(''));
+      }
 
       minus.on('pointerdown', () => {
         if (current > 8) {
@@ -536,8 +475,6 @@ export class CharacterSelectScene extends Phaser.Scene {
           }
         }
       });
-
-      void height;
     });
 
     // Fill in assigned from point buy
@@ -549,44 +486,40 @@ export class CharacterSelectScene extends Phaser.Scene {
   private _renderPreview(x: number, y: number) {
     const cls = CHARACTER_CLASSES[this.selectedClass];
     const scores = this._getEffectiveScores();
+    const tone = CLASS_COL[cls.key] ?? COL.silver;
 
-    const lines: string[] = [
-      `── ${cls.name} Preview ──`,
-      '',
-    ];
+    this.container.add(uiText(this, x, y, `${cls.name.toUpperCase()} PREVIEW`, { size: 16, color: tone }));
+    this.container.add(this.add.image(x + 270, y - 4, `player_${cls.key}`).setScale(2));
 
-    if (scores) {
-      const { str, dex, con, int: INT, wis, cha } = scores;
-      const kit = starterKit(cls.key);
-      const sheet = { classKey: cls.key, level: 1, scores: { str, dex, con, int: INT, wis, cha }, inventory: kit };
-      const hp = startingHp(cls.key, con);
-      const ac = playerArmorClass(sheet);
-      const thac0 = playerThac0(sheet);
-      const sv = (c: typeof SAVE_CATEGORIES[number]) => saveTarget(cls.key, 1, c);
-
-      lines.push(
-        `HP:    ${hp}   (d${hitDie(cls.key)} + CON + 4)`,
-        `AC:    ${ac}   THAC0: ${thac0}`,
-        `Level 1: ${titleFor(cls.key, 1)}`,
-        `Saves (roll d20 at or over):`,
-        `Death ${sv('death')}   Petrify ${sv('petrify')}   Wands ${sv('wands')}`,
-        `Breath ${sv('breath')}   Spells ${sv('spells')}`,
-        '',
-        `Kit: ${kit.equipped().filter(i => i.defKey !== 'torch').map(i => displayName(i)).join(', ')}`,
-      );
-      lines.push('', `STR ${str} DEX ${dex} CON ${con}`,
-        `INT ${INT} WIS ${wis} CHA ${cha}`);
-
-      void abilityMod;
-    } else {
-      lines.push('(assign all scores', 'to see preview)');
+    if (!scores) {
+      this.container.add(uiText(this, x, y + 34, 'ASSIGN ALL SCORES\nTO SEE THE PREVIEW.', { size: 16, color: COL.grey }));
+      return;
     }
+    const { str, dex, con, int: INT, wis, cha } = scores;
+    const kit = starterKit(cls.key);
+    const sheet = { classKey: cls.key, level: 1, scores: { str, dex, con, int: INT, wis, cha }, inventory: kit };
+    const hp = startingHp(cls.key, con);
+    const ac = playerArmorClass(sheet);
+    const thac0 = playerThac0(sheet);
+    const sv = (c: typeof SAVE_CATEGORIES[number]) => saveTarget(cls.key, 1, c);
 
-    const preview = this.add.text(x, y, lines.join('\n'), {
-      fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
-      lineSpacing: 6, wordWrap: { width: 400 },
-    }).setOrigin(0.5);
-    this.container.add(preview);
+    const lines: Array<[string, number]> = [
+      [`HP ${hp}  AC ${ac}  THAC0 ${thac0}`, COL.white],
+      [titleFor(cls.key, 1).toUpperCase().slice(0, 24), COL.gold],
+      ['SAVES (D20, AT OR OVER)', COL.grey],
+      [`DEATH ${sv('death')}  PETR ${sv('petrify')}`, COL.sky],
+      [`WAND ${sv('wands')}  BRTH ${sv('breath')}`, COL.sky],
+      [`SPELLS ${sv('spells')}`, COL.sky],
+      [`STR ${str} DEX ${dex} CON ${con}`, COL.silver],
+      [`INT ${INT} WIS ${wis} CHA ${cha}`, COL.silver],
+    ];
+    lines.forEach(([t, color], i) => {
+      this.container.add(uiText(this, x, y + 34 + i * 20, t, { size: 16, color }));
+    });
+    const gear = kit.equipped().filter(i => i.defKey !== 'torch').map(i => displayName(i)).join(', ');
+    this.container.add(uiText(this, x, y + 34 + lines.length * 20 + 8, `KIT: ${wrap(gear.toUpperCase(), 25).slice(0, 3).join('\n')}`, {
+      size: 16, color: COL.grey,
+    }));
   }
 
   private _getEffectiveScores(): { str: number; dex: number; con: number; int: number; wis: number; cha: number } | null {
@@ -604,55 +537,37 @@ export class CharacterSelectScene extends Phaser.Scene {
   private renderNameInput() {
     const { width, height } = this.scale;
     const cls = CHARACTER_CLASSES[this.selectedClass];
+    const tone = CLASS_COL[this.selectedClass] ?? COL.gold;
+    this._heading('NAME YOUR CHARACTER', 'STEP 4 OF 4 - A NAME, OR LEAVE IT BLANK', COL.gold);
 
-    const title = this.add.text(width / 2, 55, 'NAME YOUR CHARACTER', {
-      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
-
-    const step = this.add.text(width / 2, 90, 'Step 4 of 4 — Enter a name (or leave blank for default)', {
-      fontSize: '11px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
-
-    // Class avatar preview
-    const avatarKey = `player_${this.selectedClass}`;
-    const avatar = this.add.image(width / 2, height / 2 - 80, avatarKey).setScale(3);
+    // Class avatar preview, 3x
+    const avatar = this.add.image(width / 2, height / 2 - 96, `player_${this.selectedClass}`).setScale(3);
     this.container.add(avatar);
 
-    const className = this.add.text(width / 2, height / 2 - 36, cls.name, {
-      fontSize: '16px', color: `#${cls.color.toString(16).padStart(6, '0')}`,
-      fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(className);
+    this.container.add(uiText(this, width / 2, height / 2 - 36, cls.name.toUpperCase(), {
+      size: 24, color: tone, originX: 0.5,
+    }));
 
     // Input field background
-    const inputW = 320;
-    const inputH = 40;
-    const inputY = height / 2 + 20;
-    const inputBg = this.add.rectangle(width / 2, inputY, inputW, inputH, 0x0e0e1e)
-      .setStrokeStyle(2, 0x4fc3f7);
-    this.container.add(inputBg);
+    const inputW = 400;
+    const inputH = 52;
+    const inputY = height / 2 + 36;
+    this.container.add(flatPanel(this, width / 2, inputY, inputW, inputH, { fill: COL.ink, border: COL.sky }));
 
     // Name display with blinking cursor
-    const cursorChar = this._cursorVisible ? '|' : '';
-    const displayText = this.characterName + cursorChar;
-    const nameText = this.add.text(width / 2, inputY, displayText || cursorChar, {
-      fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
-    }).setOrigin(0.5);
+    const cursorChar = this._cursorVisible ? '_' : '';
+    const nameText = uiText(this, width / 2, inputY, this.characterName + cursorChar, {
+      size: 24, color: COL.white, originX: 0.5, originY: 0.5,
+    });
     this.container.add(nameText);
 
     // Hint text
-    const hint = this.add.text(width / 2, inputY + 34, 'Max 16 characters. Press ENTER to confirm.', {
-      fontSize: '10px', color: '#555577', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(hint);
-
-    const defaultHint = this.add.text(width / 2, inputY + 52, `Default: "${cls.name}"`, {
-      fontSize: '10px', color: '#444466', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(defaultHint);
+    this.container.add(uiText(this, width / 2, inputY + 40, 'MAX 16 CHARACTERS. PRESS ENTER TO CONFIRM.', {
+      size: 16, color: COL.grey, originX: 0.5,
+    }));
+    this.container.add(uiText(this, width / 2, inputY + 62, `DEFAULT: ${cls.name.toUpperCase()}`, {
+      size: 16, color: COL.slate, originX: 0.5,
+    }));
 
     // Set up keyboard listener for name input
     this._nameInputActive = true;
@@ -665,23 +580,19 @@ export class CharacterSelectScene extends Phaser.Scene {
       loop: true,
       callback: () => {
         this._cursorVisible = !this._cursorVisible;
-        const cursor = this._cursorVisible ? '|' : '';
-        nameText.setText(this.characterName + cursor || cursor);
+        nameText.setText(this.characterName + (this._cursorVisible ? '_' : ''));
       },
     });
 
     // Back button
-    const backBtn = this._makeButton(width / 2 - 130, height - 50, '← BACK', 160, 38);
+    const backBtn = this._makeButton(width / 2 - 130, height - 50, '< BACK', 180, 44);
     backBtn.bg.on('pointerdown', () => { this.step = 3; this.renderStep(); });
-    this.container.add([backBtn.bg, backBtn.border, backBtn.text]);
+    this.container.add([backBtn.bg, backBtn.text]);
 
     // Begin button
-    const beginBtn = this._makeButton(width / 2 + 130, height - 50, 'BEGIN!', 160, 38);
-    beginBtn.bg.setFillStyle(0x0a2a0a);
-    beginBtn.text.setColor('#69f0ae');
-    beginBtn.bg.setInteractive();
+    const beginBtn = this._makeButton(width / 2 + 130, height - 50, 'BEGIN!', 180, 44, 'go');
     beginBtn.bg.on('pointerdown', () => this._startGame());
-    this.container.add([beginBtn.bg, beginBtn.border, beginBtn.text]);
+    this.container.add([beginBtn.bg, beginBtn.text]);
   }
 
   private _onNameKeydown(e: KeyboardEvent) {
@@ -738,17 +649,19 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.scene.start('TavernScene', { charData, saveSlot: this.saveSlot });
   }
 
-  private _makeButton(x: number, y: number, label: string, w: number, h: number) {
-    const bg = this.add.rectangle(x, y, w, h, 0x1a1a2e).setInteractive();
-    const border = this.add.rectangle(x, y, w, h).setStrokeStyle(2, 0x4fc3f7);
-    const text = this.add.text(x, y, label, {
-      fontSize: '16px', color: '#4fc3f7', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-
-    bg.on('pointerover', () => { bg.setFillStyle(0x162040); text.setColor('#ffffff'); });
-    bg.on('pointerout', () => { bg.setFillStyle(0x1a1a2e); text.setColor('#4fc3f7'); });
-
-    return { bg, border, text };
+  /** A flat bordered button: `go` is green (ready), `off` is dimmed and does nothing. */
+  private _makeButton(x: number, y: number, label: string, w: number, h: number, tone: 'normal' | 'go' | 'off' = 'normal') {
+    const fill = tone === 'go' ? COL.pine : tone === 'off' ? COL.ink : COL.dusk;
+    const border = tone === 'go' ? COL.lime : tone === 'off' ? COL.slate : COL.sky;
+    const color = tone === 'go' ? COL.lime : tone === 'off' ? COL.slate : COL.sky;
+    const bg = flatPanel(this, x, y, w, h, { fill, border });
+    const text = uiText(this, x, y, label, { size: 16, color, originX: 0.5, originY: 0.5 });
+    bg.setInteractive({ useHandCursor: tone !== 'off' });
+    if (tone !== 'off') {
+      bg.on('pointerover', () => { bg.setFillStyle(tone === 'go' ? COL.green : COL.slate); text.setTint(COL.white); });
+      bg.on('pointerout', () => { bg.setFillStyle(fill); text.setTint(color); });
+    }
+    return { bg, text };
   }
 }
 
