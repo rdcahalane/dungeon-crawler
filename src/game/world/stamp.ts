@@ -7,7 +7,7 @@ import { tileKindOf } from './builder';
 import { translateSpec } from './mechanisms';
 import { TOMB, CELL } from './tomb';
 import type { InscriptionSpawn, MechanismSpec, Rng, VaultDef } from './types';
-import { vaultsForFloor } from './vaults';
+import { VAULTS, vaultsForFloor } from './vaults';
 
 const MAX_CORRIDOR = 10;
 
@@ -141,15 +141,25 @@ function stamp(d: DungeonData, v: VaultDef, p: Placement, protectedTiles: Set<nu
  * dungeon. Only WALL tiles are ever overwritten, so the start, stairs and every existing room are untouched.
  * Returns the ids of the vaults placed.
  */
+/**
+ * Dev and test shortcut (`?vault=<id>` in the URL): stamp this vault first on the next generated floor, whatever its
+ * usual floor range. Null clears it.
+ */
+let forcedVaultId: string | null = null;
+export function setForcedVault(id: string | null): void {
+  forcedVaultId = id;
+}
+
 export function stampVaults(d: DungeonData, floor: number, rng: Rng): string[] {
   const already = new Set(d.vaultIds ?? []);
-  const pool = vaultsForFloor(floor).filter((v) => !already.has(v.id));
-  if (pool.length === 0) return [];
+  const forced = forcedVaultId ? VAULTS.find((v) => v.id === forcedVaultId && !already.has(v.id)) : undefined;
+  const pool = vaultsForFloor(floor).filter((v) => !already.has(v.id) && v !== forced);
+  if (pool.length === 0 && !forced) return [];
   const most = 1 + Math.min(2, Math.floor(floor / 4));
   const want = 1 + Math.floor(rng.next() * most);
   const protectedTiles = new Set<number>();
   const placed: string[] = [];
-  for (const v of shuffle(pool, rng)) {
+  for (const v of [...(forced ? [forced] : []), ...shuffle(pool, rng)]) {
     if (placed.length >= want) break;
     const p = findPlacement(d, v, protectedTiles, rng);
     if (!p) continue;

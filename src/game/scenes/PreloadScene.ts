@@ -1,3 +1,4 @@
+import { setForcedVault } from "../world/stamp";
 import * as Phaser from "phaser";
 import type { ClassKey } from "../constants";
 import { registerRetroTextures } from "../gfx/registerRetroTextures";
@@ -27,6 +28,8 @@ export class PreloadScene extends Phaser.Scene {
     // Dev shortcut: ?quick=fighter&floor=3 drops straight into a dungeon floor; add &level=4 to start at that level.
     const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     const quick = params?.get("quick");
+    // Dev shortcut: ?vault=<id> stamps that vault on the next generated floor (see setForcedVault).
+    setForcedVault(params?.get("vault") ?? null);
     if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
       (window as unknown as { __game?: Phaser.Game }).__game = this.game;
     }

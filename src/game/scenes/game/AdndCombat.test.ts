@@ -110,7 +110,7 @@ describe("weapons, immunities and backstab", () => {
     const sheet = sheetFor("fighter");
     const garg = getMonster("GARGOYLE");
     const rng = mulberry32(5);
-    const target = { ac: garg.ac, def: garg, key: "GARGOYLE" };
+    const target = { ac: garg.ac, def: garg, key: "GARGOYLE" as const };
     expect(resolvePlayerAttack(sheet, target, rng, "missile").kind).toBe("immune");
     const kinds = new Set<string>();
     for (let i = 0; i < 40; i++) kinds.add(resolvePlayerAttack(sheet, target, rng, "missile", "1d4").kind);
