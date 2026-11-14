@@ -78,6 +78,16 @@ export interface GameContext {
   addGold(amount: number): void;
   hasRelic(key: RelicKey): boolean;
 
+  // ── UI hooks (optional: the HUD falls back to `player.inventory` when a method is absent) ──
+  /** Use the item on belt slot `index` (keys 5 to 8). */
+  useBelt?(index: number): void;
+  /** Drop a pack or belt item onto the floor. */
+  dropItem?(itemId: string): void;
+  equipItem?(itemId: string): void;
+  unequipSlot?(slot: string): void;
+  /** True while a puzzle dialog is open: the HUD ignores mouse and hotkeys then. */
+  modalOpen?: boolean;
+
   // ── Controllers ──────────────────────────────────────────────────────────
   map: MapController;
   combat: CombatController;
