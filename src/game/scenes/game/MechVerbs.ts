@@ -9,6 +9,7 @@ import { footprint } from "../../world/mechanisms";
 import { VAULT_BY_ID } from "../../world/vaults";
 import { TOMB, CELL } from "../../world/tomb";
 import type { MechEvent, MechKind, MechRuntime, MechState, MechanismSpec } from "../../world/types";
+import { directionName } from "../../entities/facing";
 import { itemDefKey, worldItemKey } from "./itemKeys";
 
 /** The slice of the player the verbs read. `Player` satisfies it structurally. */
@@ -43,8 +44,10 @@ export function facingStep(f: { x: number; y: number }): { x: number; y: number 
   return x === 0 && y === 0 ? { x: 0, y: 1 } : { x, y };
 }
 
+export { directionName, facingFromVelocity } from "../../entities/facing";
+
 export type ProbePlan =
-  | { ok: true; events: MechEvent[]; from: { tx: number; ty: number }; dir: { x: number; y: number } }
+  | { ok: true; events: MechEvent[]; from: { tx: number; ty: number }; dir: { x: number; y: number }; dirName: string }
   | { ok: false; message: string };
 
 /** P: the pole taps two tiles ahead, then the tile before it. Needs a ten-foot pole in the pack. */
@@ -57,6 +60,7 @@ export function probePlan(p: VerbPlayer, tx: number, ty: number): ProbePlan {
     ok: true,
     from: { tx, ty },
     dir: d,
+    dirName: directionName(d),
     events: [
       { type: "probe", tx: tx + d.x * 2, ty: ty + d.y * 2 },
       { type: "probe", tx: tx + d.x, ty: ty + d.y },

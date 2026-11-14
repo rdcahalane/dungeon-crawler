@@ -44,14 +44,14 @@ In development builds the running game is exposed as `window.__game`.
 | 5 to 8 | Use the belt slot |
 | F | Drink a healing potion |
 | G | Search |
-| P then a direction | Probe ahead with the ten-foot pole |
+| P | Probe the two tiles ahead, the way you last walked, with the ten-foot pole (a faint strip shows where) |
 | L | Listen at a door |
 | E | Interact (pull, push, read, open a chest, pick up). With a chest and a mechanism both in reach, the nearer one gets the press |
 | I | Inventory |
 | B | Spellbook (casters) |
 | M | Map |
 | Q (in the tavern) | Quest log |
-| T (cleric) / D (thief) | Turn undead / disarm a found trap |
+| T (cleric) / X (thief) | Turn undead / disarm a found trap |
 | + and - | Zoom |
 | Esc | Close a panel |
 | F2 | CRT on or off |

@@ -1,14 +1,14 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, TILE, TRAP_TYPES, TrapTypeKey } from "../../constants";
 import type { GameContext } from "../../GameContext";
-import { SEARCH_MS } from "./MechVerbs";
+import { SEARCH_MS, facingStep } from "./MechVerbs";
 
 /** Floors on which the legacy random tile traps deal half damage. */
 const TEACHING_FLOORS = 3;
 
 /**
  * The legacy random tile traps (reflex/fortitude save) and the legacy secret doors:
- * detect, search (G), disarm (D, thief), trigger, reveal.
+ * detect, search (G), disarm (X, thief), trigger, reveal.
  * The new authored mechanisms live in `MechanismController`, not here. The G key starts a timed search
  * (`MechanismController.beginTimed`); when it finishes, the legacy search below and the authored `search`
  * event both run for the tile the player stands on.
@@ -27,7 +27,10 @@ export class TrapController {
   readonly trapMap = new Map<string, TrapTypeKey>();
 
   private _gKey?: Phaser.Input.Keyboard.Key;
-  private _dKey?: Phaser.Input.Keyboard.Key;
+  private _xKey?: Phaser.Input.Keyboard.Key;
+
+  private poleMarker?: Phaser.GameObjects.Graphics;
+  private poleSig = "";
 
   constructor(private ctx: GameContext) {}
 
@@ -38,6 +41,27 @@ export class TrapController {
     this.checkDisarmKey(ptx, pty);
     this.checkTrapTriggering(ptx, pty);
     this.checkSecretDoors(ptx, pty);
+    this.drawPoleMarker(ptx, pty);
+  }
+
+  /** With a ten-foot pole in the pack, a faint two-tile strip ahead shows where P will tap. */
+  private drawPoleMarker(ptx: number, pty: number) {
+    const p = this.ctx.player;
+    const show = this.ctx.currentFloor > 0 && p.stats.hp > 0 && p.inventory?.has("ten_foot_pole");
+    const d = facingStep(p.stats.facing);
+    const sig = show ? `${ptx},${pty},${d.x},${d.y}` : "";
+    if (sig === this.poleSig) return;
+    this.poleSig = sig;
+    if (!sig) { this.poleMarker?.clear(); return; }
+    if (!this.poleMarker) this.poleMarker = this.ctx.scene.add.graphics().setDepth(4);
+    const g = this.poleMarker;
+    g.clear();
+    for (const n of [1, 2]) {
+      const x = (ptx + d.x * n) * TILE_SIZE;
+      const y = (pty + d.y * n) * TILE_SIZE;
+      g.fillStyle(0xffe08a, n === 2 ? 0.14 : 0.08).fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+      g.lineStyle(1, 0xffe08a, 0.3).strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+    }
   }
 
   // ── Trap Detection ────────────────────────────────────────────────────────
@@ -71,7 +95,7 @@ export class TrapController {
     }
 
     const msg = source === 'auto'
-      ? `⚠ Trap detected: ${TRAP_TYPES[trapType].key} — press D to disarm`
+      ? `⚠ Trap detected: ${TRAP_TYPES[trapType].key} — press X to disarm`
       : `⚠ Found a trap: ${TRAP_TYPES[trapType].key}`;
     this.ctx.floatText(wx, wy - 20, '⚠ TRAP', 0xff1744, 11);
     this.ctx.status(msg);
@@ -127,12 +151,12 @@ export class TrapController {
     }
   }
 
-  /** D key: Thief disarms a detected trap within 1 tile. */
+  /** X key: Thief disarms a detected trap within 1 tile. */
   private checkDisarmKey(ptx: number, pty: number) {
     if (this.ctx.player.stats.classKey !== 'thief') return;
     const scene = this.ctx.scene;
-    if (!this._dKey) this._dKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D);
-    if (!Phaser.Input.Keyboard.JustDown(this._dKey)) return;
+    if (!this._xKey) this._xKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+    if (!Phaser.Input.Keyboard.JustDown(this._xKey)) return;
 
     for (const key of this.detectedTraps) {
       const [tx, ty] = key.split(',').map(Number);
@@ -178,7 +202,7 @@ export class TrapController {
     if (isDetected) {
       if (!this.warnedTrapKeys.has(trapKey)) {
         const msg = player.stats.classKey === 'thief'
-          ? 'Known trap ahead. Press D beside it to disarm, or route around it.'
+          ? 'Known trap ahead. Press X beside it to disarm, or route around it.'
           : 'Known trap ahead. Route around it or risk another path.';
         this.ctx.status(msg);
         this.ctx.floatText(player.x, player.y - 34, 'TRAP AHEAD', 0xffd166, 11);
@@ -319,6 +343,8 @@ export class TrapController {
   }
 
   destroy() {
+    this.poleMarker?.destroy();
+    this.poleMarker = undefined;
     this.trapOverlays.forEach(o => o.destroy());
     this.trapOverlays.clear();
   }
