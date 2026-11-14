@@ -23,6 +23,13 @@ interface RoomChallenge {
   timeLeft: number;
 }
 
+/**
+ * The arcade rush: the timed "Room gambit", the kill-streak bonuses and the "Blood Rune" room reward sprinting. They
+ * stay in the code behind this switch, but with it off they neither fire nor print. Careful tomb play is the point.
+ * (The kill-streak half lives in `CombatController.applyKillMomentum`, which should check this too.)
+ */
+export const ARCADE_ROOM_EVENTS: boolean = false;
+
 /** Room, gambit and objective XP was written when a goblin gave 15 and levels came every 100; a quarter of it fits first-edition XP. */
 const bonusXp = (n: number): number => Math.max(1, Math.round(n * 0.25));
 
@@ -93,6 +100,7 @@ export class RoomEventController {
   // ── Room challenge (gambit) ────────────────────────────────────────────────
 
   updateRoomChallenge(delta: number) {
+    if (!ARCADE_ROOM_EVENTS) return;
     const challenge = this._roomChallenge;
     if (!challenge) return;
     challenge.timeLeft -= delta;
@@ -103,6 +111,7 @@ export class RoomEventController {
   }
 
   private startRoomChallenge(roomIdx: number) {
+    if (!ARCADE_ROOM_EVENTS) return;
     const ctx = this.ctx;
     if (this._roomChallenge || this._roomChallengesSeen.has(roomIdx) || roomIdx <= 0) return;
     const hostileCount = ctx.enemies.filter(enemy =>
@@ -473,7 +482,7 @@ export class RoomEventController {
     }
     if (!this._triggeredRoomEvents.has(roomIdx) && room.type === 'monster_closet') {
       this._triggeredRoomEvents.add(roomIdx);
-      ctx.status("Den ambush! Hold the room for streak rewards.");
+      ctx.status(ARCADE_ROOM_EVENTS ? "Den ambush! Hold the room for streak rewards." : "Den ambush!");
       ctx.floatText(player.x, player.y - 48, 'AMBUSH!', 0xff5a5f, 16);
       const pool: EnemyTypeKey[] = enemyPoolForFloor(ctx.currentFloor);
       for (let i = 0; i < 2; i++) {
@@ -512,6 +521,7 @@ export class RoomEventController {
     const ctx = this.ctx;
     const player = ctx.player;
     if (modifier === 'blood_rune') {
+      if (!ARCADE_ROOM_EVENTS) return;
       player.addEffect('RUSHED', 9000);
       ctx.floatText(player.x, player.y - 56, 'BLOOD RUNE', 0xff5a5f, 14);
       ctx.status("Blood Rune: move fast and chain kills for extra momentum.");

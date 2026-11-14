@@ -130,6 +130,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private _lightTimer = 0;
   private _gutteredOut = false;
   private attackCooldown = 0;
+  /** What last hurt the character and when (scene clock, ms). `cause` is a noun phrase ("a goblin") or absent when the caller did not say. Read by the death screen. */
+  public lastHurtBy?: { cause?: string; at: number };
   private poisonCarry = 0;
   private invincible = 0;
   private attackIndicator!: Phaser.GameObjects.Rectangle;
@@ -542,6 +544,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.poisonCarry -= poisonDmg;
         s.hp = Math.max(0, s.hp - poisonDmg);
         if (s.hp <= 0) {
+          this.lastHurtBy = { cause: 'poison', at: this.scene.time.now };
           this.onDead?.();
           return;
         }
@@ -680,9 +683,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * Apply damage that already passed its to-hit roll. Armor works through AC before this point, so it no longer
    * subtracts here; `bypassArmor` is kept for old callers (traps) and means nothing now.
    */
-  takeDamage(amount: number, bypassArmor = false) {
+  takeDamage(amount: number, bypassArmor = false, cause?: string) {
     void bypassArmor;
     if (this.invincible > 0 || this.stats.hp <= 0) return;
+    this.lastHurtBy = { cause, at: this.scene.time.now };
 
     const dmg = Math.max(1, Math.round(amount));
     this.stats.hp = Math.max(0, this.stats.hp - dmg);
