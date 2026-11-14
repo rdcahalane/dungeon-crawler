@@ -70,7 +70,7 @@ export class FloorController {
     this._rHeard = false;
     if (rPress) this.explainRest();
     this.checkStairs(ePress);
-    this.checkStairsUp();
+    this.checkStairsUp(ePress);
   }
 
   // ── R: why you cannot rest here ────────────────────────────────────────────
@@ -102,6 +102,8 @@ export class FloorController {
 
   private _campAskedAt = -1e9;
   private _awaitStepOff = false;
+  private _upHinted = false;
+  private _ascending = false;
 
   private inCampRoom(): boolean {
     const ctx = this.ctx;
@@ -217,7 +219,7 @@ export class FloorController {
     ctx.status(`Descend to level ${ctx.currentFloor + 1}? E to confirm`);
   }
 
-  private checkStairsUp() {
+  private checkStairsUp(ePress = false) {
     const ctx = this.ctx;
     const { tx, ty } = ctx.dungeon.stairsUpPos;
     const sx = tx * TILE_SIZE + TILE_SIZE / 2;
@@ -225,12 +227,25 @@ export class FloorController {
     const dx = ctx.player.x - sx;
     const dy = ctx.player.y - sy;
     const onStairs = Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.9;
-    if (!onStairs) this._awaitStepOff = false;
+    if (!onStairs) { this._awaitStepOff = false; this._upHinted = false; }
     if (onStairs) {
       if (ctx.currentFloor === 1) {
         // Show rest dialog before leaving the dungeon (not again until the player steps off, after Esc)
         if (ctx.scene.time.now >= this._restBlockedUntil && !this._awaitStepOff) this.showRestDialog();
       } else {
+        // Mid-dungeon ascent is a decision too: E climbs. Walking over the stairs (a click-to-move route can cross
+        // them) used to take you up at once; the autopilot bounced between two floors that way.
+        if (!ePress) {
+          if (!this._upHinted) {
+            this._upHinted = true;
+            ctx.status(`Stairs up to level ${ctx.currentFloor - 1}. Press E to climb.`);
+          }
+          return;
+        }
+        if (ctx.modalOpen || this._restDialogOpen || ctx.rooms.isModalOpen) return;
+        if (resolveInteract(ctx.loot.nearestChestDistance(), ctx.mech.nearestInteractDistance()) !== 'none') return;
+        if (this._ascending) return;
+        this._ascending = true;
         // Mid-dungeon ascent: save this floor then go up
         this.saveCurrentFloor();
         this.emitFloorExit();
