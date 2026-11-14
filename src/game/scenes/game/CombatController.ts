@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import type { PlayerStats, CharCreationData } from "../../entities/Player";
-import { TILE_SIZE, COLORS, ENEMY_TYPES, EnemyTypeKey } from "../../constants";
+import { TILE_SIZE, COLORS, PLAYER_STATS, ENEMY_TYPES, EnemyTypeKey } from "../../constants";
 import { onEnemyKilled } from "../../systems/QuestSystem";
 import { Player } from "../../entities/Player";
 import { Enemy } from "../../entities/Enemy";
@@ -461,6 +461,21 @@ export class CombatController {
       if (!Phaser.Geom.Intersects.RectangleToRectangle(attackBox, enemy.getBounds())) continue;
       const d = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
       if (d < best) { best = d; target = enemy; }
+    }
+
+    // Nothing in front: turn on whatever is within reach (a rat at your heels, something behind you).
+    if (!target) {
+      const reach = PLAYER_STATS.ATTACK_RANGE;
+      for (const enemy of ctx.enemies) {
+        if (!enemy.active || enemy.hp <= 0) continue;
+        if (enemy.isMimic && !enemy.mimicRevealed) continue;
+        const d = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
+        if (d <= reach && d < best) { best = d; target = enemy; }
+      }
+      if (target) {
+        const oct = Math.round(Math.atan2(target.y - player.y, target.x - player.x) / (Math.PI / 4));
+        player.stats.facing = { x: Math.round(Math.cos(oct * Math.PI / 4)), y: Math.round(Math.sin(oct * Math.PI / 4)) };
+      }
     }
 
     const weapon = weaponProfile(player.inventory);

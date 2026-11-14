@@ -130,6 +130,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private _lightTimer = 0;
   private _gutteredOut = false;
   private attackCooldown = 0;
+  private poisonCarry = 0;
   private invincible = 0;
   private attackIndicator!: Phaser.GameObjects.Rectangle;
   private playerShadow!: Phaser.GameObjects.Ellipse;  // floor shadow anchors character
@@ -210,6 +211,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       right: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
     this.attackKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    // Buffer the press: a tap shorter than one frame is lost to JustDown, and a swing asked for during the
+    // cooldown should land when it ends.
+    this.attackKey.on('down', () => { this.attackRequested = true; });
     this.turnUndeadKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T);
 
     // Spell hotkeys Q/W/E/R
@@ -532,7 +536,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
       if (eff.key === 'POISONED' && eff.value) {
         // Deal poison damage every second
-        const poisonDmg = (eff.value * delta) / 1000;
+        // Whole points only: hit points are integers everywhere else.
+        this.poisonCarry += (eff.value * delta) / 1000;
+        const poisonDmg = Math.floor(this.poisonCarry);
+        this.poisonCarry -= poisonDmg;
         s.hp = Math.max(0, s.hp - poisonDmg);
         if (s.hp <= 0) {
           this.onDead?.();
