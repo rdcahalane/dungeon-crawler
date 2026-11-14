@@ -22,9 +22,12 @@ import {
 } from "./narrationRules";
 
 const DEPTH = 150;
-const BOX_W = 520;
-const PAD = 16;
-const TOP = 118; // below the HUD panels (top-left 300x90, top-right 330x110)
+// The card sits in the dark right margin (the view is centred on the player, whose light reaches about five tiles),
+// below the objective panel and above the map buttons, so it never covers the play area. Owner's call, 2026-11-14.
+const BOX_W = 288;
+const PAD = 12;
+const RIGHT = 12;
+const TOP = 142;
 const MONO = "monospace";
 const INK = "#2b1d0e";
 const FADE_IN_MS = 350;
@@ -245,7 +248,7 @@ export class NarratorController {
     const cam = scene.cameras.main;
     const W = scene.scale.width;
     const H = scene.scale.height;
-    const box = scene.add.container(W / 2, H / 2).setScrollFactor(0).setDepth(DEPTH).setScale(1 / cam.zoom).setAlpha(0);
+    const box = scene.add.container(W - RIGHT - BOX_W / 2, H / 2).setScrollFactor(0).setDepth(DEPTH).setScale(1 / cam.zoom).setAlpha(0);
     const inner = BOX_W - PAD * 2;
     const special = item.kind !== "room";
     const parts: Phaser.GameObjects.Text[] = [];
@@ -259,10 +262,10 @@ export class NarratorController {
       add(scene.add.text(0, 0, HEADING[item.kind], { fontFamily: MONO, fontSize: "11px", color: HEADING_COLOR[item.kind], fontStyle: "bold" }).setOrigin(0.5, 0), 6);
     }
     if (item.title) {
-      add(scene.add.text(0, 0, item.title, { fontFamily: MONO, fontSize: "16px", color: "#5a2d0c", fontStyle: "bold", wordWrap: { width: inner }, align: "center" }).setOrigin(0.5, 0), 8);
+      add(scene.add.text(0, 0, item.title, { fontFamily: MONO, fontSize: "15px", color: "#5a2d0c", fontStyle: "bold", wordWrap: { width: inner }, align: "center" }).setOrigin(0.5, 0), 8);
     }
-    add(scene.add.text(-inner / 2, 0, item.text, { fontFamily: MONO, fontSize: "14px", color: INK, wordWrap: { width: inner }, lineSpacing: 4 }).setOrigin(0, 0), 8);
-    add(scene.add.text(0, 0, "V: voice   Z: hear it again", { fontFamily: MONO, fontSize: "10px", color: "#8a6f3d" }).setOrigin(0.5, 0), 0);
+    add(scene.add.text(-inner / 2, 0, item.text, { fontFamily: MONO, fontSize: "13px", color: INK, wordWrap: { width: inner }, lineSpacing: 3 }).setOrigin(0, 0), 8);
+    add(scene.add.text(0, 0, "V voice   Z again", { fontFamily: MONO, fontSize: "10px", color: "#8a6f3d" }).setOrigin(0.5, 0), 0);
 
     const totalH = y + PAD * 2;
     const top = -H / 2 + TOP;

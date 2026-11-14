@@ -70,14 +70,15 @@ describe("NarrationQueue", () => {
     expect(q.pending()).toBe(0);
   });
 
-  it("drops ordinary rooms near a monster, holds a vault for a while, never holds floor, tomb or boss", () => {
+  it("shows ordinary rooms even near a monster, holds a vault for a while, never holds floor, tomb or boss", () => {
     const q = new NarrationQueue();
     q.push(item("room:1", "room", 1));
     q.push(item("area:v", "area", undefined, 0));
     q.push(item("boss", "boss", undefined, 0));
     const near = (now: number) => ({ roomIdx: 1, monsterNear: true, now });
     expect(q.take(near(100))?.key).toBe("boss");
-    expect(q.take(near(100))).toBeNull(); // room dropped, vault waits
+    expect(q.take(near(100))?.key).toBe("room:1"); // the room is read even with a monster close
+    expect(q.take(near(100))).toBeNull(); // the vault waits
     expect(q.pending()).toBe(1);
     expect(q.take(near(AREA_WAIT_MS + 1))?.key).toBe("area:v");
     q.push(item("tomb", "tomb", undefined, 0));

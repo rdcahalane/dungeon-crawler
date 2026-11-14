@@ -79,7 +79,7 @@ const MAX_PENDING = 5;
 /**
  * Never narrates the same key twice per floor visit (`seen` covers items already shown or dropped for good, and
  * anything pushed). Plays boss, floor and tomb text before vaults before ordinary rooms, one at a time.
- * Ordinary-room text goes stale (dropped) when the player has left the room or a monster is close.
+ * Ordinary-room text goes stale (dropped) when the player has left the room.
  * Vault text waits for the monster to go, up to `AREA_WAIT_MS`. Floor, tomb and boss text always show.
  */
 export class NarrationQueue {
@@ -109,7 +109,9 @@ export class NarrationQueue {
 
   /** Take the next item to show now, dropping stale ones; null if nothing is ready. */
   take(state: QueueState): NarrationItem | null {
-    this.items = this.items.filter((it) => !(it.kind === "room" && (it.roomIdx !== state.roomIdx || state.monsterNear)));
+    // Ordinary-room text is dropped only once the player has left the room. It used to be dropped whenever a monster
+    // was within six tiles too, which in play meant almost never (a cursed crypt raises its champion as you walk in).
+    this.items = this.items.filter((it) => !(it.kind === "room" && it.roomIdx !== state.roomIdx));
     const order = this.items
       .map((it, i) => ({ it, i }))
       .sort((a, b) => PRIORITY[a.it.kind] - PRIORITY[b.it.kind] || a.it.queuedAt - b.it.queuedAt || a.i - b.i);
