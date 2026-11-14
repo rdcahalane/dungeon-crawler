@@ -275,7 +275,7 @@ export const MONSTERS: Record<MonsterKey, MonsterDef> = {
     textureKey: 'enemy_giant_bat', size: 16,
   }),
   HOLLOW_KING: monster({
-    key: 'HOLLOW_KING', name: 'The Hollow King', hd: 12, hpDice: '12d8', ac: 0,
+    key: 'HOLLOW_KING', name: 'Hollow King', hd: 12, hpDice: '12d8', ac: 0,
     attacks: [
       { name: 'Crown touch', dice: '1d10', bonus: 2 },
     ],
