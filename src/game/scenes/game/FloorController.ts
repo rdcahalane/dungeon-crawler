@@ -101,6 +101,7 @@ export class FloorController {
   }
 
   private _campAskedAt = -1e9;
+  private _awaitStepOff = false;
 
   private inCampRoom(): boolean {
     const ctx = this.ctx;
@@ -223,10 +224,12 @@ export class FloorController {
     const sy = ty * TILE_SIZE + TILE_SIZE / 2;
     const dx = ctx.player.x - sx;
     const dy = ctx.player.y - sy;
-    if (Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.9) {
+    const onStairs = Math.sqrt(dx * dx + dy * dy) < TILE_SIZE * 0.9;
+    if (!onStairs) this._awaitStepOff = false;
+    if (onStairs) {
       if (ctx.currentFloor === 1) {
-        // Show rest dialog before leaving the dungeon
-        if (ctx.scene.time.now >= this._restBlockedUntil) this.showRestDialog();
+        // Show rest dialog before leaving the dungeon (not again until the player steps off, after Esc)
+        if (ctx.scene.time.now >= this._restBlockedUntil && !this._awaitStepOff) this.showRestDialog();
       } else {
         // Mid-dungeon ascent: save this floor then go up
         this.saveCurrentFloor();
@@ -282,9 +285,21 @@ export class FloorController {
       stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
 
-    els.push(scene.add.text(cx, cy - 76, 'Choose how you rest before leaving:', {
-      fontSize: '12px', color: '#888899', fontFamily: 'monospace',
+    els.push(scene.add.text(cx, cy - 76, '1: short rest   2: long rest   Esc: stay in the dungeon', {
+      fontSize: '13px', color: '#aab0cc', fontFamily: 'monospace',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(D));
+
+    // Keys as well as the mouse, and a way back out: walking over the stairs up should not force you to leave.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.code === 'Digit1') { e.preventDefault(); this.doRest('short'); }
+      else if (e.code === 'Digit2') { e.preventDefault(); this.doRest('long'); }
+      else if (e.code === 'Escape') { e.preventDefault(); this.stayInDungeon(); }
+    };
+    window.addEventListener('keydown', onKey);
+    const keyHolder = scene.add.zone(0, 0, 1, 1);
+    keyHolder.once('destroy', () => window.removeEventListener('keydown', onKey));
+    els.push(keyHolder);
 
     // Short Rest card
     this.addRestCard(cx - 135, cy + 20, '⚕ SHORT REST', [
@@ -403,6 +418,14 @@ export class FloorController {
         ctx.scene.scene.start("TavernScene", { persistedStats, saveSlot: ctx.saveSlot });
       }
     });
+  }
+
+  /** Esc on the rest dialog: close it and do not offer it again until the player has stepped off the stairs. */
+  private stayInDungeon() {
+    if (!this._restDialogOpen) return;
+    this.closeRestDialog();
+    this._awaitStepOff = true;
+    this.ctx.status('You turn back into the dark.');
   }
 
   private closeRestDialog() {
