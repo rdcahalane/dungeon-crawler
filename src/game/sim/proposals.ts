@@ -44,6 +44,13 @@ export const PROPOSALS: Record<string, SimOverrides> = {
     { kind: 'paralysis', save: 'death', durationMs: 2000 },
     { kind: 'summon', monster: 'SKELETON', everyMs: 6000, maxAlive: 6 }, phases(3, 2, 0.7),
   ]),
+  // Between the light and the recommended king (2026-11-14): more hit points and adds, the touch and hold as they are.
+  kingMid: king({ hpDice: '12d8+90', attacks: [{ name: 'Crown touch', dice: '1d10', bonus: 3 }], attackCooldownMs: 1200 }, [
+    { kind: 'summon', monster: 'SKELETON', everyMs: 8000, maxAlive: 5 }, phases(2, 1, 0.75),
+  ]),
+  kingMid2: king({ hpDice: '12d8+120', attacks: [{ name: 'Crown touch', dice: '1d10', bonus: 3 }], attackCooldownMs: 1200 }, [
+    { kind: 'summon', monster: 'SKELETON', everyMs: 7000, maxAlive: 5 }, phases(3, 1, 0.7),
+  ]),
   kingHarder: king({ hpDice: '12d8+48', attackCooldownMs: 1100 }, [
     { kind: 'summon', monster: 'SKELETON', everyMs: 6000, maxAlive: 6 }, phases(3, 2, 0.6),
   ]),

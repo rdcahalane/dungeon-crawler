@@ -295,23 +295,25 @@ export const MONSTERS: Record<MonsterKey, MonsterDef> = {
     special: [{ kind: 'erratic' }],
     textureKey: 'enemy_giant_bat', size: 16,
   }),
+  // Tuned 2026-11-14 with the balance sim (proposal kingMid2): level-11 found-gear win rate about 95% fighter and
+  // cleric, 77% wizard, 42% thief; the fight runs 16 to 23 seconds instead of 7.
   HOLLOW_KING: monster({
-    key: 'HOLLOW_KING', name: 'Hollow King', hd: 12, hpDice: '12d8', ac: 0,
+    key: 'HOLLOW_KING', name: 'Hollow King', hd: 12, hpDice: '12d8+120', ac: 0,
     attacks: [
-      { name: 'Crown touch', dice: '1d10', bonus: 2 },
+      { name: 'Crown touch', dice: '1d10', bonus: 3 },
     ],
-    speed: 55, aggroRange: 320, attackRange: 28, attackCooldownMs: 1400,
+    speed: 55, aggroRange: 320, attackRange: 28, attackCooldownMs: 1200,
     xp: 2500, undead: true, boss: true, morale: 12, minFloor: 12,
     special: [
       { kind: 'paralysis', save: 'death', durationMs: 3000 },
       { kind: 'immune_normal_weapons', minPlus: 1 },
       { kind: 'unturnable' },
       { kind: 'caster', spells: ['magic_missile', 'hold_person', 'fireball'], cooldownMs: 5000 },
-      { kind: 'summon', monster: 'SKELETON', everyMs: 12000, maxAlive: 4 },
+      { kind: 'summon', monster: 'SKELETON', everyMs: 7000, maxAlive: 5 },
       {
         kind: 'phases',
         phases: [
-          { hpBelowPct: 66, label: 'The Gathering Dark', summon: 'GHOUL', summonCount: 2, message: 'The crown hums and the dead rise to serve.' },
+          { hpBelowPct: 66, label: 'The Gathering Dark', summon: 'GHOUL', summonCount: 3, message: 'The crown hums and the dead rise to serve.' },
           { hpBelowPct: 33, label: 'The Burning Crown', speedMult: 1.4, cooldownMult: 0.7, summon: 'WRAITH', summonCount: 1, message: 'The Hollow King burns from within and the tomb shudders.' },
         ],
       },

@@ -466,6 +466,16 @@ describe('starter kits and weight', () => {
 });
 
 describe('shop and value', () => {
+  it('offers a +1 version of the class weapon from level 3', () => {
+    const want: Record<string, string> = { fighter: 'long_sword', thief: 'short_sword', cleric: 'mace', wizard: 'dagger' };
+    for (const [cls, key] of Object.entries(want)) {
+      const plusOne = (lv: number) => shopStock(lv, mulberry32(3), cls)
+        .some((e) => e.item.defKey === key && e.item.plus === 1 && e.item.identified && !e.item.cursed);
+      expect(plusOne(2)).toBe(false);
+      expect(plusOne(3)).toBe(true);
+    }
+  });
+
   it('stocks more as level rises and buy/sell move gold', () => {
     const lo = shopStock(1, mulberry32(1));
     const hi = shopStock(8, mulberry32(1));

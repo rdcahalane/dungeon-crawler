@@ -21,7 +21,10 @@ export const STAPLE_KEYS: readonly string[] = [
  * Tavern stock for a character level. Staples always; heavier armor and better kit unlock by level;
  * a few identified magic items from level 3. Never sells cursed goods.
  */
-export function shopStock(level: number, rng: Rng): ShopEntry[] {
+/** The weapon each class starts with, offered at +1 from level 3 (see `shopStock`). */
+const CLASS_WEAPON: Record<string, string> = { fighter: 'long_sword', thief: 'short_sword', cleric: 'mace', wizard: 'dagger' };
+
+export function shopStock(level: number, rng: Rng, classKey?: string): ShopEntry[] {
   const lv = Math.max(1, Math.floor(level));
   const out: ShopEntry[] = [];
   const push = (item: ItemInstance): void => { out.push({ item, unitPrice: buyValue(item) }); };
@@ -42,6 +45,18 @@ export function shopStock(level: number, rng: Rng): ShopEntry[] {
     const item = instantiate(key, newId(rng));
     item.quantity = Math.min(d.stackLimit, Math.max(1, d.shop?.qty ?? 3));
     push(item);
+  }
+
+  // From level 3 a +1 version of the class's own weapon is always on the shelf. Gargoyles (floor 6), wights and
+  // wraiths cannot be hurt without one; the balance sim showed most deep-floor deaths were characters left with
+  // nothing that could hurt what was in front of them (docs/balance-report.md, 2026-11-14).
+  const weaponKey = classKey ? CLASS_WEAPON[classKey] : undefined;
+  if (lv >= 3 && weaponKey) {
+    const w = instantiate(weaponKey, newId(rng));
+    w.rarity = 'magic';
+    w.plus = 1;
+    w.identified = true;
+    push(w);
   }
 
   const magicCount = lv < 3 ? 0 : Math.min(4, 1 + Math.floor((lv - 3) / 3));

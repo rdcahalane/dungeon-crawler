@@ -606,7 +606,7 @@ export class TavernScene extends Phaser.Scene {
       player: this.player,
       stock: () => {
         // Level in, mathRng out: the shelf is rolled once per visit.
-        if (!this.stockCache) this.stockCache = shopStock(this.playerStats.level, mathRng);
+        if (!this.stockCache) this.stockCache = shopStock(this.playerStats.level, mathRng, this.playerStats.classKey);
         return this.stockCache;
       },
       refresh: () => this.emitHUD(),
