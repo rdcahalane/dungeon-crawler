@@ -3,6 +3,8 @@
  * Pure data and parsing; no WebAudio and no Phaser, so tests can import it.
  */
 
+import { BED_NAMES, MUSIC, type MusicBed } from "./musicData";
+
 export type Wave = "square" | "triangle" | "saw" | "noise";
 export type NoiseFilter = "lowpass" | "highpass" | "bandpass";
 
@@ -57,8 +59,11 @@ export const SFX_KEYS = [
 
 export type SfxKey = (typeof SFX_KEYS)[number];
 
-export const MUSIC_BEDS = ["tavern", "dungeon", "tomb"] as const;
-export type MusicBed = (typeof MUSIC_BEDS)[number];
+/** Every music bed name (the gallery builds one button per entry). */
+export const MUSIC_BEDS = BED_NAMES;
+export { MUSIC };
+export type { MusicBed };
+export type { BedDef, SectionDef, TrackDef } from "./musicData";
 
 const sq = (f0: number, f1: number | undefined, dur: number, vol: number, delay = 0): Voice => ({
   wave: "square",
@@ -160,112 +165,6 @@ export const EFFECTS: Record<SfxKey, Voice[]> = {
   ],
 };
 
-// ── music beds ──────────────────────────────────────────────────────────────
-
-export interface MusicTrack {
-  wave: "square" | "triangle" | "noise";
-  vol: number;
-  /**
-   * Space-separated steps. Note names like C4, F#3, Bb2; "." rest; "-" sustain
-   * the previous note; "x" is a noise tick (noise tracks only).
-   */
-  notes: string;
-}
-
-export interface MusicBedDef {
-  bpm: number;
-  /** Steps per beat (2 = eighth notes). */
-  stepsPerBeat: number;
-  tracks: MusicTrack[];
-}
-
-export const MUSIC: Record<MusicBed, MusicBedDef> = {
-  // A jaunty eight-bar jig in C, then a turn through F and G.
-  tavern: {
-    bpm: 128,
-    stepsPerBeat: 2,
-    tracks: [
-      {
-        wave: "square",
-        vol: 0.07,
-        notes:
-          "C5 E5 G5 E5 C5 . D5 E5  F5 A5 G5 F5 E5 . D5 .  G5 E5 C5 E5 G5 . A5 G5  F5 D5 B4 D5 C5 - - . " +
-          "E5 G5 C6 G5 E5 . F5 G5  A5 C6 B5 A5 G5 . F5 .  E5 C5 D5 E5 F5 E5 D5 B4  C5 - - . C5 - - .",
-      },
-      {
-        wave: "triangle",
-        vol: 0.16,
-        notes:
-          "C3 . G3 . C3 . G3 .  F3 . C4 . F3 . C4 .  C3 . G3 . C3 . E3 .  G2 . D3 . G2 . D3 . " +
-          "C3 . G3 . C3 . G3 .  F3 . C4 . F3 . C4 .  A2 . E3 . G2 . D3 .  C3 . G3 . C3 - - .",
-      },
-      {
-        wave: "noise",
-        vol: 0.05,
-        notes:
-          "x . . . x . . .  x . . . x . . .  x . . . x . . .  x . . . x . x . " +
-          "x . . . x . . .  x . . . x . . .  x . . . x . . .  x . . . x . x .",
-      },
-    ],
-  },
-  // Slow minor drone with a sparse theme and the odd drip.
-  dungeon: {
-    bpm: 66,
-    stepsPerBeat: 2,
-    tracks: [
-      {
-        wave: "square",
-        vol: 0.045,
-        notes:
-          "A3 - - - . . E4 -  . . D4 - . . . .  C4 - - - B3 - . .  A3 - - - - - . . " +
-          "A3 - - - . . F4 -  . . E4 - . . . .  D4 - - - C4 - . .  B3 - - - - - . .",
-      },
-      {
-        wave: "triangle",
-        vol: 0.18,
-        notes:
-          "A1 - - - - - - -  - - - - - - - -  F1 - - - - - - -  E1 - - - - - - - " +
-          "A1 - - - - - - -  - - - - - - - -  D1 - - - - - - -  E1 - - - - - - -",
-      },
-      {
-        wave: "triangle",
-        vol: 0.025,
-        notes:
-          ". . . . . . . .  . . A5 . . . . .  . . . . . . . .  . . . . . E5 . . " +
-          ". . . . . . . .  . . . . D5 . . .  . . . . . . . .  . . . . . . C5 .",
-      },
-    ],
-  },
-  // Slower, Phrygian, with a pulsing fifth: the tomb proper.
-  tomb: {
-    bpm: 52,
-    stepsPerBeat: 2,
-    tracks: [
-      {
-        wave: "square",
-        vol: 0.04,
-        notes:
-          "E3 F3 E3 . . . B3 -  . . C4 B3 . . . .  A3 - G3 - F3 - E3 -  . . . . . . . . " +
-          "E3 F3 E3 . . . B3 -  . . C4 D4 . . . .  E4 - D4 - C4 - B3 -  - - - - . . . .",
-      },
-      {
-        wave: "triangle",
-        vol: 0.17,
-        notes:
-          "E2 - - - B2 - - -  E2 - - - B2 - - -  C2 - - - G2 - - -  B1 - - - F#2 - - - " +
-          "E2 - - - B2 - - -  E2 - - - B2 - - -  A1 - - - E2 - - -  B1 - - - B2 - - -",
-      },
-      {
-        wave: "noise",
-        vol: 0.04,
-        notes:
-          "x . . . . . . .  . . . . . . . .  . . . . . . . .  . . . . . . . . " +
-          "x . . . . . . .  . . . . . . . .  . . . . x . . .  . . . . . . . .",
-      },
-    ],
-  },
-};
-
 // ── parsing ────────────────────────────────────────────────────────────────
 
 const SEMI: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -289,7 +188,7 @@ export interface NoteEvent {
   start: number;
   /** Length in steps (sustains extend it). */
   len: number;
-  /** MIDI note, or -1 for a noise tick. */
+  /** MIDI note, or -1 hat, -2 kick, -3 snare for noise tracks. */
   midi: number;
 }
 
@@ -309,8 +208,8 @@ export function parseTrack(notes: string): NoteEvent[] {
       if (last && last.start + last.len === i) last.len += 1;
       return;
     }
-    if (tok === "x") {
-      out.push({ start: i, len: 1, midi: -1 });
+    if (tok === "x" || tok === "k" || tok === "s") {
+      out.push({ start: i, len: 1, midi: tok === "x" ? -1 : tok === "k" ? -2 : -3 });
       return;
     }
     const midi = noteToMidi(tok);
@@ -320,7 +219,3 @@ export function parseTrack(notes: string): NoteEvent[] {
   return out;
 }
 
-/** Number of steps in a bed (all tracks must agree). */
-export function bedLength(bed: MusicBedDef): number {
-  return trackTokens(bed.tracks[0].notes).length;
-}

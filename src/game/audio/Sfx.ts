@@ -12,15 +12,14 @@ import {
   MUSIC,
   MUSIC_BEDS,
   SFX_KEYS,
-  bedLength,
   midiToHz,
-  parseTrack,
   type MusicBed,
-  type MusicBedDef,
   type NoteEvent,
   type SfxKey,
   type Voice,
 } from "./sfxData";
+import { BedPlanner, stepSeconds, type Segment } from "./musicPlan";
+import type { BedDef, TrackDef } from "./musicData";
 
 export { SFX_KEYS, MUSIC_BEDS };
 export type { SfxKey, MusicBed };
@@ -35,6 +34,32 @@ function audioCtor(): AudioCtor | undefined {
 const LOOKAHEAD_S = 0.3;
 const TICK_MS = 90;
 const MIN_REPEAT_S = 0.03;
+/** Seconds one bed takes to fade out as the next fades in. */
+const CROSSFADE_S = 1.5;
+/** Fade for the very first bed, and for music(null). */
+const FADE_IN_S = 0.4;
+const FADE_STOP_S = 0.6;
+const COMBAT_IN_S = 0.8;
+const COMBAT_OUT_S = 2.5;
+/** How long the combat layer lingers after the last combat(false) or pulse. */
+const COMBAT_GRACE_MS = 3500;
+const COMBAT_PULSE_MS = 6000;
+/** Never more than this many fading beds alive at once. */
+const MAX_FADING = 2;
+
+/** One bed being played: its own gain (for fades), planner and clock. */
+interface Player {
+  bed: MusicBed;
+  def: BedDef;
+  planner: BedPlanner;
+  gain: GainNode;
+  seg: Segment | null;
+  stepInSeg: number;
+  nextStepTime: number;
+  stepDur: number;
+  /** Audio-clock time after which a fading player is dropped. */
+  endAt: number | null;
+}
 
 class SfxEngine {
   private ctx: AudioContext | null = null;
@@ -45,13 +70,13 @@ class SfxEngine {
 
   private volume = 0.5;
   private muted = false;
-  private wantedBed: MusicBed | null = null;
-  private playingBed: MusicBed | null = null;
-  private parsed: Array<{ wave: string; vol: number; events: Map<number, NoteEvent> }> = [];
-  private bedDef: MusicBedDef | null = null;
-  private bedSteps = 0;
-  private stepIdx = 0;
-  private nextStepTime = 0;
+  private requestedBed: MusicBed | null = null;
+  private bossOn = false;
+  private combatUntil = 0;
+  private musicSeed: number | null = null;
+  private main: Player | null = null;
+  private combatPlayer: Player | null = null;
+  private fading: Player[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastPlayed = new Map<string, number>();
   private listening = false;
@@ -72,8 +97,18 @@ class SfxEngine {
     if (!Ctor) return;
     try {
       if (!this.ctx) this.build(Ctor);
-      if (this.ctx && this.ctx.state === "suspended") void this.ctx.resume();
-      if (this.wantedBed && this.playingBed !== this.wantedBed) this.startBed(this.wantedBed);
+      if (this.ctx && this.ctx.state === "suspended") {
+        // the context is only "running" once resume settles, so start the bed then
+        void this.ctx.resume().then(
+          () => {
+            this.applyBed();
+            this.syncCombat();
+          },
+          () => undefined,
+        );
+      }
+      this.applyBed();
+      this.syncCombat();
     } catch {
       /* audio unavailable; stay silent */
     }
@@ -97,9 +132,9 @@ class SfxEngine {
     return this.muted;
   }
 
-  /** The bed currently requested (may be waiting on unlock). */
+  /** The bed currently requested (may be waiting on unlock); the boss bed while a boss fight is on. */
   currentBed(): MusicBed | null {
-    return this.wantedBed;
+    return this.effectiveBed();
   }
 
   /** Play a named effect. Unknown keys are ignored. */
@@ -122,16 +157,51 @@ class SfxEngine {
     }
   }
 
-  /** Start a looping bed, or stop music with null. */
+  /** Start a looping bed (crossfading from the last one), or stop music with null. */
   music(bed: MusicBed | null): void {
-    this.wantedBed = bed;
+    this.requestedBed = bed;
     if (bed === null) {
-      this.stopBed();
+      this.bossOn = false;
+      this.combatUntil = 0;
+      this.applyBed();
+      this.syncCombat();
       return;
     }
     this.watchForGesture();
-    if (this.playingBed === bed) return;
-    if (this.ctx && this.ctx.state === "running") this.startBed(bed);
+    this.applyBed();
+  }
+
+  /** Fix the seed the next bed will vary with (tests, debugging); null goes back to a random one. */
+  setMusicSeed(seed: number | null): void {
+    this.musicSeed = seed === null ? null : seed >>> 0;
+  }
+
+  /**
+   * Combat layer on top of the floor bed. `true` holds it until `false`; after `false` it lingers a few
+   * seconds and fades out. Call with `true` while monsters are hunting the player.
+   */
+  combat(on: boolean): void {
+    const now = Date.now();
+    if (on) this.combatUntil = Number.POSITIVE_INFINITY;
+    else if (this.combatUntil > now) this.combatUntil = Math.min(this.combatUntil, now + COMBAT_GRACE_MS);
+    this.watchForGesture();
+    this.syncCombat();
+  }
+
+  /** Combat for the next few seconds; call again on every hit or hostile sighting to keep it going. */
+  combatPulse(holdMs = COMBAT_PULSE_MS): void {
+    const until = Date.now() + holdMs;
+    if (until > this.combatUntil) this.combatUntil = until;
+    this.watchForGesture();
+    this.syncCombat();
+  }
+
+  /** The boss bed replaces the floor bed while on; the floor bed returns when off. */
+  boss(on: boolean): void {
+    if (this.bossOn === on) return;
+    this.bossOn = on;
+    this.applyBed();
+    this.syncCombat();
   }
 
   // ── internals ────────────────────────────────────────────────────────────
@@ -202,6 +272,11 @@ class SfxEngine {
       f.Q.value = f.type === "bandpass" ? 2 : 0.7;
       src.connect(f);
       f.connect(g);
+      src.onended = () => {
+        src.disconnect();
+        f.disconnect();
+        g.disconnect();
+      };
       src.start(t0, Math.random() * 0.5);
       src.stop(end + 0.02);
       return;
@@ -211,33 +286,96 @@ class SfxEngine {
     osc.frequency.setValueAtTime(v.f0 * drift, t0);
     if (v.f1 !== undefined) osc.frequency.exponentialRampToValueAtTime(Math.max(20, v.f1 * drift), end);
     osc.connect(g);
+    osc.onended = () => {
+      osc.disconnect();
+      g.disconnect();
+    };
     osc.start(t0);
     osc.stop(end + 0.02);
   }
 
-  private startBed(bed: MusicBed): void {
-    const ctx = this.ctx;
-    if (!ctx) return;
-    this.stopTimer();
-    const def = MUSIC[bed];
-    this.bedDef = def;
-    this.bedSteps = bedLength(def);
-    this.parsed = def.tracks.map((t) => {
-      const events = new Map<number, NoteEvent>();
-      for (const e of parseTrack(t.notes)) events.set(e.start, e);
-      return { wave: t.wave, vol: t.vol, events };
-    });
-    this.playingBed = bed;
-    this.stepIdx = 0;
-    this.nextStepTime = ctx.currentTime + 0.08;
-    this.timer = setInterval(() => this.pump(), TICK_MS);
-    this.pump();
+  private effectiveBed(): MusicBed | null {
+    return this.bossOn && this.requestedBed !== null ? "boss" : this.requestedBed;
   }
 
-  private stopBed(): void {
-    this.stopTimer();
-    this.playingBed = null;
-    this.bedDef = null;
+  private ready(): boolean {
+    return this.ctx !== null && this.ctx.state === "running" && this.musicBus !== null;
+  }
+
+  /** Make the playing bed match the wanted one, crossfading if it changed. */
+  private applyBed(): void {
+    if (!this.ready()) return;
+    const want = this.effectiveBed();
+    if (this.main?.bed === want) return;
+    if (!this.main && want === null) return;
+    const fadeIn = this.main ? CROSSFADE_S : FADE_IN_S;
+    if (this.main) this.retire(this.main, want === null ? FADE_STOP_S : CROSSFADE_S);
+    this.main = want ? this.spawn(want, fadeIn, 1) : null;
+    this.ensureTimer();
+  }
+
+  /** Bring the combat layer in or out to match the wanted state. */
+  private syncCombat(): void {
+    if (!this.ready()) return;
+    const bed = this.effectiveBed();
+    const wanted = Date.now() < this.combatUntil && this.main !== null && bed !== "boss" && bed !== "combat";
+    if (wanted && !this.combatPlayer) {
+      this.combatPlayer = this.spawn("combat", COMBAT_IN_S, 0.9);
+      this.ensureTimer();
+    } else if (!wanted && this.combatPlayer) {
+      this.retire(this.combatPlayer, COMBAT_OUT_S);
+      this.combatPlayer = null;
+    }
+  }
+
+  private spawn(bed: MusicBed, fadeInS: number, level: number): Player {
+    const ctx = this.ctx as AudioContext;
+    const def = MUSIC[bed];
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(level, now + fadeInS);
+    gain.connect(this.musicBus as GainNode);
+    const seed = this.musicSeed ?? (Math.random() * 4294967296) >>> 0;
+    const p: Player = {
+      bed,
+      def,
+      planner: new BedPlanner(def, seed),
+      gain,
+      seg: null,
+      stepInSeg: 0,
+      nextStepTime: now + 0.08,
+      stepDur: stepSeconds(def),
+      endAt: null,
+    };
+    this.pump(p);
+    return p;
+  }
+
+  /** Fade a player out; it keeps playing until the fade ends, then is disconnected. */
+  private retire(p: Player, secs: number): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const from = Math.max(0.0001, p.gain.gain.value);
+    p.gain.gain.cancelScheduledValues(now);
+    p.gain.gain.setValueAtTime(from, now);
+    p.gain.gain.linearRampToValueAtTime(0.0001, now + secs);
+    p.endAt = now + secs + 0.1;
+    this.fading.push(p);
+    while (this.fading.length > MAX_FADING) this.drop(this.fading.shift() as Player);
+  }
+
+  private drop(p: Player): void {
+    try {
+      p.gain.disconnect();
+    } catch {
+      /* already gone */
+    }
+  }
+
+  private ensureTimer(): void {
+    if (this.timer === null) this.timer = setInterval(() => this.tick(), TICK_MS);
   }
 
   private stopTimer(): void {
@@ -247,38 +385,69 @@ class SfxEngine {
     }
   }
 
-  /** Schedule steps that fall inside the lookahead window. */
-  private pump(): void {
+  private tick(): void {
     const ctx = this.ctx;
-    const def = this.bedDef;
-    if (!ctx || !def || !this.musicBus) return;
-    const stepDur = 60 / def.bpm / def.stepsPerBeat;
-    // if the tab slept, don't try to catch up on a backlog
-    if (this.nextStepTime < ctx.currentTime - 0.5) this.nextStepTime = ctx.currentTime + 0.05;
-    while (this.nextStepTime < ctx.currentTime + LOOKAHEAD_S) {
-      for (const tr of this.parsed) {
-        const ev = tr.events.get(this.stepIdx);
-        if (!ev) continue;
-        const dur = Math.max(0.04, ev.len * stepDur * 0.92);
-        if (tr.wave === "noise") {
-          this.voice(
-            { wave: "noise", f0: 6000, f1: 2500, dur: 0.05, vol: tr.vol * 3, filter: "highpass" },
-            this.nextStepTime,
-            1,
-            this.musicBus,
-          );
-        } else {
-          this.voice(
-            { wave: tr.wave as "square" | "triangle", f0: midiToHz(ev.midi), dur, vol: tr.vol, sustain: ev.len > 1 },
-            this.nextStepTime,
-            1,
-            this.musicBus,
-          );
-        }
+    if (!ctx) return;
+    if (this.main) this.pump(this.main);
+    if (this.combatPlayer) this.pump(this.combatPlayer);
+    for (const p of this.fading) this.pump(p);
+    this.fading = this.fading.filter((p) => {
+      if (p.endAt !== null && ctx.currentTime > p.endAt) {
+        this.drop(p);
+        return false;
       }
-      this.nextStepTime += stepDur;
-      this.stepIdx = (this.stepIdx + 1) % this.bedSteps;
+      return true;
+    });
+    this.syncCombat();
+    if (!this.main && !this.combatPlayer && this.fading.length === 0) this.stopTimer();
+  }
+
+  /** Schedule the steps of one player that fall inside the lookahead window. */
+  private pump(p: Player): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    // if the tab slept, don't try to catch up on a backlog
+    if (p.nextStepTime < ctx.currentTime - 0.5) p.nextStepTime = ctx.currentTime + 0.05;
+    while (p.nextStepTime < ctx.currentTime + LOOKAHEAD_S) {
+      if (!p.seg || p.stepInSeg >= p.seg.steps) {
+        p.seg = p.planner.next();
+        p.stepInSeg = 0;
+      }
+      const seg = p.seg;
+      p.def.tracks.forEach((tr, i) => {
+        const ev = seg.events[i].get(p.stepInSeg);
+        if (ev) this.note(tr, ev, p.nextStepTime, p.stepDur, p.gain);
+      });
+      p.stepInSeg += 1;
+      p.nextStepTime += p.stepDur;
     }
+  }
+
+  /** One music note or percussion hit. */
+  private note(tr: TrackDef, ev: NoteEvent, t: number, stepDur: number, bus: GainNode): void {
+    if (tr.wave === "noise") {
+      if (ev.midi === -2) {
+        this.voice({ wave: "triangle", f0: 130, f1: 45, dur: 0.13, vol: tr.vol * 3.2 }, t, 1, bus);
+        this.voice({ wave: "noise", f0: 420, f1: 110, dur: 0.07, vol: tr.vol * 1.6, filter: "lowpass" }, t, 1, bus);
+      } else if (ev.midi === -3) {
+        this.voice({ wave: "noise", f0: 2400, f1: 1000, dur: 0.1, vol: tr.vol * 3.4, filter: "bandpass" }, t, 1, bus);
+        this.voice({ wave: "triangle", f0: 200, f1: 120, dur: 0.06, vol: tr.vol * 1.2 }, t, 1, bus);
+      } else {
+        this.voice({ wave: "noise", f0: 6000, f1: 2500, dur: 0.05, vol: tr.vol * 3, filter: "highpass" }, t, 1, bus);
+      }
+      return;
+    }
+    const hz = midiToHz(ev.midi);
+    if (tr.wave === "bell") {
+      // a strike of noise, then a decaying square, its inharmonic partner and a low body
+      this.voice({ wave: "noise", f0: 1800, f1: 700, dur: 0.09, vol: tr.vol * 2.2, filter: "bandpass" }, t, 1, bus);
+      this.voice({ wave: "square", f0: hz, dur: 2.4, vol: tr.vol }, t, 1, bus);
+      this.voice({ wave: "square", f0: hz * 2.76, dur: 1.2, vol: tr.vol * 0.35 }, t, 1, bus);
+      this.voice({ wave: "triangle", f0: hz / 2, dur: 2.6, vol: tr.vol * 1.4 }, t, 1, bus);
+      return;
+    }
+    const dur = Math.max(0.04, ev.len * stepDur * 0.92);
+    this.voice({ wave: tr.wave, f0: hz, dur, vol: tr.vol, sustain: ev.len > 1 }, t, 1, bus);
   }
 }
 
