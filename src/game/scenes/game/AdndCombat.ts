@@ -353,6 +353,14 @@ export function applyRest(
 }
 
 /** Percent roll for a wandering monster. */
+/**
+ * Odds (percent) that a wandering monster breaks a camp in the dungeon: the inn's long-rest odds, and worse the deeper
+ * you sleep. Floor 1 is 20%, floor 6 35%, floor 10 and below 45%.
+ */
+export function campInterruptPct(floor: number): number {
+  return Math.min(45, WANDER_CHANCE_LONG_PCT + 3 * Math.max(1, floor));
+}
+
 export function wanderingMonsterArrives(kind: 'short' | 'long', rng: Rng): boolean {
   const pct = kind === 'long' ? WANDER_CHANCE_LONG_PCT : WANDER_CHANCE_SHORT_PCT;
   return rng.next() * 100 < pct;

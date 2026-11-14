@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mulberry32, getMonster, Spellbook, getSpell, hitChance, type ClassKey, type Rng } from "../../rules";
 import { Inventory, makeItem, rollDrop, starterKit, PACK_SIZE, type ItemInstance } from "../../items";
 import {
-  REALTIME_TO_HIT_BONUS, applyDrain, applyRest, collectDrop, convertedHp, foeTagsFor, ignoresArmor,
+  REALTIME_TO_HIT_BONUS, applyDrain, applyRest, campInterruptPct, collectDrop, convertedHp, foeTagsFor, ignoresArmor,
   playerArmorClass, playerThac0, playerToHitBonus, resolveMonsterRound, resolvePlayerAttack, restoreDrain,
   selectHotkeySpells, selectSleepVictims, spellSlotViews, startingHp, wanderingMonsterArrives,
   type PlayerSheet,
@@ -333,5 +333,14 @@ describe("drain and rest", () => {
     expect(wanderingMonsterArrives("long", fixed(0.0))).toBe(true);
     expect(wanderingMonsterArrives("long", fixed(0.99))).toBe(false);
     expect(wanderingMonsterArrives("short", fixed(0.12))).toBe(false);
+  });
+});
+
+describe("camping in the dungeon", () => {
+  it("is riskier the deeper you sleep, and never worse than 45 in 100", () => {
+    expect(campInterruptPct(1)).toBe(20);
+    expect(campInterruptPct(6)).toBe(35);
+    expect(campInterruptPct(10)).toBe(45);
+    expect(campInterruptPct(12)).toBe(45);
   });
 });

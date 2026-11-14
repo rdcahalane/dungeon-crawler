@@ -3,7 +3,7 @@ import type { PlayerStats } from "../../entities/Player";
 import type { SerializedFloor } from "../../systems/DungeonGenerator";
 import { TILE_SIZE, TOMB_FLOOR, CHARACTER_CLASSES } from "../../constants";
 import { mathRng, titleFor } from "../../rules";
-import { applyRest, wanderingMonsterArrives } from "./AdndCombat";
+import { applyRest, campInterruptPct, wanderingMonsterArrives } from "./AdndCombat";
 import { onFloorReached } from "../../systems/QuestSystem";
 import { saveGame } from "../../systems/SaveStore";
 import { graveyard, causePhrase, trapCause, type FallenRecord } from "../../systems/Graveyard";
@@ -75,19 +75,76 @@ export class FloorController {
 
   // ── R: why you cannot rest here ────────────────────────────────────────────
 
-  /** R used to do nothing. Rest happens at the tavern, or at the stairs up on level 1; say so. */
+  /**
+   * R: make camp in this floor's camp room (the room you arrived in), or say where you can rest. Camping costs a
+   * ration, gives back half the missing hit points and the spells, and a wandering monster may break it, more often
+   * the deeper you are. The first R asks; a second R within a few seconds makes camp.
+   */
   private explainRest() {
     const ctx = this.ctx;
     if (ctx.modalOpen || this._restDialogOpen || ctx.rooms.isModalOpen || ctx.player.stats.hp <= 0) return;
+    if (this.inCampRoom() && ctx.currentFloor < TOMB_FLOOR) {
+      this.tryCamp();
+      return;
+    }
     const up = ctx.dungeon.stairsUpPos;
     const nearUp = Math.hypot(ctx.player.x - (up.tx + 0.5) * TILE_SIZE, ctx.player.y - (up.ty + 0.5) * TILE_SIZE) < TILE_SIZE * 6;
     if (ctx.currentFloor === 1 && nearUp) {
       ctx.status("The stairs up are close. Step onto them to rest, short or long.");
     } else if (ctx.currentFloor === 1) {
       ctx.status("You cannot rest down here, the dark has teeth. Rest at the stairs up on this level, or sleep at the inn.");
+    } else if (ctx.currentFloor >= TOMB_FLOOR) {
+      ctx.status("Nobody sleeps in the Hollow King's tomb. Read a recall scroll, or climb back up.");
     } else {
-      ctx.status(`You cannot rest on level ${ctx.currentFloor}, the dark has teeth. Climb to level 1 and its stairs up, read a recall scroll, or sleep at the inn.`);
+      ctx.status(`Not here: the dark has teeth. Make camp in the room you came down into (marked CAMP on the map), or sleep at the inn.`);
     }
+  }
+
+  private _campAskedAt = -1e9;
+
+  private inCampRoom(): boolean {
+    const ctx = this.ctx;
+    const camp = ctx.dungeon.rooms[0];
+    if (!camp) return false;
+    const tx = Math.floor(ctx.player.x / TILE_SIZE);
+    const ty = Math.floor(ctx.player.y / TILE_SIZE);
+    return tx >= camp.x && tx < camp.x + camp.w && ty >= camp.y && ty < camp.y + camp.h;
+  }
+
+  private tryCamp() {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    const s = player.stats;
+    const now = ctx.scene.time.now;
+    const near = ctx.enemies.some((e) => e.active && e.hp > 0 && Math.hypot(e.x - player.x, e.y - player.y) < TILE_SIZE * 8);
+    if (near) { ctx.status("Not with something that close. Deal with it first."); return; }
+    if (player.inventory.count('ration') < 1) { ctx.status("You have nothing to eat. Nobody sleeps well down here hungry; go back up or buy rations."); return; }
+    if (now < this._restBlockedUntil) { ctx.status("Too soon: your heart is still pounding."); return; }
+    if (now - this._campAskedAt > 4000) {
+      this._campAskedAt = now;
+      const pct = campInterruptPct(ctx.currentFloor);
+      ctx.status(`Make camp? It costs a ration, and about ${pct} times in a hundred something finds you. R again to sleep.`);
+      return;
+    }
+    this._campAskedAt = -1e9;
+    player.inventory.consume('ration', 1);
+    if (mathRng.next() * 100 < campInterruptPct(ctx.currentFloor)) {
+      this._restBlockedUntil = now + 4000;
+      const foe = ctx.combat.spawnWanderingMonster();
+      ctx.status(foe ? "You wake to the scrape of claws on stone. Your camp is broken, the ration wasted." : "You start awake, sure you heard something. Nothing comes, but the night is lost.");
+      return;
+    }
+    const state = { hp: s.hp, maxHp: s.maxHp, drained: s.drained ?? 0 };
+    const summary = applyRest(state, player.spellbook, 'long', false);
+    s.hp = state.hp;
+    s.drained = state.drained;
+    player.removeEffect('POISONED');
+    player.recomputeDerived();
+    s.hp = Math.min(state.hp, s.maxHp);
+    ctx.status(`You sleep in the dark with one eye open: +${summary.healed} HP${summary.spellsRestored ? ', spells memorized again' : ''}.`);
+    ctx.bus.emit('rest');
+    ctx.emitHUD();
+    this.saveCurrentFloor();
   }
 
   // ── Stairs ────────────────────────────────────────────────────────────────

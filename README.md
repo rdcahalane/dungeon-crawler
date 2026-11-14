@@ -61,6 +61,7 @@ In development builds the running game is exposed as `window.__game`.
 ## The tavern
 
 - **Shop.** Talk to the innkeeper (E at the bar) and choose "Buy and sell gear". Two tabs, BUY and SELL (Tab switches; arrows pick, Enter buys or sells one, click a row then the button). Torches, poles, rope, spikes, sacks, holy water, rations, thieves' tools, healing potions and recall scrolls are always on the shelf; weapons, armor and magic stock grow with your level. SELL lists your pack at what the merchant will pay.
+- **Camp.** Each floor's starting room is a camp (marked CAMP on the map). Press R there with no monster near, then R again: it costs a ration, gives back half the missing hit points and your spells, and a wandering monster may break it (20 in 100 on level 1, rising to 45 deep down). Not in the tomb.
 - **Inn.** Also at the bar: a room for the night costs 5 gp (full hit points, drained hit points mended, spell slots restored; casters get the spellbook open afterward), or sleep in the common room for free (half the missing hit points, spell slots restored).
 - **Notice board.** Accept quests; rewards are paid when you return.
 - Walk onto the glowing portal to go down. A scroll of recall brings you back.
