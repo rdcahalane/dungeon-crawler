@@ -5,6 +5,8 @@
 import * as Phaser from "phaser";
 import { Sfx } from "../../audio/Sfx";
 import { PanelBase } from "./PanelBase";
+import { HirePanel } from "./HirePanel";
+import { restParty } from "../../rules/hirelings";
 import type { TavernHost } from "./tavernHost";
 import { ROOM_PRICE_GP, innRest, type InnKind } from "../../systems/inn";
 import { LINE, UI, drawBox, label, pointIn, wrap } from "./theme";
@@ -12,14 +14,14 @@ import { mathRng } from "../../rules";
 import { vaultsForFloor } from "../../world/vaults";
 import { tellRumor } from "../../world/rumors";
 
-type Choice = "shop" | "room" | "common" | "gossip" | "leave";
+type Choice = "shop" | "room" | "common" | "gossip" | "hire" | "leave";
 
 /** A drink and an ear. Spent gold only: no experience either way. */
 export const DRINK_PRICE_GP = 2;
 
 interface Option { id: Choice; title: string; sub: string; enabled: boolean }
 
-const OPT_H = 46;
+const OPT_H = 44;
 const OPT_Y = 150;
 
 export class InnkeeperPanel extends PanelBase {
@@ -29,6 +31,7 @@ export class InnkeeperPanel extends PanelBase {
   /** The rumour just bought, wrapped. Shown in place of the greeting. */
   private rumor: string[] = [];
   private boxes: Array<{ x: number; y: number; w: number; h: number; index: number }> = [];
+  private hirePanel?: HirePanel;
 
   constructor(
     scene: Phaser.Scene,
@@ -48,6 +51,7 @@ export class InnkeeperPanel extends PanelBase {
       { id: "room", title: `ROOM FOR THE NIGHT (${ROOM_PRICE_GP} GP)`, sub: "FULL HP, DRAIN MENDED, SPELLS BACK", enabled: gold >= ROOM_PRICE_GP },
       { id: "common", title: "SLEEP IN THE COMMON ROOM (FREE)", sub: "HALF THE MISSING HP, SPELLS BACK", enabled: true },
       { id: "gossip", title: `BUY A DRINK AND LISTEN (${DRINK_PRICE_GP} GP)`, sub: "A RUMOUR ABOUT BELOW. TRUE, OR NOT", enabled: gold >= DRINK_PRICE_GP },
+      { id: "hire", title: "HIRE HELP", sub: "A TORCHBEARER OR A MAN-AT-ARMS", enabled: true },
       { id: "leave", title: "NEVER MIND", sub: "", enabled: true },
     ];
   }
@@ -74,7 +78,7 @@ export class InnkeeperPanel extends PanelBase {
     this.dyn.add(label(scene, x0, this.y + 38 + Math.max(2, greeting.length) * LINE + 6, `HP ${Math.ceil(s.hp)}/${s.maxHp}   GOLD ${s.gold}`, { color: UI.gold }));
 
     this.options().forEach((o, i) => {
-      const y = this.y + OPT_Y + i * (OPT_H + 6);
+      const y = this.y + OPT_Y + i * (OPT_H + 4);
       const picked = i === this.cursor;
       drawBox(g, x0, y, this.w - 40, OPT_H, picked ? UI.dusk : UI.ink, picked ? UI.gold : UI.slate, null);
       this.dyn.add(label(scene, x0 + 12, y + 8, `${i + 1} ${o.title}`, { color: o.enabled ? UI.white : UI.grey }));
@@ -101,6 +105,7 @@ export class InnkeeperPanel extends PanelBase {
       case "room": this.rest("room"); break;
       case "common": this.rest("common"); break;
       case "gossip": this.listen(); break;
+      case "hire": this.openHire(); break;
     }
   }
 
@@ -118,6 +123,28 @@ export class InnkeeperPanel extends PanelBase {
     Sfx.play("ui_select");
     this.host.refresh();
     this.render();
+  }
+
+  /**
+   * The hire panel takes this one's place. This panel is closed without calling `onClose`, so the HUD still counts a
+   * tavern panel as open (the world stays blocked) and Esc or X on the hire panel comes back here.
+   */
+  private openHire(): void {
+    Sfx.play("ui_select");
+    this.close();
+    this.hirePanel?.destroy();
+    this.hirePanel = new HirePanel(this.scene, this.host, () => {
+      this.hirePanel?.destroy();
+      this.hirePanel = undefined;
+      this.open();
+    });
+    this.hirePanel.open();
+  }
+
+  destroy(): void {
+    this.hirePanel?.destroy();
+    this.hirePanel = undefined;
+    super.destroy();
   }
 
   private rest(kind: InnKind): void {
@@ -143,6 +170,7 @@ export class InnkeeperPanel extends PanelBase {
     const parts = [`+${r.healed} HP`];
     if (r.drainRestored > 0) parts.push(`${r.drainRestored} drain mended`);
     if (r.spellsRestored) parts.push("spells back");
+    if (restParty(s.party, kind) > 0) parts.push("hirelings mended");
     this.host.say(kind === "room" ? `You sleep in a bed (-${r.cost} gp): ${parts.join(", ")}.` : `You doze by the fire: ${parts.join(", ")}.`);
     Sfx.play("heal");
     this.host.refresh();
@@ -162,7 +190,7 @@ export class InnkeeperPanel extends PanelBase {
       case "ArrowUp": this.cursor = (this.cursor + n - 1) % n; this.msg = ""; this.render(); break;
       case "ArrowDown": this.cursor = (this.cursor + 1) % n; this.msg = ""; this.render(); break;
       case "Enter": case "NumpadEnter": this.choose(this.cursor); break;
-      case "Digit1": case "Digit2": case "Digit3": case "Digit4": case "Digit5": this.choose(Number(e.code.slice(5)) - 1); break;
+      case "Digit1": case "Digit2": case "Digit3": case "Digit4": case "Digit5": case "Digit6": this.choose(Number(e.code.slice(5)) - 1); break;
       default: break;
     }
   }

@@ -17,6 +17,7 @@ import {
   abilityModifiers, intelligenceEffect, spellsFor,
 } from "../rules";
 import type { SpellbookData, SaveCategory, SaveResult } from "../rules";
+import { hirelingLightRadius, sanitizeParty, type HirelingState } from "../rules/hirelings";
 import {
   playerArmorClass, playerSave, saveTargets, legacySaveBonus, startingHp, levelUpHp, convertedHp,
   playerToHitBonus, BASE_SWING_MS, PLAYER_HIT_GRACE_MS, applyDrain, restoreDrain,
@@ -116,6 +117,8 @@ export interface PlayerStats {
   title?: string;
   /** One-time hints already shown to this character (message log). */
   seenHints?: string[];
+  /** Hirelings hired at the inn (D3). At most one torchbearer and one man-at-arms; absent on an old save. */
+  party?: HirelingState[];
 }
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -176,6 +179,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     if (persistedStats) {
       this.stats = persistedStats;
+      // Hirelings: an old save has none; a damaged one loses only the bad entries.
+      this.stats.party = sanitizeParty(this.stats.party);
       // Restore HP to at least 1
       if (this.stats.hp <= 0) this.stats.hp = 1;
     } else if (charData) {
@@ -424,7 +429,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Speed and light.
     const enc = inv.encumbrance(s.str);
     this._speedMult = enc.speedMult * (1 + eq.speedPct / 100);
-    this._lightRadius = Math.max(eq.lightRadius, this.lightBoost.ms > 0 ? this.lightBoost.radius : 0);
+    // A living torchbearer carries the light: his lit torch's radius, whatever the off hand holds.
+    this._lightRadius = Math.max(eq.lightRadius, this.lightBoost.ms > 0 ? this.lightBoost.radius : 0, hirelingLightRadius(s.party));
   }
 
   /** Sight radius in tiles: the held light (plus affixes), a light spell, else one tile of darkness. */
@@ -442,6 +448,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * hold it. Returns what happened so the caller can speak.
    */
   ensureLight(): 'lit' | 'equipped' | 'none' {
+    // His torchbearer holds the light, so the off hand stays free for a shield.
+    if (hirelingLightRadius(this.stats.party) > 0) return 'lit';
     const inv = this.inventory;
     const lit = (it: { defKey: string; charges?: number } | undefined) =>
       !!it && !!getDef(it.defKey).light && (it.charges ?? 1) > 0;
@@ -456,7 +464,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   /** Burn the held light, return true the moment it dies. Called once a frame by the combat controller. */
   burnLight(deltaMs: number): { burntOut: boolean } {
-    const r = this.inventory.burn(deltaMs / 1000);
+    // While a torchbearer lives the player's own torch is not the light, so it does not burn.
+    const r = hirelingLightRadius(this.stats.party) > 0 ? { burntOut: null } : this.inventory.burn(deltaMs / 1000);
     this._lightTimer += deltaMs;
     if (this.lightBoost.ms > 0) {
       this.lightBoost.ms = Math.max(0, this.lightBoost.ms - deltaMs);

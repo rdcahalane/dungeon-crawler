@@ -129,6 +129,64 @@ ACTOR_MAPS.npc = mirror([
 ]);
 ACTOR_MAPS.tavern_patron = recolor(ACTOR_MAPS.npc, { u: "j", e: "a" });
 
+// ── hirelings (4 colours each) ─────────────────────────────────────────────
+
+ACTOR_MAPS.hireling_torchbearer = stamp(
+  mirror([
+    E,
+    "......dd",
+    ".....ddd",
+    "....dqdq",
+    "....qqqq",
+    ".....qqq",
+    "...ggggg",
+    "..gggggg",
+    "..qggggg",
+    "..qggggg",
+    "...gggdd",
+    "...gggg.",
+    "....ddd.",
+    "....ddd.",
+    "...dddd.",
+    "...dddd.",
+  ]),
+  12,
+  0,
+  [
+    "..99",
+    "..99",
+    "..99",
+    "..d.",
+    "..d.",
+    ".qd.",
+    ".q..",
+  ],
+);
+
+ACTOR_MAPS.hireling_man_at_arms = stamp(
+  mirror([
+    E,
+    "......55",
+    ".....555",
+    "....5qdq",
+    "....5qqq",
+    ".....5qq",
+    "...44444",
+    "..444444",
+    "..q44444",
+    "..q44444",
+    "...44ddd",
+    "...4444.",
+    "....ddd.",
+    "....ddd.",
+    "...dddd.",
+    "...dddd.",
+  ]),
+  14,
+  0,
+  ["5", "5", "d", "d", "d", "d", "d", "d", "d", "d", "d", "d", "d", "d"],
+);
+
 // ── legacy monsters ────────────────────────────────────────────────────────
 
 ACTOR_MAPS.enemy_basic = mirror([

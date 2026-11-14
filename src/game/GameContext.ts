@@ -25,6 +25,7 @@ import type { FloatingTextController } from "./scenes/game/FloatingText";
 import type { MechanismController } from "./scenes/game/MechanismController";
 import type { InputController } from "./scenes/game/InputController";
 import type { WanderController } from "./scenes/game/WanderController";
+import type { PartyController } from "./scenes/game/PartyController";
 
 /** Per-floor state that survives leaving and re-entering a floor (written into `SerializedFloor`). */
 export interface FloorPersist {
@@ -114,6 +115,8 @@ export interface GameContext {
   mech: MechanismController;
   input: InputController;
   wander: WanderController;
+  /** Hired companions (D3). */
+  party: PartyController;
 }
 
 export type { PlayerStats };

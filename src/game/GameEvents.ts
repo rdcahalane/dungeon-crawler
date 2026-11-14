@@ -61,6 +61,10 @@ export interface GameEventMap {
   game_turn: { turn: number };
   /** The player walked onto the bones of an earlier character and took what they carried. */
   bones_claimed: { name: string; gold: number };
+  /** A hireling was killed. Gone for good. */
+  hireling_died: { kind: string; name: string; cause: string };
+  /** A hireling failed morale and left for good (torchbearer) or ran from the fight (man-at-arms, `lost` false). */
+  hireling_fled: { kind: string; name: string; lost: boolean };
 }
 
 export type GameEventName = keyof GameEventMap;
@@ -71,6 +75,7 @@ export const GAME_EVENT_NAMES: readonly GameEventName[] = [
   'heal', 'level_up', 'floor_enter', 'floor_exit', 'rest', 'ui_open', 'ui_close', 'status',
   'detect_traps', 'knock', 'item_dropped', 'torch_out', 'bones_claimed',
   'monster_surprised', 'monster_reaction', 'monster_morale', 'wandering_monster', 'game_turn',
+  'hireling_died', 'hireling_fled',
 ];
 
 export type GameEventHandler<K extends GameEventName> = (payload: GameEventMap[K]) => void;
