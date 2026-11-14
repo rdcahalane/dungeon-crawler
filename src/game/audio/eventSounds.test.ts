@@ -50,11 +50,14 @@ describe("event to sound map", () => {
     expect(mechSfx("no_such_sound")).toBeNull();
   });
 
-  it("picks the dungeon bed above floor 13 and the tomb from 13", () => {
-    expect(bedForFloor(1)).toBe("dungeon");
-    expect(bedForFloor(12)).toBe("dungeon");
+  it("picks one bed per depth band and the tomb from floor 13", () => {
+    for (const f of [1, 2, 3, 4]) expect(bedForFloor(f)).toBe("dungeon");
+    for (const f of [5, 6, 7, 8]) expect(bedForFloor(f)).toBe("dungeon_mid");
+    for (const f of [9, 10, 11, 12]) expect(bedForFloor(f)).toBe("dungeon_deep");
     expect(bedForFloor(13)).toBe("tomb");
-    expect(MUSIC_BEDS).toContain(bedForFloor(1));
-    expect(MUSIC_BEDS).toContain(bedForFloor(14));
+    expect(bedForFloor(14)).toBe("tomb");
+    expect(bedForFloor(0)).toBe("dungeon");
+    expect(bedForFloor(Number.NaN)).toBe("dungeon");
+    for (let f = 0; f <= 15; f++) expect(MUSIC_BEDS).toContain(bedForFloor(f));
   });
 });

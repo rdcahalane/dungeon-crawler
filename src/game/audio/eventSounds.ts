@@ -3,6 +3,7 @@
  * tables can be tested against SFX_KEYS.
  */
 import { SFX_KEYS, type MusicBed, type SfxKey } from "./sfxData";
+import { bedForFloorNumber } from "./musicData";
 
 /** Events that always play one effect. */
 export const EVENT_SFX: Readonly<Record<string, SfxKey>> = {
@@ -71,9 +72,9 @@ export function hitSfx(crit: boolean): SfxKey {
   return crit ? "crit" : "hit";
 }
 
-/** Music bed for a dungeon floor: the tomb from floor 13 down. */
+/** Music bed for a dungeon floor: floors 1-4, 5-8 and 9-12 each have one; the tomb from floor 13. */
 export function bedForFloor(floor: number): MusicBed {
-  return floor >= 13 ? "tomb" : "dungeon";
+  return bedForFloorNumber(floor);
 }
 
 /** Every effect key this module can ever return (for tests). */

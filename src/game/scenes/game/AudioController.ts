@@ -20,8 +20,8 @@ export const MUTE_STORAGE_KEY = "dc-mute";
 
 /** Beds for scenes that are not the GameScene (null means silence). */
 const SCENE_BEDS: Readonly<Record<string, MusicBed | null>> = {
-  MainMenuScene: null,
-  CharacterSelectScene: null,
+  MainMenuScene: "title",
+  CharacterSelectScene: "title",
   TavernScene: "tavern",
   GameOverScene: null,
 };
