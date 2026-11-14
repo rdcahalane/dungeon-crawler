@@ -424,6 +424,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  /** Set by InputController each frame: direction to walk when no movement key is held (any length; null = none). */
+  public moveIntent: { x: number; y: number } | null = null;
+  /** Set true by InputController to swing once as soon as the cooldown allows; cleared when the swing starts. */
+  public attackRequested = false;
+  /** Old behavior: any mouse press swings. InputController turns this off when it takes over the mouse. */
+  public legacyMouseAttack = true;
+
   private handleMovement() {
     const body = this.body as Phaser.Physics.Arcade.Body;
     let vx = 0;
@@ -433,6 +440,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.cursors.right.isDown || this.wasd.right.isDown) vx += 1;
     if (this.cursors.up.isDown || this.wasd.up.isDown) vy -= 1;
     if (this.cursors.down.isDown || this.wasd.down.isDown) vy += 1;
+
+    // No keys held: follow the input controller's intent (click-to-move).
+    if (vx === 0 && vy === 0 && this.moveIntent) {
+      vx = this.moveIntent.x;
+      vy = this.moveIntent.y;
+    }
 
     if (vx !== 0 || vy !== 0) {
       const len = Math.sqrt(vx * vx + vy * vy);
@@ -473,10 +486,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   tryAttack(): boolean {
     if (!this.canAttack()) return false;
-    if (
-      !Phaser.Input.Keyboard.JustDown(this.attackKey) &&
-      !this.scene.input.mousePointer.isDown
-    ) return false;
+    const wanted =
+      Phaser.Input.Keyboard.JustDown(this.attackKey) ||
+      this.attackRequested ||
+      (this.legacyMouseAttack && this.scene.input.mousePointer.isDown);
+    if (!wanted) return false;
+    this.attackRequested = false;
 
     const haste = this.stats.weaponTrait === 'quick' ? 0.68 : 1;
     this.attackCooldown = PLAYER_STATS.ATTACK_COOLDOWN * haste;

@@ -19,6 +19,20 @@ export class PreloadScene extends Phaser.Scene {
   create() {
     this.createTextures();
     const gallery = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("gallery") === "1";
+    // Dev shortcut: ?quick=fighter&floor=3 drops straight into a dungeon floor.
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const quick = params?.get("quick");
+    if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+      (window as unknown as { __game?: Phaser.Game }).__game = this.game;
+    }
+    if (quick && ["fighter", "thief", "wizard", "cleric"].includes(quick)) {
+      const floor = Math.max(1, Number(params?.get("floor") ?? 1) || 1);
+      this.scene.start("GameScene", {
+        floor,
+        charData: { classKey: quick, name: "Tester", str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+      });
+      return;
+    }
     this.scene.start(gallery ? "GalleryScene" : "MainMenuScene");
   }
 

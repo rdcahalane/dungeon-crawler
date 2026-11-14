@@ -2,6 +2,8 @@ export const TILE_SIZE = 32;
 export const MAP_WIDTH = 64;
 export const MAP_HEIGHT = 48;
 export const FOG_RADIUS = 5; // tiles
+/** The fixed final level, "The Tomb of the Hollow King". Taking its stairs down wins the game. */
+export const TOMB_FLOOR = 13;
 
 export const TILE = {
   WALL: 0,

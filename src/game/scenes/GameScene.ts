@@ -4,6 +4,8 @@ import {
   TILE, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, SPELLS, getFloorThemeIdx,
 } from "../constants";
 import { generateDungeon, DungeonData } from "../systems/DungeonGenerator";
+import { buildTombFloor } from "../world/stamp";
+import { TOMB_FLOOR } from "../constants";
 import type { Enemy } from "../entities/Enemy";
 import { GameEventBus } from "../GameEvents";
 import type { GameContext, RelicKey } from "../GameContext";
@@ -127,7 +129,7 @@ export class GameScene extends Phaser.Scene {
       }
     } else {
       // Generate a fresh dungeon for this floor
-      dungeon = generateDungeon(this.currentFloor, this.initData.specialRoomTags);
+      dungeon = this.currentFloor >= TOMB_FLOOR ? buildTombFloor() : generateDungeon(this.currentFloor, this.initData.specialRoomTags);
       // Store the original as base BEFORE any runtime modifications
       baseDungeon = JSON.parse(JSON.stringify(dungeon)) as DungeonData;
     }
