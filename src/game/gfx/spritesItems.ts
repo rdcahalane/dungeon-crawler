@@ -523,7 +523,7 @@ GLOW_MAPS.fog_brush = {
   h: 40,
   scale: 8,
   rows: glowRows(40, ["6", "5", "4", "3"], 1),
-  alpha: { "6": 1, "5": 0.72, "4": 0.42, "3": 0.16 },
+  alpha: { "6": 1, "5": 1, "4": 0.9, "3": 0.55 },
 };
 // Torch glow: used additively. 32x32 cells drawn 8x -> 256x256.
 GLOW_MAPS.torch_glow = {
