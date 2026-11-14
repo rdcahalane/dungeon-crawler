@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import { listSaves, loadGame } from "../systems/SaveStore";
 
 interface SaveMeta {
   slot: number;
@@ -77,18 +78,10 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   private async loadSaves() {
-    try {
-      const res = await fetch("/api/saves");
-      if (res.status === 401) {
-        // Not logged in — just show default buttons
-        return;
-      }
-      const data = (await res.json()) as { saves: (SaveMeta | null)[] };
-      const saves = (data.saves ?? []).filter((s): s is SaveMeta => s !== null);
-      this.renderOptions(saves);
-    } catch {
-      // Offline or error — keep default buttons
-    }
+    // Server first, this device's saves when signed out or offline (SaveStore falls back).
+    const listing = await listSaves();
+    const saves = listing.saves.filter((s): s is SaveMeta => s !== null);
+    this.renderOptions(saves);
   }
 
   private renderOptions(saves: SaveMeta[]) {
@@ -219,14 +212,13 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   private loadSave(slot: number) {
-    fetch(`/api/load?slot=${slot}`)
-      .then(r => r.json())
-      .then((data: { save: { data: unknown; slot: number } | null }) => {
-        if (!data.save) {
+    loadGame(slot)
+      .then((save) => {
+        if (!save) {
           this.scene.start("CharacterSelectScene");
           return;
         }
-        const stats = data.save.data as import("../entities/Player").PlayerStats;
+        const stats = save.data;
         stats.saveSlot = slot;
         this.scene.start("TavernScene", { persistedStats: stats });
       })

@@ -123,6 +123,10 @@ const KEYS: ItemDef[] = [
   key('key_bronze', 'Bronze Key', 'Green at the teeth.'),
   key('key_silver', 'Silver Key', 'Light, and warm to the touch for no reason.'),
   key('key_bone', 'Bone Key', 'Carved from something that once walked.'),
+  // The three parts of the Hollow King's key (world/tomb.ts KEY_PARTS).
+  key('key_crown', 'Crown Key', 'A tooth-edged ring of tarnished gold, one third of a key.'),
+  key('key_seal', 'Seal Key', 'A stamped disc of black wax and iron. It fits no lock alone.'),
+  key('key_tooth', 'Tooth Key', 'A long yellow fang filed into a bit. It is cold, and it is not an animal tooth.'),
 ];
 
 export const ITEM_DEFS: readonly ItemDef[] = [

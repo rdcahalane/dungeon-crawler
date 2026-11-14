@@ -13,6 +13,9 @@ import {
   poorSave,
   calcBAB,
 } from "../constants";
+import { Inventory, starterKit, fromLegacyInventory } from "../items";
+import { Spellbook, isCaster } from "../rules";
+import type { SpellbookData } from "../rules";
 
 export interface CharCreationData {
   classKey: ClassKey;
@@ -85,10 +88,21 @@ export interface PlayerStats {
   runGoldEarned?: number;
   runBestStreak?: number;
   runDeepestFloor?: number;
-	}
+  // ── B1 plumbing: serializable, all optional so old saves load. Nothing consumes these yet. ──
+  /** Full inventory (pack, belt, equipment, gold) from `src/game/items`. */
+  inv?: ReturnType<Inventory['toJSON']>;
+  /** Memorized spell state for casters (`src/game/rules/spells.ts`). */
+  spellbook?: SpellbookData;
+  /** Seconds of light left in the held torch. */
+  torchSecondsLeft?: number;
+}
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   public stats!: PlayerStats;
+  /** New-model inventory (items module). Built from `stats.inv`, else from the legacy list, else a starter kit. */
+  public inventory!: Inventory;
+  /** New-model spellbook for casters; null for fighters and thieves. Not yet used by combat. */
+  public spellbook: Spellbook | null = null;
   private attackCooldown = 0;
   private invincible = 0;
   private armorWardReady = true;
@@ -143,6 +157,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.stats = this._buildStats({ classKey: 'fighter', str: 14, dex: 12, con: 14, int: 10, wis: 10, cha: 8 });
     }
 
+    this._initInventoryAndSpellbook(!!persistedStats);
+
     // Floor shadow — dark oval just below the player, depth below torch glow
     // makes character look grounded and separates them from floor texture
     this.playerShadow = scene.add.ellipse(x, y + 9, TILE_SIZE - 8, 7, 0x000000, 0.5);
@@ -192,6 +208,32 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     //   and hidden by opaque fog in unexplored areas — correct roguelike fog behaviour).
     this.setDepth(49);
     // No tint — avatars are drawn with real class colours
+  }
+
+  private _initInventoryAndSpellbook(existingCharacter: boolean) {
+    const stats = this.stats;
+    if (stats.inv) {
+      this.inventory = Inventory.fromJSON(stats.inv);
+    } else if (existingCharacter) {
+      this.inventory = fromLegacyInventory(stats.inventory ?? [], stats).inventory;
+    } else {
+      this.inventory = starterKit(stats.classKey);
+    }
+
+    this.spellbook = null;
+    if (isCaster(stats.classKey)) {
+      if (stats.spellbook) {
+        try {
+          this.spellbook = Spellbook.deserialize(stats.spellbook);
+        } catch {
+          this.spellbook = null; // fall through to a fresh book
+        }
+      }
+      if (!this.spellbook) {
+        this.spellbook = Spellbook.create(stats.classKey, stats.level);
+        this.spellbook.fillDefault();
+      }
+    }
   }
 
   private _buildStats(data: CharCreationData): PlayerStats {
@@ -562,7 +604,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   getSerializable(): PlayerStats {
-    return { ...this.stats };
+    const out: PlayerStats = { ...this.stats, inv: this.inventory.toJSON() };
+    if (this.spellbook) out.spellbook = this.spellbook.serialize();
+    return out;
   }
 
   destroy(fromScene?: boolean) {

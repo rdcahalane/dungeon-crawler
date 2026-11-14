@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, TILE, TAVERN_W, TAVERN_H, CHARACTER_CLASSES, abilityMod } from "../constants";
 import { Player, CharCreationData, PlayerStats } from "../entities/Player";
+import { saveGame } from "../systems/SaveStore";
 import {
   Quest, generateQuestBoard, applyQuestReward, getActiveSpecialRoomTags,
   RARITY_COLORS, RARITY_LABELS,
@@ -995,23 +996,8 @@ export class TavernScene extends Phaser.Scene {
   }
 
   private async autoSave(stats: PlayerStats) {
-    const cls = CHARACTER_CLASSES[stats.classKey];
-    try {
-      await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          slot: this.saveSlot,
-          name: stats.name || `${cls.name} Lv ${stats.level}`,
-          data: stats,
-          level: stats.level,
-          floor: stats.floor,
-          playtime: 0,
-        }),
-      });
-    } catch {
-      // Offline — silently skip save
-    }
+    // Server when signed in, this device otherwise (SaveStore decides).
+    await saveGame(this.saveSlot, stats);
   }
 
   // ── HUD Events ────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import { listSaves, loadGame } from "../systems/SaveStore";
 
 interface SaveMeta {
   slot: number;
@@ -83,23 +84,18 @@ export class MainMenuScene extends Phaser.Scene {
 
   private async loadSaves() {
     const { width } = this.scale;
-    try {
-      const res = await fetch("/api/saves");
-      if (res.status === 401) {
-        this.loggedIn = false;
-        this.statusText.setText("Sign in at dungeon-crawler-bay.vercel.app to save progress");
-        this.renderSaveSlots();
-        return;
-      }
-      const data = await res.json() as { saves: (SaveMeta | null)[] };
-      this.loggedIn = true;
-      this.saves = data.saves ?? Array(5).fill(null);
+    // Server first; saves kept on this device when signed out or offline (SaveStore falls back).
+    const listing = await listSaves();
+    this.loggedIn = listing.loggedIn;
+    this.saves = listing.saves;
+    if (listing.source === "api") {
       this.statusText.setText("");
-      this.renderSaveSlots();
-    } catch {
-      this.statusText.setText("Could not load saves — playing offline");
-      this.renderSaveSlots();
+    } else if (listing.unauthorized) {
+      this.statusText.setText("Not signed in: progress is saved on this device");
+    } else {
+      this.statusText.setText("Could not reach the server: progress is saved on this device");
     }
+    this.renderSaveSlots();
     void width;
   }
 
@@ -219,12 +215,11 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private loadSave(slot: number) {
-    // Load the full save data from API, then go to Tavern
-    fetch(`/api/load?slot=${slot}`)
-      .then(r => r.json())
-      .then((data: { save: { data: unknown; slot: number } | null }) => {
-        if (!data.save) { this.newGame(slot); return; }
-        const stats = data.save.data as import("../entities/Player").PlayerStats;
+    // Load the full save data (server, else this device), then go to Tavern
+    loadGame(slot)
+      .then((save) => {
+        if (!save) { this.newGame(slot); return; }
+        const stats = save.data;
         stats.saveSlot = slot;
         this.scene.start("TavernScene", { persistedStats: stats });
       })
