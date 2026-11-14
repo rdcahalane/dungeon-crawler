@@ -1,3 +1,4 @@
+import { TOMB_FLOOR } from "../../constants";
 import * as Phaser from "phaser";
 import { TILE_SIZE, EnemyTypeKey, enemyPoolForFloor } from "../../constants";
 import type { DungeonData } from "../../systems/DungeonGenerator";
@@ -491,6 +492,8 @@ export class RoomEventController {
 
   private checkRoomEvents(ptx: number, pty: number) {
     const ctx = this.ctx;
+    // The tomb's chambers are authored: the random room events (rune rooms, dens, vault banners) do not belong there.
+    if (ctx.currentFloor >= TOMB_FLOOR) return;
     const player = ctx.player;
     const roomIdx = ctx.dungeon.rooms.findIndex(room =>
       ptx >= room.x && ptx < room.x + room.w && pty >= room.y && pty < room.y + room.h

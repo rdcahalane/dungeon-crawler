@@ -413,7 +413,7 @@ export class CombatController {
       }
     }
     const para = hasSpecial(def, 'paralysis');
-    if (para) {
+    if (para && player.canBeHeld()) {
       const save = player.rollSave(para.save);
       if (!save.success) {
         player.addEffect('HELD', para.durationMs);
@@ -460,6 +460,7 @@ export class CombatController {
     const ctx = this.ctx;
     const player = ctx.player;
     if (spell === 'hold_person') {
+      if (!player.canBeHeld()) return;
       ctx.floatText(enemy.x, enemy.y - 26, 'HOLD', 0xb0bec5, 10);
       ctx.scene.tweens.add({ targets: enemy, alpha: 0.5, duration: 80, yoyo: true });
       const save = player.rollSave('spells');
