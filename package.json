@@ -9,12 +9,12 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "sim": "jiti scripts/sim-balance.ts"
+    "sim": "jiti scripts/sim-balance.ts",
+    "deploy:canoe": "bash scripts/deploy-canoe.sh"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
-    "@neondatabase/serverless": "^1.0.2",
-    "@prisma/adapter-neon": "^7.4.1",
+    "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
     "bcryptjs": "^3.0.3",
     "next": "16.1.6",

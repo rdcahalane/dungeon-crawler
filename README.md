@@ -12,7 +12,7 @@ A browser tomb crawl that looks like an Atari cartridge and plays in real time. 
 
 ## Stack
 
-Next.js 16, React 19, Phaser 3.90, TypeScript, NextAuth with Prisma on Neon for account saves, Vitest for tests. Without a sign-in the game saves to this device.
+Next.js 16, React 19, Phaser 3.90, TypeScript, NextAuth with Prisma on Canoe Postgres (db `dungeon_crawler`) for account saves, Vitest for tests. Without a sign-in the game saves to this device.
 
 ## Run
 
@@ -23,6 +23,16 @@ npm run lint
 npx tsc --noEmit
 npm run build
 ```
+
+## Deploy
+
+Live at https://dungeon.civops.io, self-hosted on Canoe: systemd service `dungeon-crawler` on `127.0.0.1:3340`, published through the advisor-canoe Cloudflare tunnel (a remotely managed tunnel, so its public hostnames are set in the Cloudflare dashboard or API, not `/etc/cloudflared/config.yml`).
+
+```bash
+npm run deploy:canoe
+```
+
+The script sweeps for malware, runs the tests and a build, syncs to `/opt/dungeon-crawler`, rebuilds and restarts there, then smoke-tests the pages and the database. The server's `.env.production` (database URL, `AUTH_SECRET`, `AUTH_URL`) stays on Canoe and is never copied. Vercel no longer deploys this repo (git disconnected 2026-11-16).
 
 ## Dev shortcuts
 
