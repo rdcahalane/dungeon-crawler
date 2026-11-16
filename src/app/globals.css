@@ -15,7 +15,23 @@
   --lime: #90d44c;
   --background: #08080d;
   --foreground: #f4f0f8;
+  /* Viewport units: dynamic where supported (mobile browser bars), classic otherwise. */
+  --vw: 100vw;
+  --vh: 100vh;
+  --sl: env(safe-area-inset-left, 0px);
+  --sr: env(safe-area-inset-right, 0px);
+  --st: env(safe-area-inset-top, 0px);
+  --sb: env(safe-area-inset-bottom, 0px);
+  /* Page chrome around the game on the desktop cabinet: width 88px, height about 230px. */
+  --game-w: min(var(--vw) - 88px, 984px, (var(--vh) - 230px) * 1.5);
   --font-geist-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+@supports (width: 100dvw) and (height: 100dvh) {
+  :root {
+    --vw: 100dvw;
+    --vh: 100dvh;
+  }
 }
 
 @theme inline {
@@ -31,6 +47,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-mono);
   overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
 /* Small uppercase "bitmap" text for everything around the canvas. */
@@ -101,9 +118,16 @@ body {
 /* The game screen: fills the bezel at a 3:2 ratio. The Phaser container sets
    its own inline size, so the override needs !important. */
 .screen {
-  width: 100%;
-  aspect-ratio: 3 / 2;
+  /* Largest 3:2 box that fits the width AND the height (--game-w, set on :root). */
+  width: var(--game-w);
+  height: calc(var(--game-w) / 1.5);
+  margin: 0 auto;
   background: #000;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .screen > div {
   width: 100% !important;
@@ -180,4 +204,130 @@ body {
 .arcade-input:focus {
   outline: none;
   border-color: var(--gold);
+}
+
+/* Corner controls: fullscreen button always, account link on compact screens only. */
+.corner {
+  position: fixed;
+  z-index: 20;
+}
+.corner-tr {
+  top: max(8px, var(--st));
+  right: max(8px, var(--sr));
+}
+.corner-bl {
+  display: none;
+  left: max(8px, var(--sl));
+  bottom: max(8px, var(--sb));
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  background: rgba(8, 8, 13, 0.7);
+  padding: 4px 8px;
+  color: var(--silver);
+}
+.corner-bl > span {
+  display: none;
+}
+.fs-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  opacity: 0.7;
+}
+.fs-btn:hover,
+.fs-btn:focus-visible {
+  opacity: 1;
+}
+
+/* Rotate prompt: portrait phones only. */
+.rotate-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px;
+  background: var(--ink);
+  color: var(--gold);
+  text-align: center;
+}
+.rotate-icon {
+  width: 96px;
+  height: 96px;
+  animation: rotate-hint 2.4s steps(6, end) infinite;
+}
+.rotate-title {
+  font-size: 16px;
+  letter-spacing: 0.2em;
+  line-height: 1.8;
+}
+@keyframes rotate-hint {
+  0%,
+  30% {
+    transform: rotate(0deg);
+  }
+  70%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-icon {
+    animation: none;
+  }
+}
+@media (max-width: 599px) and (orientation: portrait) {
+  .rotate-overlay {
+    display: flex;
+  }
+}
+
+/* Compact mode: touch screens and short windows. The game takes the whole screen. */
+@media (pointer: coarse), (max-height: 700px) {
+  :root {
+    --game-w: min(var(--vw) - var(--sl) - var(--sr), (var(--vh) - var(--st) - var(--sb)) * 1.5);
+  }
+  html,
+  body {
+    overflow: hidden;
+    background: #000;
+  }
+  .cabinet-stage {
+    position: fixed;
+    inset: 0;
+    min-height: 0;
+    padding: var(--st) var(--sr) var(--sb) var(--sl);
+    background: #000;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+  .cabinet {
+    max-width: none;
+    width: auto;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  .cabinet-bezel {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  .cabinet-marquee,
+  .cabinet-bar,
+  .cabinet-hint {
+    display: none;
+  }
+  .corner-bl {
+    display: flex;
+  }
 }
