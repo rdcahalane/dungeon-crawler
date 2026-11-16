@@ -13,8 +13,9 @@ type Entry =
   | { type: "header"; level: number; used: number; max: number }
   | { type: "spell"; def: SpellDef };
 
-const ROW_H = 22;
-const VISIBLE = 12;
+// Taller rows on a touch screen, so a finger can pick a spell.
+const ROW_H = isTouchDevice() ? 40 : 22;
+const VISIBLE = isTouchDevice() ? 7 : 12;
 
 export class SpellbookPanel extends PanelBase {
   private sel = 0;

@@ -1,3 +1,4 @@
+import { isTouchDevice } from "../../touch";
 import { TOMB_FLOOR } from "../../constants";
 import * as Phaser from "phaser";
 import { TILE_SIZE, EnemyTypeKey, enemyPoolForFloor } from "../../constants";
@@ -390,7 +391,9 @@ export class RoomEventController {
     window.addEventListener('keydown', onKey);
     const keyHolder = fixed(scene.add.zone(0, 0, 1, 1));
     keyHolder.once('destroy', () => window.removeEventListener('keydown', onKey));
-    const hint = `1-${n} OR ARROWS AND ENTER${d.onCancel ? '   ESC: WALK AWAY' : ''}`;
+    const hint = isTouchDevice()
+      ? `TAP A CARD${d.onCancel ? ', OR WALK AWAY' : ''}`
+      : `1-${n} OR ARROWS AND ENTER${d.onCancel ? '   ESC: WALK AWAY' : ''}`;
     // Under the subtitle: the HUD's message log covers the panel's bottom-left corner.
     fixed(uiText(scene, cx, top + 72, hint, { size: 16, color: COL.silver, originX: 0.5 }), D + 1);
     // Walking away is a tap too (Esc does the same), where the dialog allows it.

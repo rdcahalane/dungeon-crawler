@@ -16,8 +16,9 @@ import { LINE, UI, drawBox, iconAt, label, pointIn, wrap } from "./theme";
 
 type Tab = "buy" | "sell";
 
-const ROW_H = 26;
-const VISIBLE = 10;
+// Taller rows on a touch screen: 26 game pixels is about 15 real pixels on a phone, too small for a finger.
+const ROW_H = isTouchDevice() ? 44 : 26;
+const VISIBLE = isTouchDevice() ? 6 : 10;
 const LIST_Y = 72;
 const DETAIL_Y = 342;
 /** Characters of an item name that fit its column. */

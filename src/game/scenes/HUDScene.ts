@@ -379,7 +379,13 @@ export class HUDScene extends Phaser.Scene {
     this.minimap.update(this.ctx(), now);
     this.pad?.update();
     if (this.last) this.orb.update(this.last.hp, this.last.maxHp, now);
-
+    // The game's own dialogs (riddles, offerings, boons, shrines, the rest choice) draw in the game scene, under this one:
+    // fade the HUD while one is open so its panels and message log do not cover the dialog.
+    const c = this.ctx();
+    const dialogUp = !!c && (c.modalOpen === true || c.rooms?.isModalOpen === true || c.floor?.restDialogOpen === true);
+    const cam = this.cameras.main;
+    const want = dialogUp ? 0.12 : 1;
+    if (cam.alpha !== want) cam.setAlpha(want);
   }
 
   /**

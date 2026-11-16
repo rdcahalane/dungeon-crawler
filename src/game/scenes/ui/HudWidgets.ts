@@ -1,4 +1,5 @@
 /** Small HUD pieces: HP orb, identity panel, floor panel, torch gauge, target bar, effect icons, log view. */
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import { STATUS_EFFECT_DEFS } from "../../constants";
 import type { StatusEffect } from "../../constants";
@@ -134,8 +135,13 @@ export class FloorPanel {
     const rows: Array<[string, number]> = [];
     if (d.floor === 0) {
       // The tavern: the place name above, then the keys that work here.
-      rows.push(["I PACK  B BOOK  Q QUESTS", UI.grey]);
-      rows.push(["E TALK  ESC CLOSE", UI.grey]);
+      if (isTouchDevice()) {
+        rows.push(["TAP SOMEONE TO TALK", UI.grey]);
+        rows.push(["WALK INTO THE PORTAL", UI.grey]);
+      } else {
+        rows.push(["I PACK  B BOOK  Q QUESTS", UI.grey]);
+        rows.push(["E TALK  ESC CLOSE", UI.grey]);
+      }
       if (d.activeQuests > 0) rows.push([`QUESTS ${d.activeQuests}`, UI.green]);
     } else {
       if (obj) {
