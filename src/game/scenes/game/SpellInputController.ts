@@ -9,6 +9,7 @@ import {
   type SpellDef, type SpellEffect,
 } from "../../rules";
 import { selectHotkeySpells, selectSleepVictims } from "./AdndCombat";
+import { isTouchDevice } from "../../touch";
 
 /** Minimum gap between two casts (ms). */
 const CAST_GAP_MS = 500;
@@ -125,8 +126,11 @@ export class SpellInputController {
     const ctx = this.ctx;
     const p = ctx.player;
     const ptr = ctx.scene.input.activePointer;
-    let ax = ptr.worldX;
-    let ay = ptr.worldY;
+    // A finger has no hover: the last place it touched is the hotbar button it just pressed. On a touch screen a spell
+    // goes the way the character faces (the last move or swing), snapping to a monster near that line.
+    const byFacing = isTouchDevice();
+    let ax = byFacing ? NaN : ptr.worldX;
+    let ay = byFacing ? NaN : ptr.worldY;
     if (!Number.isFinite(ax) || !Number.isFinite(ay)) { ax = p.x + p.stats.facing.x * TILE_SIZE * 3; ay = p.y + p.stats.facing.y * TILE_SIZE * 3; }
     const dx = ax - p.x;
     const dy = ay - p.y;

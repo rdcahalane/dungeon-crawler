@@ -15,6 +15,9 @@ import { ShopPanel } from "./ui/ShopPanel";
 import { InnkeeperPanel } from "./ui/InnkeeperPanel";
 import type { TavernHost } from "./ui/tavernHost";
 import { Minimap } from "./ui/Minimap";
+import { MenuPanel } from "./ui/MenuPanel";
+import { TouchPad } from "./ui/TouchPad";
+import { isTouchDevice } from "../touch";
 import { buildHotbar, isCasterClass, legacySpellSlots, type SpellSlotInfo } from "./ui/hotbar";
 import { hudLog } from "./ui/messageLog";
 import { buildSheet, heldLightSeconds } from "./ui/charSheet";
@@ -72,7 +75,7 @@ export interface HUDData {
 interface GameSceneLike extends Phaser.Scene { gameContext?: GameContext; gameEvents?: GameEventBus }
 interface TavernSceneLike extends Phaser.Scene { player?: Player }
 
-type Panel = "inventory" | "spellbook" | "quest" | "shop" | "inn";
+type Panel = "inventory" | "spellbook" | "quest" | "shop" | "inn" | "menu";
 
 export class HUDScene extends Phaser.Scene {
   /** True while a HUD panel is open (or just closed): the game ignores clicks then. */
@@ -93,6 +96,9 @@ export class HUDScene extends Phaser.Scene {
   private quest?: QuestPanel;
   private shop?: ShopPanel;
   private innkeeper?: InnkeeperPanel;
+  private menu?: MenuPanel;
+  private pad?: TouchPad;
+  private touch = false;
   private last?: HUDData;
   private cleanups: Array<() => void> = [];
 
@@ -104,7 +110,11 @@ export class HUDScene extends Phaser.Scene {
     uiState.reset();
     registerRetroFont(this);
     this.last = undefined;
-    this.inv = this.book = this.quest = this.shop = this.innkeeper = undefined;
+    this.inv = this.book = this.quest = this.shop = this.innkeeper = this.menu = undefined;
+    this.pad = undefined;
+    this.touch = isTouchDevice();
+    // Mouse plus one pointer is all Phaser tracks by default. A held ATTACK finger and a walking finger need three.
+    if (this.touch) this.input.addPointer(2);
 
     this.orb = new HpOrb(this);
     this.identity = new IdentityPanel(this);
@@ -113,9 +123,10 @@ export class HUDScene extends Phaser.Scene {
     this.target = new TargetBar(this);
     this.effects = new EffectIcons(this, 12, 430);
     this.logView = new MessageLogView(this, 8, 478);
-    this.hotbar = new HotbarView(this, (i) => this.useBelt(i));
+    this.hotbar = new HotbarView(this, (i) => this.useBelt(i), (i) => this.useSpell(i));
     this.minimap = new Minimap(this);
     this.buildButtons();
+    if (this.touch) this.pad = new TouchPad(this, () => this.padState(), () => this.toggle("menu"));
 
     // I, B, M, Q and Esc ride a raw window listener, not the Phaser key plugin: that is how the mechanism lane reads keys,
     // it needs no focus on the canvas and it cannot be switched off by another scene's dialog.
@@ -176,6 +187,8 @@ export class HUDScene extends Phaser.Scene {
     this.innkeeper?.destroy();
     this.minimap.destroy();
     this.hotbar.destroy();
+    this.pad?.destroy();
+    this.menu?.destroy();
     uiState.reset();
   }
 
@@ -201,12 +214,18 @@ export class HUDScene extends Phaser.Scene {
       setLabel(this.zoomLabel, `${Math.round(next * 100)}%`);
     };
     // Bottom-right cluster, 16px text: zoom row at y 530, panel buttons at y 560, gold and torch below at 584.
-    this.button(776, 530, 32, 26, "-", () => zoom(-0.15), "zoom-");
-    this.button(920, 530, 32, 26, "+", () => zoom(0.15), "zoom+");
-    this.zoomLabel = label(this, 864, 543, "100%", { color: UI.grey, ox: 0.5, oy: 0.5, depth: 8 });
-    this.button(776, 560, 56, 24, "INV", () => this.toggle("inventory"), "btn-inv");
-    this.button(836, 560, 56, 24, "BOOK", () => this.toggle("spellbook"), "btn-book");
-    this.button(896, 560, 56, 24, "MAP", () => this.toggleMap(), "btn-map");
+    // On a touch screen the same buttons are a little taller (the touch pad ends at y 520 just above them).
+    const t = this.touch;
+    const zy = t ? 524 : 530;
+    const zh = t ? 30 : 26;
+    const py = t ? 556 : 560;
+    const ph = t ? 30 : 24;
+    this.button(776, zy, 32, zh, "-", () => zoom(-0.15), "zoom-");
+    this.button(920, zy, 32, zh, "+", () => zoom(0.15), "zoom+");
+    this.zoomLabel = label(this, 864, zy + zh / 2, "100%", { color: UI.grey, ox: 0.5, oy: 0.5, depth: 8 });
+    this.button(776, py, 56, ph, "INV", () => this.toggle("inventory"), "btn-inv");
+    this.button(836, py, 56, ph, "BOOK", () => this.toggle("spellbook"), "btn-book");
+    this.button(896, py, 56, ph, "MAP", () => this.toggleMap(), "btn-map");
   }
 
   // ── Panels ─────────────────────────────────────────────────────────────────
@@ -223,7 +242,18 @@ export class HUDScene extends Phaser.Scene {
     this.closeAll();
     const host = this.host();
     if (!host && panel !== "quest") { hudLog.push("Nothing to open here."); return; }
-    if (panel === "quest") {
+    if (panel === "menu") {
+      this.menu?.destroy();
+      this.menu = new MenuPanel(this, {
+        inDungeon: !!this.ctx(),
+        hasSpellbook: !!host?.player.spellbook,
+        openInventory: () => this.toggle("inventory"),
+        openSpellbook: () => this.toggle("spellbook"),
+        openMap: () => this.toggleMap(),
+        close: () => this.close("menu"),
+      });
+      this.menu.open();
+    } else if (panel === "quest") {
       this.quest = new QuestPanel(this, this.last?.activeQuests ?? [], this.last?.completedQuests ?? [], () => this.close("quest"));
       this.quest.open();
     } else if (!host) {
@@ -248,6 +278,7 @@ export class HUDScene extends Phaser.Scene {
       case "spellbook": return !!this.book?.opened;
       case "shop": return !!this.shop?.opened;
       case "inn": return !!this.innkeeper?.opened;
+      case "menu": return !!this.menu?.opened;
       default: return !!this.quest;
     }
   }
@@ -258,13 +289,14 @@ export class HUDScene extends Phaser.Scene {
     else if (panel === "spellbook") this.book?.close();
     else if (panel === "shop") this.shop?.close();
     else if (panel === "inn") this.innkeeper?.close();
+    else if (panel === "menu") this.menu?.close();
     else { this.quest?.destroy(); this.quest = undefined; }
     uiState.setPanel(false);
     this.gameScene()?.gameEvents?.emit("ui_close", { panel });
   }
 
   private closeAll() {
-    for (const p of ["inventory", "spellbook", "quest", "shop", "inn"] as Panel[]) this.close(p);
+    for (const p of ["inventory", "spellbook", "quest", "shop", "inn", "menu"] as Panel[]) this.close(p);
   }
 
   /** The tavern asks for its innkeeper dialog or the shop (`TavernScene` calls this). */
@@ -295,6 +327,23 @@ export class HUDScene extends Phaser.Scene {
   private useBelt(index: number) {
     const host = this.host();
     if (host) activateBeltSlot(host, index);
+  }
+
+  /** A tap on a hotbar spell: cast it the way keys 1 to 4 do (the spell controller aims it, see `SpellInputController`). */
+  private useSpell(index: number) {
+    const ctx = this.ctx();
+    if (!ctx || ctx.modalOpen || uiState.isBlocking()) return;
+    ctx.spells?.castSlot(index);
+  }
+
+  /** What the touch pad should do this frame: which buttons, and whether anything else has the screen. */
+  private padState(): { visible: boolean; mode: "dungeon" | "tavern"; classKey?: string } {
+    const ctx = this.ctx();
+    const mode = ctx ? "dungeon" : "tavern";
+    const inGame = !!ctx || this.scene.isActive("TavernScene");
+    const busy = uiState.isBlocking() || uiState.externalModal || ctx?.modalOpen === true
+      || ctx?.rooms?.isModalOpen === true || ctx?.floor?.restDialogOpen === true;
+    return { visible: inGame && !busy, mode, classKey: this.last?.classKey };
   }
 
   // ── Data ───────────────────────────────────────────────────────────────────
@@ -328,6 +377,7 @@ export class HUDScene extends Phaser.Scene {
     this.logView.update(Date.now());
     this.target.update(uiState.hover);
     this.minimap.update(this.ctx(), now);
+    this.pad?.update();
     if (this.last) this.orb.update(this.last.hp, this.last.maxHp, now);
 
   }

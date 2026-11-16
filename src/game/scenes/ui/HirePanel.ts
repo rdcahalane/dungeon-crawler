@@ -3,6 +3,7 @@
  * Same frame and keys as the other tavern panels: Up/Down pick, Enter hire, number keys, D dismiss, Esc back.
  * Works on `host.player.stats.party` (the saved hirelings) and the gold on the character.
  */
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import { Sfx } from "../../audio/Sfx";
 import { mathRng } from "../../rules";
@@ -77,7 +78,7 @@ export class HirePanel extends PanelBase {
     });
 
     if (this.msg) this.dyn.add(label(scene, x0, this.y + this.h - 54, this.msg.slice(0, 50), { color: this.msgColor }));
-    this.dyn.add(label(scene, x0, this.y + this.h - 26, "UP/DOWN PICK  ENTER HIRE  D DISMISS  ESC BACK", { color: UI.grey }));
+    this.dyn.add(label(scene, x0, this.y + this.h - 26, isTouchDevice() ? "TAP A HIRELING TO HIRE. X GOES BACK." : "UP/DOWN PICK  ENTER HIRE  D DISMISS  ESC BACK", { color: UI.grey }));
   }
 
   private hire(i: number): void {

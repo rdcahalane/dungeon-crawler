@@ -1,3 +1,4 @@
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import type { PlayerStats } from "../../entities/Player";
 import type { SerializedFloor } from "../../systems/DungeonGenerator";
@@ -126,7 +127,7 @@ export class FloorController {
     if (now - this._campAskedAt > 4000) {
       this._campAskedAt = now;
       const pct = campInterruptPct(ctx.currentFloor);
-      ctx.status(`Make camp? It costs a ration, and about ${pct} times in a hundred something finds you. R again to sleep.`);
+      ctx.status(`Make camp? It costs a ration, and about ${pct} times in a hundred something finds you. ${isTouchDevice() ? 'CAMP again' : 'R again'} to sleep.`);
       return;
     }
     this._campAskedAt = -1e9;
@@ -200,7 +201,7 @@ export class FloorController {
     if (!ePress) {
       if (!this._stairsHinted) {
         this._stairsHinted = true;
-        ctx.status("Stairs down. Press E when you are ready to descend.");
+        ctx.status(`Stairs down. ${isTouchDevice() ? "Tap USE" : "Press E"} when you are ready to descend.`);
       }
       return;
     }
@@ -238,7 +239,7 @@ export class FloorController {
         if (!ePress) {
           if (!this._upHinted) {
             this._upHinted = true;
-            ctx.status(`Stairs up to level ${ctx.currentFloor - 1}. Press E to climb.`);
+            ctx.status(`Stairs up to level ${ctx.currentFloor - 1}. ${isTouchDevice() ? 'Tap USE' : 'Press E'} to climb.`);
           }
           return;
         }
@@ -291,7 +292,7 @@ export class FloorController {
       .setScrollFactor(0).setDepth(D);
     els.push(overlay);
 
-    const bg = scene.add.rectangle(cx, cy, 560, 280, 0x0c0c18, 0.97)
+    const bg = scene.add.rectangle(cx, cy, 560, 320, 0x0c0c18, 0.97)
       .setStrokeStyle(2, 0x4466aa).setScrollFactor(0).setDepth(D);
     els.push(bg);
 
@@ -315,6 +316,15 @@ export class FloorController {
     const keyHolder = scene.add.zone(0, 0, 1, 1);
     keyHolder.once('destroy', () => window.removeEventListener('keydown', onKey));
     els.push(keyHolder);
+
+    // A tap target for Esc: walking over the stairs up should not force a choice on a touch screen either.
+    const stay = scene.add.rectangle(cx, cy + 140, 300, 30, 0x4466aa, 0.15)
+      .setInteractive().setStrokeStyle(1, 0x4466aa).setScrollFactor(0).setDepth(D);
+    const stayTxt = scene.add.text(cx, cy + 140, 'STAY IN THE DUNGEON', {
+      fontSize: '13px', color: '#aab0cc', fontFamily: 'monospace',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D);
+    stay.on('pointerdown', () => this.stayInDungeon());
+    els.push(stay, stayTxt);
 
     // Short Rest card
     this.addRestCard(cx - 135, cy + 20, '⚕ SHORT REST', [

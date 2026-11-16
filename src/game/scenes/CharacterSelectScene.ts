@@ -1,4 +1,6 @@
 import { setTextEntry } from "../textEntry";
+import { DomTextField } from "../domTextInput";
+import { isTouchDevice } from "../touch";
 import * as Phaser from "phaser";
 import { CHARACTER_CLASSES, ClassKey } from "../constants";
 import { CharCreationData } from "../entities/Player";
@@ -38,6 +40,8 @@ export class CharacterSelectScene extends Phaser.Scene {
   private _cursorVisible = true;
   private _cursorTimer?: Phaser.Time.TimerEvent;
   private _nameKeydownHandler?: (e: KeyboardEvent) => void;
+  /** The phone keyboard's input, alive for the whole name step so a re-draw does not lower the keyboard. */
+  private _nameField?: DomTextField;
 
   private container!: Phaser.GameObjects.Container;
   private _abilityHint?: Phaser.GameObjects.BitmapText;
@@ -73,6 +77,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown', this._onKey, this);
       this._cleanupNameInput();
+      this._destroyNameField();
     });
   }
 
@@ -84,6 +89,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private renderStep() {
     this._cleanupNameInput();
+    if (this.step !== 3) this._destroyNameField();
     this.clearContainer();
     switch (this.step) {
       case 1: this.renderClassPicker(); break;
@@ -360,12 +366,16 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.container.add(nameText);
 
     // Hint text
-    this.container.add(uiText(this, width / 2, inputY + 40, 'MAX 16 CHARACTERS. PRESS ENTER TO CONFIRM.', {
+    const touch = isTouchDevice();
+    this.container.add(uiText(this, width / 2, inputY + 40, touch ? 'MAX 16 CHARACTERS. TAP THE BOX TO TYPE.' : 'MAX 16 CHARACTERS. PRESS ENTER TO CONFIRM.', {
       size: 16, color: COL.grey, originX: 0.5,
     }));
     this.container.add(uiText(this, width / 2, inputY + 62, `DEFAULT: ${cls.name.toUpperCase()}`, {
       size: 16, color: COL.slate, originX: 0.5,
     }));
+
+    // A phone has no keyboard until an input has focus: lay a real one over the name box and mirror it into the box.
+    if (touch) this._ensureNameField(width / 2 - inputW / 2, inputY - inputH / 2, inputW, inputH);
 
     // Set up keyboard listener for name input
     this._nameInputActive = true;
@@ -394,8 +404,33 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.container.add([beginBtn.bg, beginBtn.text]);
   }
 
+  private _ensureNameField(x: number, y: number, w: number, h: number) {
+    if (this._nameField) { this._nameField.place({ x, y, w, h }); return; }
+    this._nameField = new DomTextField({
+      canvas: this.game.canvas,
+      rect: { x, y, w, h },
+      gameW: this.scale.width,
+      gameH: this.scale.height,
+      value: this.characterName,
+      maxLength: 16,
+      allowed: /[a-zA-Z0-9 '-]/,
+      onChange: (v) => { this.characterName = v; this.renderStep(); },
+      onSubmit: () => this._startGame(),
+      onCancel: () => this._goTo(2),
+      enterHint: 'go',
+    });
+    this._nameField.focus();
+  }
+
+  private _destroyNameField() {
+    this._nameField?.destroy();
+    this._nameField = undefined;
+  }
+
   private _onNameKeydown(e: KeyboardEvent) {
     if (!this._nameInputActive) return;
+    // Keys typed into the phone's input are handled by the input itself.
+    if (this._nameField && e.target === this._nameField.el) return;
 
     if (e.key === 'Enter') {
       this._startGame();
@@ -432,6 +467,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private _startGame() {
     this._cleanupNameInput();
+    this._destroyNameField();
     const scores = this.session.scores;
 
     const cls = CHARACTER_CLASSES[this.selectedClass];

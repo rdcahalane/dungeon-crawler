@@ -40,7 +40,7 @@ export class HotbarView {
   private tipBox: Phaser.GameObjects.Graphics;
   private tipText: Phaser.GameObjects.BitmapText;
 
-  constructor(private scene: Phaser.Scene, onBelt: (index: number) => void) {
+  constructor(private scene: Phaser.Scene, onBelt: (index: number) => void, onSpell?: (index: number) => void) {
     this.tipBox = scene.add.graphics().setDepth(9);
     this.tipText = label(scene, SCREEN_W / 2, Y0 - 26, "", { color: UI.white, ox: 0.5, depth: 10 });
     for (let i = 0; i < HOTBAR_SLOTS; i++) {
@@ -54,6 +54,7 @@ export class HotbarView {
         text: label(scene, x + SLOT / 2, Y0 + 19, "", { color: UI.white, ox: 0.5, depth: 7 }),
         sig: "",
       };
+      shit.on("pointerdown", () => { if (!uiState.panelOpen) onSpell?.(i); });
       shit.on("pointerover", () => this.showTip(sv.tip));
       shit.on("pointerout", () => this.showTip(""));
       this.spells.push(sv);

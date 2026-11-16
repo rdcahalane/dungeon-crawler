@@ -1,3 +1,4 @@
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import { TILE_SIZE, TILE, TRAP_TYPES, TrapTypeKey } from "../../constants";
 import type { GameContext } from "../../GameContext";
@@ -95,7 +96,7 @@ export class TrapController {
     }
 
     const msg = source === 'auto'
-      ? `⚠ Trap detected: ${TRAP_TYPES[trapType].key} — press X to disarm`
+      ? `⚠ Trap detected: ${TRAP_TYPES[trapType].key} — ${isTouchDevice() ? 'tap DISARM' : 'press X'} to disarm`
       : `⚠ Found a trap: ${TRAP_TYPES[trapType].key}`;
     this.ctx.floatText(wx, wy - 20, '⚠ TRAP', 0xff1744, 11);
     this.ctx.status(msg);
@@ -202,7 +203,7 @@ export class TrapController {
     if (isDetected) {
       if (!this.warnedTrapKeys.has(trapKey)) {
         const msg = player.stats.classKey === 'thief'
-          ? 'Known trap ahead. Press X beside it to disarm, or route around it.'
+          ? `Known trap ahead. ${isTouchDevice() ? 'Tap DISARM' : 'Press X'} beside it to disarm, or route around it.`
           : 'Known trap ahead. Route around it or risk another path.';
         this.ctx.status(msg);
         this.ctx.floatText(player.x, player.y - 34, 'TRAP AHEAD', 0xffd166, 11);

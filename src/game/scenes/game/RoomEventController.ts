@@ -393,6 +393,13 @@ export class RoomEventController {
     const hint = `1-${n} OR ARROWS AND ENTER${d.onCancel ? '   ESC: WALK AWAY' : ''}`;
     // Under the subtitle: the HUD's message log covers the panel's bottom-left corner.
     fixed(uiText(scene, cx, top + 72, hint, { size: 16, color: COL.silver, originX: 0.5 }), D + 1);
+    // Walking away is a tap too (Esc does the same), where the dialog allows it.
+    if (d.onCancel) {
+      const away = fixed(flatPanel(scene, cx + panelW / 2 - 100, top + 28, 168, 32, { fill: COL.ink, border: COL.slate }), D + 1);
+      away.setInteractive({ useHandCursor: true });
+      fixed(uiText(scene, cx + panelW / 2 - 100, top + 28, 'WALK AWAY', { size: 16, color: COL.silver, originX: 0.5, originY: 0.5 }), D + 2);
+      away.on('pointerdown', () => d.onCancel?.());
+    }
     d.cards.forEach((card, i) => {
       const x = left + i * (CARD_W + CARD_GAP);
       const y = cardTop + CARD_H / 2;
