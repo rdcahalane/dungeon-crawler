@@ -79,7 +79,19 @@ A pixel-art tomb crawl with old-school tabletop rules: roll your hero, read the 
 
 - iPhone 6.9" (2868x1320): title, classes, abilities, tavern, dungeon (`iphone-69-*.png`)
 - iPad 13" (2752x2064): title, classes, tavern, dungeon (`ipad-13-*.png`)
-- Google Play phone (2640x1320, 2:1 crops of the iPhone set): `play-phone-*.png`; feature graphic `play-feature-1024x500.png`.
+- Google Play phone (2868x1613, 16:9, the iPhone set letterboxed; Play now wants 16:9): `play-16x9-*.png`; icon
+  `play-icon-512.png`; feature graphic `play-feature-1024x500.png`. The older 2:1 `play-phone-*.png` are unused.
+
+## Google Play status (2026-11-16)
+
+App `io.civops.dungeoncrawler` (console app id 4976425836482831897) in the DrawWise organization account. Done:
+store listing (text, icon, banner, five screenshots, all labelled AI-made because the art was drawn by Claude), category
+Role Playing, contact rcahalane@civops.io + https://dungeon.civops.io, every App content declaration (privacy policy,
+no ads, no sign-in, target 13+, no data collected, no ad ID, not government/financial/health, trader status as
+DrawWise), IARC rating (fantasy violence incl. human cultists and giant rats/bats, scary elements often, rare alcohol
+references, no blood). Version 1 (1.0) is live on internal testing for the "DrawWise testers" list; opt-in at
+https://play.google.com/apps/testing/io.civops.dungeoncrawler. Not done: production release + "Send for review"
+(goes public on approval because managed publishing is off).
 
 ## What only Ryan can do (hard gates)
 
