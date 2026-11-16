@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import { isTouchDevice } from "../touch";
 import type { PlayerStats, CharCreationData, Player } from "../entities/Player";
 import {
   TILE, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, SPELLS, getFloorThemeIdx,
@@ -173,7 +174,7 @@ export class GameScene extends Phaser.Scene {
     const stats = ctx.player.stats;
     if (stats.seenHints?.includes('verbs')) return;
     stats.seenHints = [...(stats.seenHints ?? []), 'verbs'];
-    this.time.delayedCall(900, () => ctx.status('P: probe ahead with your pole. G: search. L: listen.'));
+    this.time.delayedCall(900, () => ctx.status(isTouchDevice() ? 'POLE probes ahead. SEARCH finds hidden things. LISTEN at doors.' : 'P: probe ahead with your pole. G: search. L: listen.'));
   }
 
   /** Builds this floor's context and all controllers. Fields not known yet (player, groups) are filled by the controllers. */

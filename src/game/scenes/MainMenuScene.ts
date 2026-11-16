@@ -5,6 +5,7 @@ import { narrator } from "../audio/Narrator";
 import { notifySoundChanged, onSoundChanged, soundLabels, toggleMusic, toggleSfx } from "../audio/soundSettings";
 import { graveyard, causePhrase, type FallenRecord } from "../systems/Graveyard";
 import { isTouchDevice } from "../touch";
+import { isNativeApp } from "../native";
 
 interface SaveMeta {
   slot: number;
@@ -385,7 +386,9 @@ export class MainMenuScene extends Phaser.Scene {
     const listing = await listSaves();
     if (!this.sys.isActive()) return;
     this.saves = listing.saves;
-    if (listing.source === "api") {
+    if (isNativeApp()) {
+      this.statusLine = "PROGRESS IS SAVED ON THIS DEVICE";
+    } else if (listing.source === "api") {
       this.statusLine = "";
     } else if (listing.unauthorized) {
       this.statusLine = "NOT SIGNED IN: PROGRESS IS SAVED ON THIS DEVICE";

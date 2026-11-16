@@ -9,6 +9,7 @@
  * Pure TS, no Phaser. `createSaveStore(deps)` takes injectable `fetch` and storage for tests; the exported
  * `saveGame`, `loadGame`, `listSaves` use the browser globals.
  */
+import { isNativeApp } from "../native";
 import { CHARACTER_CLASSES } from "../constants";
 import type { PlayerStats } from "../entities/Player";
 
@@ -92,6 +93,7 @@ function resolveStorage(deps: SaveStoreDeps): StorageLike | null {
 
 function resolveFetch(deps: SaveStoreDeps): FetchLike | null {
   if (deps.fetch !== undefined) return deps.fetch;
+  if (isNativeApp()) return null; // the app-store build has no server: device saves only
   const f = (globalThis as { fetch?: unknown }).fetch;
   return typeof f === "function" ? (f as FetchLike).bind(globalThis) as FetchLike : null;
 }

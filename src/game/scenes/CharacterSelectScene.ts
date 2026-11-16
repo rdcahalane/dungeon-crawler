@@ -128,7 +128,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private renderClassPicker() {
     const { width, height } = this.scale;
-    this._heading('CHOOSE YOUR CLASS', 'STEP 1 OF 3  (LEFT/RIGHT, ENTER)', COL.gold);
+    this._heading('CHOOSE YOUR CLASS', isTouchDevice() ? 'STEP 1 OF 3  (TAP A CLASS)' : 'STEP 1 OF 3  (LEFT/RIGHT, ENTER)', COL.gold);
 
     const classKeys = Object.keys(CHARACTER_CLASSES) as ClassKey[];
     const cardW = 216;
@@ -281,9 +281,11 @@ export class CharacterSelectScene extends Phaser.Scene {
       : this.session.swapped ? 'YOU HAVE ARRANGED THIS ROLL. ROLL AGAIN FOR A NEW SET.' : 'ARRANGE LETS YOU SWAP ANY TWO ONCE.';
     this.container.add(uiText(this, 40, 466, `ROLLS: ${this.session.rolls}`, { size: 16, color: COL.silver }));
     this.container.add(uiText(this, 40, 490, sub, { size: 16, color: this.arranging ? COL.gold : COL.grey }));
-    this.container.add(uiText(this, width / 2, height - 98, 'R ROLL AGAIN   A ARRANGE   ENTER NEXT   ESC BACK', {
-      size: 16, color: COL.slate, originX: 0.5,
-    }));
+    if (!isTouchDevice()) {
+      this.container.add(uiText(this, width / 2, height - 98, 'R ROLL AGAIN   A ARRANGE   ENTER NEXT   ESC BACK', {
+        size: 16, color: COL.slate, originX: 0.5,
+      }));
+    }
 
     this._renderPreview(580, 104);
 

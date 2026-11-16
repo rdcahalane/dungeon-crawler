@@ -34,6 +34,12 @@ npm run deploy:canoe
 
 The script sweeps for malware, runs the tests and a build, syncs to `/opt/dungeon-crawler`, rebuilds and restarts there, then smoke-tests the pages and the database. The server's `.env.production` (database URL, `AUTH_SECRET`, `AUTH_URL`) stays on Canoe and is never copied. Vercel no longer deploys this repo (git disconnected 2026-11-16).
 
+## Phone and tablet apps
+
+The iOS and Android apps (Capacitor, `ios/` and `android/`) bundle the game from `native/` so it plays offline, with
+saves on the device and no sign-in. `npm run native:sync` builds and copies it; `npm run native:ios` also opens Xcode.
+Store listing, questionnaires, screenshots and release steps: [store/STORE.md](store/STORE.md).
+
 ## Dev shortcuts
 
 Add these to the game URL:

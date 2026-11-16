@@ -1,0 +1,8 @@
+{
+  "appId": "io.civops.dungeoncrawler",
+  "appName": "Dungeon Crawler",
+  "webDir": "native-dist",
+  "backgroundColor": "#08080d",
+  "ios": { "contentInset": "never", "backgroundColor": "#08080d" },
+  "android": { "backgroundColor": "#08080d" }
+}

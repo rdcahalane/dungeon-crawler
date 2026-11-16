@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dungeon Crawler</string>
+    <string name="title_activity_main">Dungeon Crawler</string>
+    <string name="package_name">io.civops.dungeoncrawler</string>
+    <string name="custom_url_scheme">io.civops.dungeoncrawler</string>
+</resources>

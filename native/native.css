@@ -1,0 +1,22 @@
+/* The app-store shell: no arcade cabinet, the game box fills the screen inside the notch and home-bar insets. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #08080d;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.native-stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
