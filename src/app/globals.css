@@ -283,7 +283,7 @@ body {
     animation: none;
   }
 }
-@media (max-width: 599px) and (orientation: portrait) {
+@media (max-width: 599px) and (orientation: portrait) and (pointer: coarse) {
   .rotate-overlay {
     display: flex;
   }
