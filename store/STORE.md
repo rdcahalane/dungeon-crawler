@@ -27,9 +27,15 @@ python3 scripts/native-assets.py   # regenerate icons and splash from public/ico
 
 - **iOS:** Xcode > App target > Signing & Capabilities: pick the team, then Product > Archive > Distribute > App Store Connect.
   `ITSAppUsesNonExemptEncryption` is already `false` in Info.plist, so there is no export-compliance question.
-- **Android:** `cd android && ./gradlew bundleRelease` writes `app/build/outputs/bundle/release/app-release.aab`.
-  Release signing reads `android/keystore.properties` (gitignored, same as DrawWise):
-  `storeFile`, `storePassword`, `keyAlias`, `keyPassword`. Enrol in Play App Signing so the upload key can be replaced.
+- **Android:** `cd android && JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew bundleRelease` writes the signed
+  `app/build/outputs/bundle/release/app-release.aab` (built and verified 2026-11-16). The SDK is the one DrawWise
+  uses, `/opt/homebrew/share/android-commandlinetools` (`android/local.properties`, gitignored). Release signing reads
+  `android/keystore.properties` (gitignored, same as DrawWise); the upload key is
+  `~/.android-keystores/dungeon-crawler-upload.jks`, password in OpenBrain. Back that file up, and enrol in Play App
+  Signing so a lost upload key can be reset.
+- **Android narrator:** the Android WebView has no speech engine, so `native/main.tsx` hands the narrator the
+  `@capacitor-community/text-to-speech` plugin (Google's en-GB voice). iOS uses the WebView's own voices.
+- **Emulator check:** `emulator -avd dc_pixel -no-audio` (AVD made from the installed Android 15 image).
 - Bump `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` (Xcode) and `versionName`/`versionCode` (`android/app/build.gradle`) for each upload.
 
 ## Listing copy
@@ -73,7 +79,7 @@ A pixel-art tomb crawl with old-school tabletop rules: roll your hero, read the 
 
 - iPhone 6.9" (2868x1320): title, classes, abilities, tavern, dungeon (`iphone-69-*.png`)
 - iPad 13" (2752x2064): title, classes, tavern, dungeon (`ipad-13-*.png`)
-- Google Play needs phone screenshots (the iPhone set works, any 16:9 to 2:1 ratio) and a 1024x500 feature graphic (to make).
+- Google Play phone (2640x1320, 2:1 crops of the iPhone set): `play-phone-*.png`; feature graphic `play-feature-1024x500.png`.
 
 ## What only Ryan can do (hard gates)
 

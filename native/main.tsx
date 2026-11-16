@@ -6,7 +6,14 @@
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { TextToSpeech } from "@capacitor-community/text-to-speech";
 import PhaserGame from "@/game/PhaserGame";
+import { narrator } from "@/game/audio/Narrator";
+import { makeUtterance, pluginSynth } from "@/game/audio/nativeSpeech";
+
+// Android's WebView has no Web Speech API: give the narrator the native text-to-speech engine instead.
+// On iOS the WebView already has one, and `useSynth` leaves it in place.
+if (!narrator.isAvailable()) narrator.useSynth(pluginSynth(TextToSpeech), makeUtterance);
 import "@/app/globals.css";
 import "./native.css";
 

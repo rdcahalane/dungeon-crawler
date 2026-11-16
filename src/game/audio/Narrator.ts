@@ -159,6 +159,18 @@ export class Narrator {
     if (!on) this.stop();
   }
 
+  /**
+   * Swap in another speech engine (the Android app, whose WebView has no `speechSynthesis`, passes the native
+   * text-to-speech plugin through `nativeSpeech`). Only takes effect when no engine was found at start.
+   */
+  useSynth(synth: SynthLike, makeUtterance: (text: string) => UtteranceLike): void {
+    if (this.synth) return;
+    this.synth = synth;
+    this.make = makeUtterance;
+    this.refreshVoice();
+    synth.addEventListener?.("voiceschanged", this.voicesHandler);
+  }
+
   /** The voice currently chosen (undefined until the browser lists voices, or when it has no English one). */
   currentVoice(): VoiceLike | undefined {
     return this.voice;

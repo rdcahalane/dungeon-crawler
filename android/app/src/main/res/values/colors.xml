@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The game's page background (#08080d); fills the camera cutout and any edge the WebView does not cover. -->
+    <color name="colorPrimary">#08080D</color>
+    <color name="colorPrimaryDark">#08080D</color>
+    <color name="colorAccent">#F4C42C</color>
+    <color name="dc_background">#08080D</color>
+</resources>
