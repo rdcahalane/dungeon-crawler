@@ -9,11 +9,14 @@ import { ExploredTracker } from "./explored";
 import { UI, SCREEN_W, drawBox, label } from "./theme";
 import { FLOOR_PANEL_MAX_BOTTOM } from "./HudWidgets";
 import { uiState } from "./uiState";
+import { isTouchDevice } from "../../touch";
 
 const PX = 3;
 const W = MAP_WIDTH * PX;
 const H = MAP_HEIGHT * PX;
-const BOX = { x: SCREEN_W - 8 - (W + 8), y: FLOOR_PANEL_MAX_BOTTOM + 6, w: W + 8, h: H + 8 + 20 };
+const BOX_RIGHT = { x: SCREEN_W - 8 - (W + 8), y: FLOOR_PANEL_MAX_BOTTOM + 6, w: W + 8, h: H + 8 + 20 };
+/** On a touch screen the right side is the action pad, so the map sits in the left margin, low enough to leave the narration card room. */
+const BOX_TOUCH = { x: 8, y: 250, w: W + 8, h: H + 8 + 20 };
 
 export class Minimap {
   private g: Phaser.GameObjects.Graphics;
@@ -22,10 +25,11 @@ export class Minimap {
   private on = false;
   private lastKey = "";
   private lastDraw = -1;
+  private readonly box = isTouchDevice() ? BOX_TOUCH : BOX_RIGHT;
 
   constructor(private scene: Phaser.Scene) {
     this.g = scene.add.graphics().setDepth(40).setVisible(false);
-    this.title = label(scene, BOX.x + 6, BOX.y + BOX.h - 19, "MAP", { color: UI.gold, depth: 41 }).setVisible(false);
+    this.title = label(scene, this.box.x + 6, this.box.y + this.box.h - 19, "MAP", { color: UI.gold, depth: 41 }).setVisible(false);
   }
 
   get visible(): boolean { return this.on; }
@@ -34,7 +38,7 @@ export class Minimap {
     this.on = !this.on;
     this.g.setVisible(this.on);
     this.title.setVisible(this.on);
-    uiState.setRect("minimap", this.on ? BOX : null);
+    uiState.setRect("minimap", this.on ? this.box : null);
     this.lastKey = "";
     return this.on;
   }
@@ -61,9 +65,9 @@ export class Minimap {
   private draw(ctx: GameContext, seen: Uint8Array, ptx: number, pty: number, bright: boolean): void {
     const g = this.g;
     g.clear();
-    drawBox(g, BOX.x, BOX.y, BOX.w, BOX.h, UI.black, UI.slate, null);
-    const ox = BOX.x + 4;
-    const oy = BOX.y + 4;
+    drawBox(g, this.box.x, this.box.y, this.box.w, this.box.h, UI.black, UI.slate, null);
+    const ox = this.box.x + 4;
+    const oy = this.box.y + 4;
     const tiles = ctx.dungeon.tiles;
     for (let y = 0; y < MAP_HEIGHT; y++) {
       const row = tiles[y];

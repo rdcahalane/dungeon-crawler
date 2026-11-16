@@ -3,6 +3,7 @@ import { listSaves, loadGame } from "../systems/SaveStore";
 import { CLASS_COL, COL, asciiOnly, flatPanel, retroButton, uiText } from "../gfx/retroUi";
 import { narrator } from "../audio/Narrator";
 import { graveyard, causePhrase, type FallenRecord } from "../systems/Graveyard";
+import { isTouchDevice } from "../touch";
 
 interface SaveMeta {
   slot: number;
@@ -34,6 +35,23 @@ export const HOW_TO_PLAY: ReadonlyArray<readonly [string, string]> = [
   ["F2", "CRT SCANLINES ON OR OFF"],
   ["N", "SOUND ON OR OFF"],
   ["V / Z", "NARRATOR VOICE ON OR OFF / HEAR IT AGAIN"],
+];
+
+/** The same list for a touch screen: buttons and taps, no keys. */
+export const HOW_TO_PLAY_TOUCH: ReadonlyArray<readonly [string, string]> = [
+  ["TAP THE FLOOR", "WALK THERE"],
+  ["TAP A MONSTER", "WALK UP AND ATTACK IT"],
+  ["ATTACK BUTTON", "SWING (HOLD IT TO KEEP SWINGING)"],
+  ["HOTBAR 1 TO 4", "TAP A SPELL TO CAST IT AT THE NEAREST FOE"],
+  ["BELT SLOTS", "TAP ONE TO USE A POTION OR ITEM"],
+  ["DRINK", "DRINK A HEALING POTION"],
+  ["SEARCH", "SEARCH THE NEARBY WALLS AND FLOOR"],
+  ["POLE", "PROBE TWO TILES AHEAD WITH THE TEN-FOOT POLE"],
+  ["LISTEN", "LISTEN AT A DOOR"],
+  ["USE", "INTERACT. STAIRS: USE TO CLIMB, TWICE TO DESCEND"],
+  ["CAMP", "MAKE CAMP IN THE CAMP ROOM (COSTS A RATION)"],
+  ["MENU", "PACK, SPELLBOOK, MAP, SOUND, VOICE, SCANLINES"],
+  ["TAP A ROOM TEXT", "HEAR IT AGAIN"],
 ];
 
 export class MainMenuScene extends Phaser.Scene {
@@ -122,6 +140,7 @@ export class MainMenuScene extends Phaser.Scene {
   private drawTitle() {
     const { width, height } = this.scale;
     const cx = width / 2;
+    const touch = isTouchDevice();
 
     this.add2(uiText(this, cx + 4, 108, "DUNGEON CRAWLER", { size: 64, color: COL.blood, originX: 0.5, originY: 0.5 }));
     this.add2(uiText(this, cx, 104, "DUNGEON CRAWLER", { size: 64, color: COL.gold, originX: 0.5, originY: 0.5 }));
@@ -162,7 +181,7 @@ export class MainMenuScene extends Phaser.Scene {
     const hit = this.add2(flatPanel(this, cx, startY, 580, 48, { fill: COL.ink, border: COL.slate }));
     hit.setInteractive({ useHandCursor: true });
     hit.on("pointerdown", () => this.show("slots"));
-    const start = this.add2(uiText(this, cx, startY, "PRESS ENTER OR CLICK TO BEGIN", {
+    const start = this.add2(uiText(this, cx, startY, touch ? "TAP TO BEGIN" : "PRESS ENTER OR CLICK TO BEGIN", {
       size: 24, color: COL.gold, originX: 0.5, originY: 0.5,
     }));
     let bright = true;
@@ -178,10 +197,10 @@ export class MainMenuScene extends Phaser.Scene {
       }),
     );
 
-    const how = retroButton(this, cx - 130, 504, 240, 40, "HOW TO PLAY (H)", () => this.show("howto"), { size: 16 });
+    const how = retroButton(this, cx - 130, 504, 240, 40, touch ? "HOW TO PLAY" : "HOW TO PLAY (H)", () => this.show("howto"), { size: 16 });
     this.add2(how.box);
     this.add2(how.label);
-    const fallen = retroButton(this, cx + 130, 504, 240, 40, "THE FALLEN (F)", () => this.openFallen(0), { size: 16 });
+    const fallen = retroButton(this, cx + 130, 504, 240, 40, touch ? "THE FALLEN" : "THE FALLEN (F)", () => this.openFallen(0), { size: 16 });
     this.add2(fallen.box);
     this.add2(fallen.label);
 
@@ -191,7 +210,7 @@ export class MainMenuScene extends Phaser.Scene {
 
     this.statusText = this.add2(uiText(this, cx, 578, this.statusLine, { size: 8, color: COL.grey, originX: 0.5, originY: 0.5 }));
     this.add2(
-      uiText(this, cx, height - 48, "(C) 2026 DUNGEON CRAWLER   F2 CRT   N SOUND   V VOICE", {
+      uiText(this, cx, height - 48, touch ? "(C) 2026 DUNGEON CRAWLER" : "(C) 2026 DUNGEON CRAWLER   F2 CRT   N SOUND   V VOICE", {
         size: 8,
         color: COL.grey,
         originX: 0.5,
@@ -202,7 +221,8 @@ export class MainMenuScene extends Phaser.Scene {
 
   private voiceLabel(): string {
     if (!narrator.isAvailable()) return "VOICE: UNAVAILABLE";
-    return narrator.enabled ? "VOICE: ON (V)" : "VOICE: OFF (V)";
+    const k = isTouchDevice() ? "" : " (V)";
+    return narrator.enabled ? `VOICE: ON${k}` : `VOICE: OFF${k}`;
   }
 
   /** The narrator's voice, saved for next time. Room text boxes still appear when it is off. */
@@ -216,7 +236,7 @@ export class MainMenuScene extends Phaser.Scene {
     const cx = width / 2;
     this.add2(uiText(this, cx, 72, "HOW TO PLAY", { size: 32, color: COL.gold, originX: 0.5, originY: 0.5 }));
     this.add2(flatPanel(this, cx, 316, 880, 380, { fill: COL.dusk, border: COL.slate }));
-    HOW_TO_PLAY.forEach(([keys, what], i) => {
+    (isTouchDevice() ? HOW_TO_PLAY_TOUCH : HOW_TO_PLAY).forEach(([keys, what], i) => {
       const y = 138 + i * 28;
       this.add2(uiText(this, 60, y, keys, { size: 16, color: COL.gold }));
       this.add2(uiText(this, 290, y, what, { size: 16, color: COL.silver }));
@@ -229,7 +249,7 @@ export class MainMenuScene extends Phaser.Scene {
         originY: 0.5,
       }),
     );
-    const back = retroButton(this, cx, height - 70, 200, 40, "BACK (ESC)", () => this.show("title"));
+    const back = retroButton(this, cx, height - 70, 200, 40, isTouchDevice() ? "BACK" : "BACK (ESC)", () => this.show("title"));
     this.add2(back.box);
     this.add2(back.label);
   }
@@ -259,7 +279,7 @@ export class MainMenuScene extends Phaser.Scene {
       this.add2(uiText(this, 56, y + 44, `CHARACTER LEVEL ${r.level}  ${r.kills} SLAIN  ${day}`.slice(0, 68), { size: 16, color: COL.grey }));
     });
 
-    const back = retroButton(this, cx - 250, height - 52, 200, 40, "BACK (ESC)", () => this.show("title"));
+    const back = retroButton(this, cx - 250, height - 52, 200, 40, isTouchDevice() ? "BACK" : "BACK (ESC)", () => this.show("title"));
     this.add2(back.box);
     this.add2(back.label);
     if (pages > 1) {
@@ -334,7 +354,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.add2(newBtn.box);
     this.add2(newBtn.label);
 
-    const back = retroButton(this, cx - 130, height - 70, 220, 40, "BACK (ESC)", () => this.show("title"));
+    const back = retroButton(this, cx - 130, height - 70, 220, 40, isTouchDevice() ? "BACK" : "BACK (ESC)", () => this.show("title"));
     this.add2(back.box);
     this.add2(back.label);
     const how = retroButton(this, cx + 130, height - 70, 220, 40, "HOW TO PLAY", () => this.show("howto"));

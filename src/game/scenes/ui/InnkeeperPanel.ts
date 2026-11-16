@@ -2,6 +2,7 @@
  * Talking to the innkeeper: the shop, a room for the night (5 gp) and the free common room.
  * Same frame and keys as the shop: Up/Down pick, Enter choose, number keys, Esc close.
  */
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import { Sfx } from "../../audio/Sfx";
 import { PanelBase } from "./PanelBase";
@@ -86,7 +87,7 @@ export class InnkeeperPanel extends PanelBase {
       this.boxes.push({ x: x0, y, w: this.w - 40, h: OPT_H, index: i });
     });
     if (this.msg) this.dyn.add(label(scene, x0, this.y + this.h - 54, this.msg.slice(0, 50), { color: this.msgColor }));
-    this.dyn.add(label(scene, x0, this.y + this.h - 26, "UP/DOWN PICK  ENTER CHOOSE  ESC CLOSE", { color: UI.grey }));
+    this.dyn.add(label(scene, x0, this.y + this.h - 26, isTouchDevice() ? "TAP A CHOICE. X CLOSES." : "UP/DOWN PICK  ENTER CHOOSE  ESC CLOSE", { color: UI.grey }));
   }
 
   private choose(i: number): void {

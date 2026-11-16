@@ -3,6 +3,7 @@
  * Mouse: click selects, double-click does the primary action, drag or "click source then destination"
  * moves. Keys: arrows, Enter, D drop, B belt, V move, Esc / I close.
  */
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import { EQUIP_SLOTS, BELT_SIZE, PACK_SIZE, describe, displayName, getDef, rarityColor } from "../../items";
 import type { Inventory, ItemInstance } from "../../items";
@@ -103,7 +104,7 @@ export class InventoryPanel extends PanelBase {
     this.buildSheet(inv);
     this.buildButtons();
     this.buildDetail(g, inv);
-    add(label(scene, 56, 584, "ARROWS MOVE  ENTER USE/EQUIP  D DROP  B BELT  V MOVE  I OR ESC CLOSE", { color: UI.grey }));
+    add(label(scene, 56, 584, isTouchDevice() ? "TAP A SLOT, THEN A BUTTON. DOUBLE TAP USES IT. X CLOSES." : "ARROWS MOVE  ENTER USE/EQUIP  D DROP  B BELT  V MOVE  I OR ESC CLOSE", { color: UI.grey }));
   }
 
   private slotBox(

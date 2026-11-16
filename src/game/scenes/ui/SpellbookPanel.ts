@@ -2,6 +2,7 @@
  * Spellbook screen for casters: known spells by level, memorized and ready counts against the slots.
  * + / - fill or empty a slot. A cast spell keeps its slot until the character rests.
  */
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import { SPELL_DEFS, spellsFor, type SpellDef } from "../../rules/spells";
 import { PanelBase } from "./PanelBase";
@@ -107,7 +108,12 @@ export class SpellbookPanel extends PanelBase {
     }
     if (this.msg) this.dyn.add(label(scene, this.x + 26, this.y + 496, this.msg.slice(0, 54), { color: UI.gold }));
     this.dyn.add(label(scene, this.x + 26, this.y + 516, "SLOTS RETURN WHEN YOU REST.", { color: UI.grey }));
-    this.dyn.add(label(scene, this.x + 20, this.y + 550, "UP/DOWN PICK  +/- SET  B OR ESC CLOSE", { color: UI.grey }));
+    this.dyn.add(label(scene, this.x + 20, this.y + 550, isTouchDevice() ? "TAP A SPELL, + AND - SET IT. X CLOSES." : "UP/DOWN PICK  +/- SET  B OR ESC CLOSE", { color: UI.grey }));
+    // Past twelve rows the list scrolls with the pick: two buttons for a screen with no arrow keys.
+    if (es.length > VISIBLE) {
+      this.addButton(this.x + this.w - 108, this.y + 30, 40, 22, "^", () => this.stepSel(-1), this.sel > 0);
+      this.addButton(this.x + this.w - 64, this.y + 30, 40, 22, "v", () => this.stepSel(1), this.sel < spells.length - 1);
+    }
   }
 
   private rowHits: Array<{ x: number; y: number; w: number; h: number; idx: number }> = [];
@@ -127,6 +133,12 @@ export class SpellbookPanel extends PanelBase {
       if (px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h) { this.sel = r.idx; this.render(); return true; }
     }
     return false;
+  }
+
+  private stepSel(d: 1 | -1): void {
+    const n = this.spellEntries(this.entries()).length;
+    this.sel = Math.max(0, Math.min(n - 1, this.sel + d));
+    this.render();
   }
 
   private change(key: string, delta: 1 | -1): void {

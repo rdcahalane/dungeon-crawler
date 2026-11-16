@@ -3,6 +3,7 @@
  * inventory's own `gold` is only a mirror (see `buyWithPurse`). Keys: Up/Down pick, Enter buy or sell one, Tab switch tab,
  * Esc close. Mouse: click a row to pick it, the buttons below to buy or sell (a click never spends gold by itself), the wheel to scroll.
  */
+import { isTouchDevice } from "../../touch";
 import * as Phaser from "phaser";
 import { Sfx } from "../../audio/Sfx";
 import {
@@ -103,6 +104,9 @@ export class ShopPanel extends PanelBase {
     // tabs and purse
     this.tabButton(this.x + 16, this.y + 32, "BUY", "buy");
     this.tabButton(this.x + 124, this.y + 32, "SELL", "sell");
+    // The wheel scrolls the list; on a touch screen two buttons do.
+    this.addButton(this.x + 250, this.y + 32, 40, 28, "^", () => this.moveCursor(-1), this.cursor[t] > 0);
+    this.addButton(this.x + 296, this.y + 32, 40, 28, "v", () => this.moveCursor(1), this.cursor[t] < lines.length - 1);
     this.dyn.add(label(scene, this.x + this.w - 20, this.y + 38, `GOLD ${stats.gold}`, { color: UI.gold, ox: 1 }));
 
     // list
@@ -162,7 +166,7 @@ export class ShopPanel extends PanelBase {
     }
     if (this.msg) this.dyn.add(label(scene, x0 + 10, this.y + DETAIL_Y + 150, this.msg.slice(0, 56), { color: this.msgColor }));
     this.dyn.add(label(scene, x0 + 10, this.y + DETAIL_Y + 174, `PACK ${inv.pack.filter(Boolean).length}/24`, { color: UI.grey }));
-    this.dyn.add(label(scene, this.x + 20, this.y + 550, "UP/DOWN PICK  ENTER BUY/SELL  TAB SWITCH  ESC CLOSE", { color: UI.grey }));
+    this.dyn.add(label(scene, this.x + 20, this.y + 550, isTouchDevice() ? "TAP AN ITEM, THEN BUY OR SELL. X CLOSES." : "UP/DOWN PICK  ENTER BUY/SELL  TAB SWITCH  ESC CLOSE", { color: UI.grey }));
   }
 
   private tabButton(x: number, y: number, text: string, tab: Tab): void {

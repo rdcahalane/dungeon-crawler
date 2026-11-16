@@ -12,6 +12,7 @@ import type { GameContext } from "../../GameContext";
 import type { GameEventScope } from "../../GameEvents";
 import { TILE_SIZE, TOMB_FLOOR, getFloorThemeIdx } from "../../constants";
 import { isTextEntryActive } from "../../textEntry";
+import { isTouchDevice } from "../../touch";
 import { narrator as sharedNarrator, type Narrator } from "../../audio/Narrator";
 import { bossText, floorIntro, textForArea, textForRoom, type RoomText, type ThemeIdx } from "../../world/roomText";
 import { areaAt, vaultAreas, type AreaDef } from "./MechVerbs";
@@ -72,6 +73,9 @@ export class NarratorController {
   private scanLeft = 0;
   private scope?: GameEventScope;
   private onKey?: (e: KeyboardEvent) => void;
+  private onTap?: (p: Phaser.Input.Pointer) => void;
+  /** Where the card is on screen, while it is up. A tap on it reads it again. */
+  private cardRect?: { x: number; y: number; w: number; h: number };
   private clock = 0;
 
   constructor(private ctx: GameContext, private readonly voice: Narrator = sharedNarrator) {}
@@ -97,11 +101,19 @@ export class NarratorController {
 
     this.onKey = (e) => this.handleKey(e);
     window.addEventListener("keydown", this.onKey);
+    this.onTap = (p) => {
+      const r = this.cardRect;
+      if (!r || !this.shown || !isTouchDevice() || this.ctx.modalOpen || uiState.isBlocking()) return;
+      if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) this.replay();
+    };
+    ctx.scene.input.on("pointerdown", this.onTap);
   }
 
   destroy(): void {
     if (this.onKey) window.removeEventListener("keydown", this.onKey);
     this.onKey = undefined;
+    if (this.onTap) this.ctx.scene.input.off("pointerdown", this.onTap);
+    this.onTap = undefined;
     this.scope?.dispose();
     this.scope = undefined;
     this.voice.stop();
@@ -241,6 +253,8 @@ export class NarratorController {
   private clearBox(): void {
     this.shown?.box.destroy();
     this.shown = undefined;
+    this.cardRect = undefined;
+    uiState.setRect("narration", null);
   }
 
   private build(item: NarrationItem): Phaser.GameObjects.Container {
@@ -248,7 +262,10 @@ export class NarratorController {
     const cam = scene.cameras.main;
     const W = scene.scale.width;
     const H = scene.scale.height;
-    const box = scene.add.container(W - RIGHT - BOX_W / 2, H / 2).setScrollFactor(0).setDepth(DEPTH).setScale(1 / cam.zoom).setAlpha(0);
+    // On a touch screen the right margin belongs to the action pad: the card takes the left margin instead.
+    const left = isTouchDevice();
+    const boxX = left ? RIGHT + BOX_W / 2 : W - RIGHT - BOX_W / 2;
+    const box = scene.add.container(boxX, H / 2).setScrollFactor(0).setDepth(DEPTH).setScale(1 / cam.zoom).setAlpha(0);
     const inner = BOX_W - PAD * 2;
     const special = item.kind !== "room";
     const parts: Phaser.GameObjects.Text[] = [];
@@ -265,9 +282,12 @@ export class NarratorController {
       add(scene.add.text(0, 0, item.title, { fontFamily: MONO, fontSize: "15px", color: "#5a2d0c", fontStyle: "bold", wordWrap: { width: inner }, align: "center" }).setOrigin(0.5, 0), 8);
     }
     add(scene.add.text(-inner / 2, 0, item.text, { fontFamily: MONO, fontSize: "13px", color: INK, wordWrap: { width: inner }, lineSpacing: 3 }).setOrigin(0, 0), 8);
-    add(scene.add.text(0, 0, "V voice   Z again", { fontFamily: MONO, fontSize: "10px", color: "#8a6f3d" }).setOrigin(0.5, 0), 0);
+    add(scene.add.text(0, 0, left ? "tap: hear it again" : "V voice   Z again", { fontFamily: MONO, fontSize: "10px", color: "#8a6f3d" }).setOrigin(0.5, 0), 0);
 
     const totalH = y + PAD * 2;
+    this.cardRect = { x: boxX - BOX_W / 2, y: TOP, w: BOX_W, h: totalH };
+    // The card is a button too: keep the map underneath from taking the tap that reads it again.
+    if (left) uiState.setRect("narration", this.cardRect);
     const top = -H / 2 + TOP;
     for (const t of parts) t.y += top + PAD;
     const paper = scene.add.rectangle(0, top + totalH / 2, BOX_W, totalH, 0xe6d3a3, 1)

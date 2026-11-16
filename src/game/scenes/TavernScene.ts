@@ -10,6 +10,8 @@ import { Sfx } from "../audio/Sfx";
 import { shopStock, type ShopEntry } from "../items";
 import { mathRng } from "../rules";
 import { uiState } from "./ui/uiState";
+import { TapWalker } from "./ui/TapWalker";
+import { isTouchDevice } from "../touch";
 import type { TavernHost } from "./ui/tavernHost";
 import { COL, asciiOnly, flatPanel, retroButton, tagText, uiText } from "../gfx/retroUi";
 
@@ -100,6 +102,11 @@ export class TavernScene extends Phaser.Scene {
   private _eKey?: Phaser.Input.Keyboard.Key;
   private _esc?: Phaser.Input.Keyboard.Key;
 
+  // Tap to walk, and tap an NPC to walk up and talk.
+  private walker?: TapWalker;
+  private pendingTalk: "inn" | "board" | null = null;
+  private onTap?: (p: Phaser.Input.Pointer) => void;
+
   private nearInnkeeper = false;
   private nearBoard = false;
   private nearEntrance = false;
@@ -135,6 +142,7 @@ export class TavernScene extends Phaser.Scene {
     this.spawnTorches();
     this.setupCamera(totalW, totalH);
     this.buildPromptText();
+    this.setupTapToWalk();
 
     this._eKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this._esc = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -144,7 +152,12 @@ export class TavernScene extends Phaser.Scene {
       this.scene.launch("HUDScene");
     }
     this.emitHUD();
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { uiState.externalModal = false; });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      uiState.externalModal = false;
+      if (this.onTap) this.input.off("pointerdown", this.onTap);
+      this.onTap = undefined;
+      this.walker?.stop();
+    });
 
 	    // Claim rewards for completed quests
 	    this.claimCompletedQuests();
@@ -524,8 +537,11 @@ export class TavernScene extends Phaser.Scene {
     const hudBusy = uiState.isBlocking();
     uiState.externalModal = !!this.questPanel || this._dungeonChoiceOpen;
     if (hudBusy || uiState.externalModal) {
+      this.walker?.stop();
+      this.pendingTalk = null;
       (this.player.body as Phaser.Physics.Arcade.Body | null)?.setVelocity(0, 0);
     } else {
+      this.walker?.update();
       this.player.update(delta);
     }
 
@@ -545,6 +561,13 @@ export class TavernScene extends Phaser.Scene {
     this.nearInnkeeper = innkeeperDist < TILE_SIZE * 4; // reach across bar counter
     this.nearBoard = boardDist < range;
     this.nearEntrance = entranceDist < TILE_SIZE * 3;
+
+    // A tapped NPC: talk as soon as the walk gets close enough.
+    if (this.pendingTalk && !hudBusy && !uiState.externalModal) {
+      if (this.pendingTalk === "inn" && this.nearInnkeeper) this.talkTo("inn");
+      else if (this.pendingTalk === "board" && this.nearBoard) this.talkTo("board");
+      else if (!this.walker?.active) this.pendingTalk = null;
+    }
 
     // ESC closes dungeon choice dialog
     // Check _dungeonChoiceOpen BEFORE JustDown - JustDown consumes the keypress
@@ -568,13 +591,13 @@ export class TavernScene extends Phaser.Scene {
     if (hudBusy) {
       this.hidePrompt();
     } else if (this.questPanel) {
-      this.showPrompt("ESC - CLOSE");
+      this.showPrompt(isTouchDevice() ? "TAP CLOSE" : "ESC - CLOSE");
     } else if (this.nearInnkeeper) {
-      this.showPrompt("E - TALK TO THE INNKEEPER");
+      this.showPrompt(isTouchDevice() ? "TAP THE INNKEEPER TO TALK" : "E - TALK TO THE INNKEEPER");
     } else if (this.nearBoard) {
-      this.showPrompt("E - READ THE NOTICE BOARD");
+      this.showPrompt(isTouchDevice() ? "TAP THE BOARD TO READ IT" : "E - READ THE NOTICE BOARD");
     } else if (this.nearEntrance) {
-      this.showPrompt("WALK ONTO THE GLOWING PORTAL TO ENTER THE DUNGEON");
+      this.showPrompt(isTouchDevice() ? "WALK ONTO THE GLOWING PORTAL" : "WALK ONTO THE GLOWING PORTAL TO ENTER THE DUNGEON");
     } else {
       this.hidePrompt();
     }
@@ -596,6 +619,44 @@ export class TavernScene extends Phaser.Scene {
     }
 
     this.emitHUD();
+  }
+
+  // -- Tap to walk and tap to talk ----------------------------------------------
+
+  private setupTapToWalk() {
+    const walkable = (tx: number, ty: number): boolean =>
+      tx >= 0 && ty >= 0 && tx < TAVERN_W && ty < TAVERN_H && TAVERN_TILES[ty][tx] !== W;
+    this.walker = new TapWalker(this.player, walkable, TILE_SIZE);
+    this.onTap = (p: Phaser.Input.Pointer) => {
+      if (p.rightButtonDown()) return;
+      if (this._enteringDungeon || this._dungeonChoiceOpen || this.questPanel) return;
+      if (uiState.isBlocking() || uiState.externalModal || uiState.isOverUi(p.x, p.y)) return;
+      const w = this.cameras.main.getWorldPoint(p.x, p.y);
+      const reach = TILE_SIZE * 1.25;
+      if (Phaser.Math.Distance.Between(w.x, w.y, this.innkeeperSprite.x, this.innkeeperSprite.y) < reach) { this.talkTo("inn"); return; }
+      if (Phaser.Math.Distance.Between(w.x, w.y, this.boardSprite.x, this.boardSprite.y) < reach) { this.talkTo("board"); return; }
+      this.pendingTalk = null;
+      this.walker?.goTo(w.x, w.y);
+    };
+    this.input.on("pointerdown", this.onTap);
+  }
+
+  /** Talk now when in reach, otherwise walk up first (the innkeeper is behind the bar: walk to the front of it). */
+  private talkTo(who: "inn" | "board") {
+    const px = this.player.x;
+    const py = this.player.y;
+    const near = who === "inn"
+      ? Phaser.Math.Distance.Between(px, py, this.innkeeperSprite.x, this.innkeeperSprite.y) < TILE_SIZE * 4
+      : Phaser.Math.Distance.Between(px, py, this.boardSprite.x, this.boardSprite.y) < TILE_SIZE * 2.5;
+    if (near) {
+      this.pendingTalk = null;
+      this.walker?.stop();
+      if (who === "inn") this.openInnkeeper(); else this.openQuestBoard();
+      return;
+    }
+    this.pendingTalk = who;
+    if (who === "inn") this.walker?.goTo(this.innkeeperSprite.x, (INNKEEPER_POS.ty + 3) * TILE_SIZE + TILE_SIZE / 2);
+    else this.walker?.goTo(this.boardSprite.x, this.boardSprite.y);
   }
 
   // -- Innkeeper, shop and inn ------------------------------------------------
@@ -713,7 +774,7 @@ export class TavernScene extends Phaser.Scene {
           size: 16, color: COL.lime, originX: 1, originY: 0.5,
         }));
       } else {
-        panel.add(uiText(this, panelW / 2 - 36, qy, "CLICK TO\nACCEPT", {
+        panel.add(uiText(this, panelW / 2 - 36, qy, isTouchDevice() ? "TAP TO\nACCEPT" : "CLICK TO\nACCEPT", {
           size: 16, color: COL.cream, originX: 1, originY: 0.5, center: true,
         }));
       }
@@ -789,8 +850,10 @@ export class TavernScene extends Phaser.Scene {
     newBg.on('pointerout', () => newBg.setFillStyle(COL.plum));
     newBg.on('pointerdown', () => { this.closeDungeonChoice(); this.enterDungeon(false); });
 
-    // ESC hint
-    dlg.add(uiText(this, 0, 138, 'ESC - CLOSE', { size: 16, color: COL.grey, originX: 0.5, originY: 0.5 }));
+    // A way out for a touch screen (Esc does the same)
+    const closeBtn = retroButton(this, 0, 140, 200, 32, 'CLOSE (ESC)', () => this.closeDungeonChoice());
+    dlg.add(closeBtn.box);
+    dlg.add(closeBtn.label);
   }
 
   private closeDungeonChoice() {
