@@ -12,7 +12,7 @@ const PhaserGame = dynamic(() => import("@/game/PhaserGame"), {
 });
 
 export default function GameWrapper() {
-  // `.screen` (globals.css) sizes the canvas box at 3:2 and keeps pixels crisp.
+  // `.screen` (globals.css) sizes the canvas box at 3:2 (largest that fits width and height) and keeps pixels crisp.
   return (
     <div className="screen">
       <PhaserGame />
