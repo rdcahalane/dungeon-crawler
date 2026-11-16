@@ -18,6 +18,7 @@ echo "[deploy] 3: sync to $CANOE:$APP (keeps server .env.production)"
 rsync -az --delete \
   --exclude=node_modules --exclude=.next --exclude=.git --exclude='.env*' --exclude=.claude --exclude=.vercel \
   --exclude=src/generated --exclude='._*' --exclude=public/__bot.js \
+  --exclude=/ios --exclude=/android --exclude=/store --exclude=/native-dist \
   --filter='P .env*' --filter='P node_modules' --filter='P .next' \
   "$PWD"/ "$CANOE:$APP/"
 
