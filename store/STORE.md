@@ -84,7 +84,8 @@ A pixel-art tomb crawl with old-school tabletop rules: roll your hero, read the 
 ## What only Ryan can do (hard gates)
 
 1. **Apple Developer Program**, $99 a year, enrolled under the account that should publish the app.
-2. **Google Play Console**, $25 one time. New personal accounts must run a closed test with 12 testers for 14 days
-   before production access.
+2. **Google Play Console**: the existing DrawWise organization account (ID 7283189958397625731) hosts this as a
+   second app. No new fee, and organization accounts skip the 12-tester, 14-day closed test. Its public developer
+   name is "DrawWise" unless renamed.
 3. Make `privacy@civops.io` a real mailbox or alias (the privacy page names it).
 4. In Xcode, choose the signing team; in App Store Connect and Play Console, create the app records and submit.
