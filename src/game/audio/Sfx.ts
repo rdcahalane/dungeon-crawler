@@ -63,6 +63,8 @@ interface Player {
 
 /** Music level while the narrator speaks: almost silent, so the voice is clear. */
 export const DUCK_LEVEL = 0.06;
+/** The music bus level when music is on. */
+const MUSIC_BUS_LEVEL = 0.7;
 const DUCK_DOWN_S = 0.35;
 const DUCK_UP_S = 1.2;
 
@@ -77,6 +79,8 @@ class SfxEngine {
 
   private volume = 0.5;
   private muted = false;
+  private musicOn = true;
+  private sfxOn = true;
   private requestedBed: MusicBed | null = null;
   private bossOn = false;
   private combatUntil = 0;
@@ -155,6 +159,26 @@ class SfxEngine {
     return this.muted;
   }
 
+  /** Music on or off on its own (the master N mute still silences everything). */
+  setMusicOn(on: boolean): void {
+    this.musicOn = on;
+    this.applyGain();
+  }
+
+  isMusicOn(): boolean {
+    return this.musicOn;
+  }
+
+  /** Sound effects on or off on their own. */
+  setSfxOn(on: boolean): void {
+    this.sfxOn = on;
+    this.applyGain();
+  }
+
+  isSfxOn(): boolean {
+    return this.sfxOn;
+  }
+
   /** The bed currently requested (may be waiting on unlock); the boss bed while a boss fight is on. */
   currentBed(): MusicBed | null {
     return this.effectiveBed();
@@ -165,6 +189,7 @@ class SfxEngine {
     const recipe = (EFFECTS as Record<string, Voice[] | undefined>)[key];
     if (!recipe) return;
     this.watchForGesture();
+    if (!this.sfxOn) return;
     const ctx = this.ctx;
     if (!ctx || !this.sfxBus || ctx.state !== "running") return;
     const now = ctx.currentTime;
@@ -240,7 +265,7 @@ class SfxEngine {
     this.sfxBus = ctx.createGain();
     this.sfxBus.connect(master);
     this.musicBus = ctx.createGain();
-    this.musicBus.gain.value = 0.7;
+    this.musicBus.gain.value = MUSIC_BUS_LEVEL;
     // A separate stage after the music bus, so ducking for the narrator never fights the bed crossfades.
     this.duckGain = ctx.createGain();
     this.duckGain.gain.value = this.ducked ? DUCK_LEVEL : 1;
@@ -257,6 +282,8 @@ class SfxEngine {
 
   private applyGain(): void {
     if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
+    if (this.musicBus) this.musicBus.gain.value = this.musicOn ? MUSIC_BUS_LEVEL : 0;
+    if (this.sfxBus) this.sfxBus.gain.value = this.sfxOn ? 1 : 0;
   }
 
   /** Hook the first pointer or key event so audio unlocks without game code. */

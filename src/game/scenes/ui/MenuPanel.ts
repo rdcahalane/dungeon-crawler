@@ -1,9 +1,9 @@
 /**
- * The touch menu: what the keyboard reaches with I, B, M, V, Z, N and F2, as big tappable rows. Opened by the pad's MENU
+ * The touch menu: what the keyboard reaches with I, B, M, V, Z, N, J, K and F2, as big tappable rows. Opened by the pad's MENU
  * button. A row closes the menu first and then acts, so the key it sends is not swallowed by the open panel.
  */
 import * as Phaser from "phaser";
-import { Sfx } from "../../audio/Sfx";
+import { notifySoundChanged, soundLabels, toggleAllSound, toggleMusic, toggleSfx } from "../../audio/soundSettings";
 import { narrator } from "../../audio/Narrator";
 import { TAP_HOLD_MS, tapAction, type TouchAction } from "../../touch";
 import { CLOSE_GRACE_MS } from "./uiState";
@@ -44,7 +44,11 @@ export class MenuPanel extends PanelBase {
     row("MAP", h.inDungeon, () => h.openMap());
     row(narrator.isAvailable() ? `VOICE ${narrator.enabled ? "ON" : "OFF"}` : "VOICE UNAVAILABLE", narrator.isAvailable(), () => later("voice"));
     row("HEAR THE LAST TEXT AGAIN", h.inDungeon, () => later("hearAgain"));
-    row(`SOUND ${Sfx.isMuted() ? "OFF" : "ON"}`, true, () => later("sound"));
+    const snd = soundLabels();
+    const flip = (t: () => boolean) => () => { t(); notifySoundChanged(); };
+    row(snd.music, true, flip(toggleMusic));
+    row(snd.sfx, true, flip(toggleSfx));
+    row(snd.all, true, flip(toggleAllSound));
     row("SCANLINES ON OR OFF", true, () => later("crt"));
     this.dyn.add(label(this.scene, x, y + 4, "TAP A ROW. X CLOSES THIS.", { color: UI.grey }));
   }

@@ -7,6 +7,7 @@
  * Keys (raw window listener, like the HUD's): V voice on/off, Z read the last narration again. Both stand down while
  * a text prompt or an in-scene modal or a HUD panel is open.
  */
+import { onSoundChanged } from "../../audio/soundSettings";
 import type * as Phaser from "phaser";
 import type { GameContext } from "../../GameContext";
 import type { GameEventScope } from "../../GameEvents";
@@ -78,6 +79,8 @@ export class NarratorController {
   private cardRect?: { x: number; y: number; w: number; h: number };
   private clock = 0;
 
+  private offSound?: () => void;
+
   constructor(private ctx: GameContext, private readonly voice: Narrator = sharedNarrator) {}
 
   /** Called at the end of `GameScene.create()`, once the player and enemies exist. */
@@ -107,6 +110,8 @@ export class NarratorController {
       if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) this.replay();
     };
     ctx.scene.input.on("pointerdown", this.onTap);
+    // N, J and K flip the sound switches; say which way they went.
+    this.offSound = onSoundChanged((l) => this.ctx.status(l.all.endsWith("OFF") ? l.all : `${l.music}   ${l.sfx}`));
   }
 
   destroy(): void {
@@ -114,6 +119,8 @@ export class NarratorController {
     this.onKey = undefined;
     if (this.onTap) this.ctx.scene.input.off("pointerdown", this.onTap);
     this.onTap = undefined;
+    this.offSound?.();
+    this.offSound = undefined;
     this.scope?.dispose();
     this.scope = undefined;
     this.voice.stop();

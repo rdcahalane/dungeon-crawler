@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import { listSaves, loadGame } from "../systems/SaveStore";
 import { CLASS_COL, COL, asciiOnly, flatPanel, retroButton, uiText } from "../gfx/retroUi";
 import { narrator } from "../audio/Narrator";
+import { notifySoundChanged, onSoundChanged, soundLabels, toggleMusic, toggleSfx } from "../audio/soundSettings";
 import { graveyard, causePhrase, type FallenRecord } from "../systems/Graveyard";
 import { isTouchDevice } from "../touch";
 
@@ -33,7 +34,7 @@ export const HOW_TO_PLAY: ReadonlyArray<readonly [string, string]> = [
   ["R", "MAKE CAMP IN THE CAMP ROOM (COSTS A RATION)"],
   ["I", "INVENTORY AND EQUIPMENT"],
   ["F2", "CRT SCANLINES ON OR OFF"],
-  ["N", "SOUND ON OR OFF"],
+  ["N / J / K", "ALL SOUND / MUSIC / SOUND EFFECTS ON OR OFF"],
   ["V / Z", "NARRATOR VOICE ON OR OFF / HEAR IT AGAIN"],
 ];
 
@@ -50,7 +51,7 @@ export const HOW_TO_PLAY_TOUCH: ReadonlyArray<readonly [string, string]> = [
   ["LISTEN", "LISTEN AT A DOOR"],
   ["USE", "INTERACT. STAIRS: USE TO CLIMB, TWICE TO DESCEND"],
   ["CAMP", "MAKE CAMP IN THE CAMP ROOM (COSTS A RATION)"],
-  ["MENU", "PACK, SPELLBOOK, MAP, SOUND, VOICE, SCANLINES"],
+  ["MENU", "PACK, SPELLBOOK, MAP, MUSIC, EFFECTS, VOICE"],
   ["TAP A ROOM TEXT", "HEAR IT AGAIN"],
 ];
 
@@ -97,7 +98,10 @@ export class MainMenuScene extends Phaser.Scene {
       kb.on("keydown-ESC", () => this.mode !== "title" && this.show("title"));
       for (const k of this.startKeys) k.on("down", () => this.mode === "title" && this.show("slots"));
     }
+    // N, J and K are handled globally (AudioController); redraw the switches when they flip.
+    const offSound = onSoundChanged(() => this.mode === "title" && this.show("title"));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      offSound();
       this.input.keyboard?.off("keydown-H");
       this.input.keyboard?.off("keydown-F");
       this.input.keyboard?.off("keydown-V");
@@ -204,13 +208,23 @@ export class MainMenuScene extends Phaser.Scene {
     this.add2(fallen.box);
     this.add2(fallen.label);
 
-    const voice = retroButton(this, cx, 548, 280, 32, this.voiceLabel(), () => this.toggleVoice(), { size: 16 });
-    this.add2(voice.box);
-    this.add2(voice.label);
+    // Voice, music and effects switches in one row; N (all sound) is shown in the footer.
+    const keys = !touch;
+    const snd = soundLabels();
+    const switches: Array<[string, () => void]> = [
+      [this.voiceLabel(), () => this.toggleVoice()],
+      [snd.music + (keys ? " (J)" : ""), () => { toggleMusic(); notifySoundChanged(); }],
+      [snd.sfx + (keys ? " (K)" : ""), () => { toggleSfx(); notifySoundChanged(); }],
+    ];
+    switches.forEach(([text, go], i) => {
+      const b = retroButton(this, cx + (i - 1) * 230, 548, 220, 32, text, go, { size: 12 });
+      this.add2(b.box);
+      this.add2(b.label);
+    });
 
     this.statusText = this.add2(uiText(this, cx, 578, this.statusLine, { size: 8, color: COL.grey, originX: 0.5, originY: 0.5 }));
     this.add2(
-      uiText(this, cx, height - 48, touch ? "(C) 2026 DUNGEON CRAWLER" : "(C) 2026 DUNGEON CRAWLER   F2 CRT   N SOUND   V VOICE", {
+      uiText(this, cx, height - 48, touch ? "(C) 2026 DUNGEON CRAWLER" : "(C) 2026 DUNGEON CRAWLER   F2 CRT   N ALL SOUND ON/OFF", {
         size: 8,
         color: COL.grey,
         originX: 0.5,

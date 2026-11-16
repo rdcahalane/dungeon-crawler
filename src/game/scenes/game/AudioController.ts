@@ -1,6 +1,6 @@
 /**
- * Hooks the synth to the game: first-input unlock, the N mute key (saved as
- * `dc-mute`), music beds per scene, and one sound per gameplay event from the
+ * Hooks the synth to the game: first-input unlock, the N (all sound), J (music)
+ * and K (effects) keys (saved by audio/soundSettings.ts), music beds per scene, and one sound per gameplay event from the
  * GameScene bus. Event-to-sound tables live in audio/eventSounds.ts.
  */
 import { isTextEntryActive } from "../../textEntry";
@@ -15,9 +15,10 @@ import {
   trapSfx,
 } from "../../audio/eventSounds";
 import { onGameBus } from "../../gfx/busAttach";
+import { loadSoundSettings, notifySoundChanged, toggleAllSound, toggleMusic, toggleSfx } from "../../audio/soundSettings";
 import type { GameEventBus } from "../../GameEvents";
 
-export const MUTE_STORAGE_KEY = "dc-mute";
+export { MUTE_STORAGE_KEY } from "../../audio/soundSettings";
 
 /** Beds for scenes that are not the GameScene (null means silence). */
 const SCENE_BEDS: Readonly<Record<string, MusicBed | null>> = {
@@ -26,22 +27,6 @@ const SCENE_BEDS: Readonly<Record<string, MusicBed | null>> = {
   TavernScene: "tavern",
   GameOverScene: null,
 };
-
-function readMute(): boolean {
-  try {
-    return globalThis.localStorage?.getItem(MUTE_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeMute(m: boolean): void {
-  try {
-    globalThis.localStorage?.setItem(MUTE_STORAGE_KEY, m ? "1" : "0");
-  } catch {
-    /* not persisted */
-  }
-}
 
 function subscribe(bus: GameEventBus): void {
   // One bus per scene object for the life of the game, so these are never removed.
@@ -75,7 +60,7 @@ export function attachAudio(game: Phaser.Game): void {
   if (attached.has(game)) return;
   attached.add(game);
 
-  Sfx.mute(readMute());
+  loadSoundSettings();
 
   if (typeof window !== "undefined") {
     const unlock = () => {
@@ -89,15 +74,16 @@ export function attachAudio(game: Phaser.Game): void {
     window.addEventListener("keydown", unlock);
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "n" && e.key !== "N") return;
+      const k = e.key.toLowerCase();
+      if (k !== "n" && k !== "j" && k !== "k") return;
       if (isTextEntryActive()) return; // typing a riddle answer or a name
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      const muted = !Sfx.isMuted();
-      Sfx.mute(muted);
-      writeMute(muted);
-      if (!muted) Sfx.play("ui_select");
+      if (k === "n") toggleAllSound();
+      else if (k === "j") toggleMusic();
+      else toggleSfx();
+      notifySoundChanged();
     };
     window.addEventListener("keydown", onKey);
 
