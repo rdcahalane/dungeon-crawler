@@ -90,8 +90,9 @@ Role Playing, contact rcahalane@civops.io + https://dungeon.civops.io, every App
 no ads, no sign-in, target 13+, no data collected, no ad ID, not government/financial/health, trader status as
 DrawWise), IARC rating (fantasy violence incl. human cultists and giant rats/bats, scary elements often, rare alcohol
 references, no blood). Version 1 (1.0) is live on internal testing for the "DrawWise testers" list; opt-in at
-https://play.google.com/apps/testing/io.civops.dungeoncrawler. Not done: production release + "Send for review"
-(goes public on approval because managed publishing is off).
+https://play.google.com/apps/testing/io.civops.dungeoncrawler. Production release 1 (1.0), all 177
+countries + rest of world, sent for review 2026-11-16 (Ryan's go-ahead). Managed publishing is off, so it goes public
+as soon as Google approves (typically within 7 days).
 
 ## What only Ryan can do (hard gates)
 
