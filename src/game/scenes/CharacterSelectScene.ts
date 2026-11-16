@@ -1,59 +1,59 @@
+import { setTextEntry } from "../textEntry";
+import { DomTextField } from "../domTextInput";
+import { isTouchDevice } from "../touch";
 import * as Phaser from "phaser";
-import {
-  CHARACTER_CLASSES, ClassKey,
-  abilityMod, goodSave, poorSave, calcBAB,
-} from "../constants";
+import { CHARACTER_CLASSES, ClassKey } from "../constants";
 import { CharCreationData } from "../entities/Player";
+import { thac0For, saveTarget, hitDie, titleFor, spellSlots, SAVE_CATEGORIES, mathRng } from "../rules";
+import { primeRequisite, type AbilityKey } from "../rules";
+import { ChargenSession, CHARGEN_ORDER, reportScores, xpBonusLabel } from "../rules/chargen";
+import { starterKit, displayName } from "../items";
+import { playerArmorClass, playerThac0, startingHp } from "./game/AdndCombat";
+import { CLASS_COL, COL, flatPanel, uiText } from "../gfx/retroUi";
+import { LINE, wrap } from "./ui/theme";
+import { Sfx } from "../audio/Sfx";
 
-type ScoreMethod = 'standard' | 'pointbuy' | 'roll';
-
-const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
-const ABILITY_NAMES: (keyof CharCreationData)[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
-const ABILITY_LABELS = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
-const ABILITY_DESCRIPTIONS = [
-  'Strength — melee damage, bashing',
-  'Dexterity — AC, reflex, thieving',
-  'Constitution — HP, fort save',
-  'Intelligence — search, wizard power',
-  'Wisdom — cleric power, perception',
-  'Charisma — turn undead power',
-];
-
-const POINT_BUY_COSTS: Record<number, number> = {
-  8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9,
+const ABILITY_DESCRIPTIONS: Record<AbilityKey, string> = {
+  str: 'Strength: melee to-hit and damage',
+  dex: 'Dexterity: armor class, missiles, thieving',
+  con: 'Constitution: hit points per level',
+  int: 'Intelligence: wizard spells learned',
+  wis: 'Wisdom: cleric bonus spells, saves',
+  cha: 'Charisma: reaction of strangers',
 };
 
 export class CharacterSelectScene extends Phaser.Scene {
-  private step: 1 | 2 | 3 | 4 = 1;
+  /** 1 class, 2 rolled abilities, 3 name. */
+  private step: 1 | 2 | 3 = 1;
   private selectedClass: ClassKey = 'fighter';
-  private scoreMethod: ScoreMethod = 'standard';
   private saveSlot = 1; // which slot to save to
 
-  // Ability assignment
-  private scores: number[] = [...STANDARD_ARRAY];
-  private assigned: (number | null)[] = [null, null, null, null, null, null];
-  private selectedScoreIdx = -1; // which generated score is being dragged/clicked
-  private pointBuyScores: number[] = [10, 10, 10, 10, 10, 10];
-  private pointsRemaining = 27;
-  private rollResults: number[][] = []; // raw 4d6-drop-lowest rolls
+  // Rolled abilities (4d6, drop the lowest, six times; reroll as often as you like; one swap per roll)
+  private session = new ChargenSession(mathRng);
+  private arranging = false;
+  /** While arranging: the first score picked, waiting for the second. */
+  private arrangePick: AbilityKey | null = null;
 
-  // Name input (Step 4)
+  // Name input (Step 3)
   private characterName = '';
   private _nameInputActive = false;
   private _cursorVisible = true;
   private _cursorTimer?: Phaser.Time.TimerEvent;
   private _nameKeydownHandler?: (e: KeyboardEvent) => void;
+  /** The phone keyboard's input, alive for the whole name step so a re-draw does not lower the keyboard. */
+  private _nameField?: DomTextField;
 
   private container!: Phaser.GameObjects.Container;
+  private _abilityHint?: Phaser.GameObjects.BitmapText;
 
   init(data: { saveSlot?: number }) {
     this.saveSlot = data?.saveSlot ?? 1;
     // Reset state on re-entry
     this.step = 1;
     this.selectedClass = 'fighter';
-    this.scoreMethod = 'standard';
-    this._scoreToAbilityMap = new Map();
-    this.assigned = [null, null, null, null, null, null];
+    this.session = new ChargenSession(mathRng);
+    this.arranging = false;
+    this.arrangePick = null;
     this.characterName = '';
   }
 
@@ -64,16 +64,21 @@ export class CharacterSelectScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
 
-    // Dim background
-    this.add.rectangle(width / 2, height / 2, width, height, 0x0a0a14);
+    // Flat dark backdrop, no gradients.
+    this.add.rectangle(width / 2, height / 2, width, height, COL.black);
 
-    // Flavour text
-    this.add.text(width / 2, 18, '"The dungeon awaits. Few return."', {
-      fontSize: '13px', color: '#666688', fontFamily: 'monospace', fontStyle: 'italic',
-    }).setOrigin(0.5);
+    uiText(this, width / 2, 12, '"THE DUNGEON AWAITS. FEW RETURN."', { size: 16, color: COL.grey, originX: 0.5 });
 
     this.container = this.add.container(0, 0);
     this.renderStep();
+
+    // Keyboard for steps 1 and 2 (the name step listens on the page itself, so letters can be typed).
+    this.input.keyboard!.on('keydown', this._onKey, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown', this._onKey, this);
+      this._cleanupNameInput();
+      this._destroyNameField();
+    });
   }
 
   private clearContainer() {
@@ -84,580 +89,297 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private renderStep() {
     this._cleanupNameInput();
+    if (this.step !== 3) this._destroyNameField();
     this.clearContainer();
     switch (this.step) {
       case 1: this.renderClassPicker(); break;
-      case 2: this.renderScoreMethod(); break;
-      case 3: this.renderAssignScores(); break;
-      case 4: this.renderNameInput(); break;
+      case 2: this.renderAbilityRoll(); break;
+      case 3: this.renderNameInput(); break;
+    }
+  }
+
+  private _goTo(step: 1 | 2 | 3) {
+    this.step = step;
+    this.arranging = false;
+    this.arrangePick = null;
+    this.renderStep();
+  }
+
+  private _onKey(e: KeyboardEvent) {
+    if (this.step === 1) {
+      const keys = Object.keys(CHARACTER_CLASSES) as ClassKey[];
+      const i = keys.indexOf(this.selectedClass);
+      if (e.code === 'ArrowLeft') { this.selectedClass = keys[(i + keys.length - 1) % keys.length]; Sfx.play('ui_select'); this.renderStep(); }
+      else if (e.code === 'ArrowRight') { this.selectedClass = keys[(i + 1) % keys.length]; Sfx.play('ui_select'); this.renderStep(); }
+      else if (/^Digit[1-4]$/.test(e.code)) { this.selectedClass = keys[Number(e.code.slice(5)) - 1] ?? this.selectedClass; Sfx.play('ui_select'); this.renderStep(); }
+      else if (e.code === 'Enter' || e.code === 'NumpadEnter') { this._goTo(2); }
+      return;
+    }
+    if (this.step !== 2) return;
+    if (e.code === 'KeyR') this._rollAgain();
+    else if (e.code === 'KeyA') this._toggleArrange();
+    else if (/^Digit[1-6]$/.test(e.code) && this.arranging) this._pickForSwap(CHARGEN_ORDER[Number(e.code.slice(5)) - 1]);
+    else if (e.code === 'Enter' || e.code === 'NumpadEnter') this._goTo(3);
+    else if (e.code === 'Escape') {
+      if (this.arranging) { this.arranging = false; this.arrangePick = null; this.renderStep(); }
+      else this._goTo(1);
     }
   }
 
   private renderClassPicker() {
     const { width, height } = this.scale;
-
-    const title = this.add.text(width / 2, 55, 'CHOOSE YOUR CLASS', {
-      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
-
-    const step = this.add.text(width / 2, 90, 'Step 1 of 4', {
-      fontSize: '12px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
+    this._heading('CHOOSE YOUR CLASS', 'STEP 1 OF 3  (LEFT/RIGHT, ENTER)', COL.gold);
 
     const classKeys = Object.keys(CHARACTER_CLASSES) as ClassKey[];
-    const cardW = 190;
-    const cardH = 280;
-    const spacing = 210;
-    const startX = width / 2 - (spacing * 1.5);
+    const cardW = 216;
+    const cardH = 440;
+    const gap = 12;
+    const startX = (width - (cardW * 4 + gap * 3)) / 2 + cardW / 2;
+    const cy = 100 + cardH / 2;
 
     classKeys.forEach((key, i) => {
       const cls = CHARACTER_CLASSES[key];
-      const cx = startX + i * spacing;
-      const cy = height / 2 + 20;
-
+      const cx = startX + i * (cardW + gap);
       const isSelected = key === this.selectedClass;
-      const borderColor = isSelected ? cls.color : 0x333355;
-      const bgColor = isSelected ? 0x151530 : 0x0e0e1e;
+      const tone = CLASS_COL[key] ?? COL.silver;
+      const bgColor = isSelected ? COL.dusk : COL.ink;
 
-      const bg = this.add.rectangle(cx, cy, cardW, cardH, bgColor)
-        .setInteractive()
-        .setStrokeStyle(2, borderColor);
+      const bg = flatPanel(this, cx, cy, cardW, cardH, { fill: bgColor, border: isSelected ? tone : COL.slate })
+        .setInteractive({ useHandCursor: true });
       this.container.add(bg);
 
-      // Class name
-      const nameText = this.add.text(cx, cy - cardH / 2 + 22, cls.name, {
-        fontSize: '18px', color: `#${cls.color.toString(16).padStart(6, '0')}`,
-        fontFamily: 'monospace', fontStyle: 'bold',
-      }).setOrigin(0.5);
-      this.container.add(nameText);
+      // The class sprite, 3x (the sprite is 32px, so 96px on screen, nearest-neighbour).
+      const sprite = this.add.image(cx, cy - cardH / 2 + 54, `player_${key}`).setScale(3);
+      this.container.add(sprite);
 
-      // Stats summary
-      const babStr = cls.babFormula === 'full' ? '+1/lvl' : cls.babFormula === 'threequarters' ? '+3/4' : '+1/2';
-      const hd = `d${cls.hitDie}`;
-      const saves = [
-        cls.fortGood ? 'Fort✓' : 'Fort',
-        cls.refGood ? 'Ref✓' : 'Ref',
-        cls.willGood ? 'Will✓' : 'Will',
-      ].join('  ');
+      this.container.add(uiText(this, cx, cy - cardH / 2 + 106, cls.name.toUpperCase(), {
+        size: 24, color: tone, originX: 0.5,
+      }));
 
-      const stats = [
-        `HD: ${hd}`,
-        `BAB: ${babStr}`,
-        saves,
-      ].join('\n');
+      // First-edition numbers: hit die, THAC0, level title, the death save, gold and slots, starting kit.
+      const kit = starterKit(key);
+      const slots = spellSlots(key, 1).reduce((a, b) => a + b, 0);
+      const lines = [
+        `D${hitDie(key)}  THAC0 ${thac0For(key, 1)}`,
+        titleFor(key, 1).toUpperCase().slice(0, 16),
+        `DEATH SAVE ${saveTarget(key, 1, 'death')}`,
+        `${kit.gold} GP${slots > 0 ? `  ${slots} SLOT${slots > 1 ? 'S' : ''}` : ''}`,
+      ];
+      this._lines(cx, cy - cardH / 2 + 142, lines, COL.silver, true);
 
-      const statsText = this.add.text(cx, cy - cardH / 2 + 70, stats, {
-        fontSize: '11px', color: '#aaaaaa', fontFamily: 'monospace',
-        align: 'center', lineSpacing: 4,
-      }).setOrigin(0.5);
-      this.container.add(statsText);
-
-      // Gear
-      const gearText = this.add.text(cx, cy + 10, cls.startingEquipment, {
-        fontSize: '10px', color: '#888888', fontFamily: 'monospace',
-        align: 'center', wordWrap: { width: cardW - 16 },
-      }).setOrigin(0.5);
-      this.container.add(gearText);
+      const gear = kit.equipped().filter(it => it.defKey !== 'torch').map(it => displayName(it)).join(', ');
+      this._lines(cx, cy - cardH / 2 + 226, wrap(gear.toUpperCase(), 16).slice(0, 4), COL.grey, true);
 
       // Class ability
-      const abilityText = this.add.text(cx, cy + cardH / 2 - 50, cls.classAbility, {
-        fontSize: '10px', color: '#cccc88', fontFamily: 'monospace',
-        align: 'center', wordWrap: { width: cardW - 16 },
-      }).setOrigin(0.5);
-      this.container.add(abilityText);
+      this._lines(cx, cy - cardH / 2 + 316, wrap(cls.classAbility.toUpperCase(), 16).slice(0, 6), COL.cream, true);
 
-      bg.on('pointerover', () => { if (!isSelected) bg.setFillStyle(0x121228); });
+      bg.on('pointerover', () => { if (!isSelected) bg.setFillStyle(COL.dusk); });
       bg.on('pointerout', () => { if (!isSelected) bg.setFillStyle(bgColor); });
       bg.on('pointerdown', () => {
         this.selectedClass = key;
+        Sfx.play('ui_select');
         this.renderStep();
       });
     });
 
     // Next button
-    const nextBtn = this._makeButton(width / 2, height - 55, 'NEXT →', 200, 42);
+    const nextBtn = this._makeButton(width / 2, height - 50, 'NEXT >', 200, 44);
     nextBtn.bg.on('pointerdown', () => {
       this.step = 2;
       this.renderStep();
     });
-    this.container.add([nextBtn.bg, nextBtn.border, nextBtn.text]);
+    this.container.add([nextBtn.bg, nextBtn.text]);
   }
 
-  // ── Step 2: Score Method ───────────────────────────────────────────────────
-
-  private renderScoreMethod() {
-    const { width, height } = this.scale;
-
-    const title = this.add.text(width / 2, 55, 'ABILITY SCORES', {
-      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
-
-    const step = this.add.text(width / 2, 90, 'Step 2 of 4 — Choose how to generate ability scores', {
-      fontSize: '12px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
-
-    const methods: { key: ScoreMethod; label: string; desc: string }[] = [
-      { key: 'standard', label: 'Standard Array', desc: '15, 14, 13, 12, 10, 8\nAssign to any ability.\nSimple and balanced.' },
-      { key: 'pointbuy', label: 'Point Buy', desc: '27 points to spend.\nScores range 8–15.\nCustomise your build.' },
-      { key: 'roll', label: 'Roll 4d6', desc: 'Roll four d6, drop lowest.\nRandom — high risk,\nhigh reward.' },
-    ];
-
-    const cardW = 230;
-    const cardH = 200;
-    const spacing = 250;
-    const startX = width / 2 - spacing;
-
-    methods.forEach(({ key, label, desc }, i) => {
-      const cx = startX + i * spacing;
-      const cy = height / 2;
-      const isSelected = key === this.scoreMethod;
-
-      const bg = this.add.rectangle(cx, cy, cardW, cardH, isSelected ? 0x151530 : 0x0e0e1e)
-        .setInteractive()
-        .setStrokeStyle(2, isSelected ? 0x4fc3f7 : 0x333355);
-      this.container.add(bg);
-
-      const lbl = this.add.text(cx, cy - 60, label, {
-        fontSize: '16px', color: isSelected ? '#4fc3f7' : '#aaaaaa', fontFamily: 'monospace',
-      }).setOrigin(0.5);
-      this.container.add(lbl);
-
-      const descText = this.add.text(cx, cy + 10, desc, {
-        fontSize: '11px', color: '#888888', fontFamily: 'monospace',
-        align: 'center', lineSpacing: 4,
-      }).setOrigin(0.5);
-      this.container.add(descText);
-
-      bg.on('pointerdown', () => {
-        this.scoreMethod = key;
-        this._prepareScoreMethod(key);
-        this.renderStep();
-      });
+  /** A block of text, one 16px line per label at the standard 18px pitch (a single bitmap text stacks lines at 16). */
+  private _lines(x: number, y: number, lines: string[], color: number, centre: boolean) {
+    lines.forEach((line, i) => {
+      this.container.add(uiText(this, x, y + i * LINE, line, { size: 16, color, originX: centre ? 0.5 : 0 }));
     });
-
-    // Back
-    const backBtn = this._makeButton(width / 2 - 120, height - 55, '← BACK', 160, 38);
-    backBtn.bg.on('pointerdown', () => { this.step = 1; this.renderStep(); });
-    this.container.add([backBtn.bg, backBtn.border, backBtn.text]);
-
-    // Next
-    const nextBtn = this._makeButton(width / 2 + 120, height - 55, 'NEXT →', 160, 38);
-    nextBtn.bg.on('pointerdown', () => {
-      this._prepareScoreMethod(this.scoreMethod);
-      this.step = 3;
-      this.renderStep();
-    });
-    this.container.add([nextBtn.bg, nextBtn.border, nextBtn.text]);
   }
 
-  private _prepareScoreMethod(method: ScoreMethod) {
-    this.assigned = [null, null, null, null, null, null];
-    this.selectedScoreIdx = -1;
-    this._scoreToAbilityMap.clear();
+  /** Title and step line, centred at the top of every step. */
+  private _heading(title: string, sub: string, color: number) {
+    const { width } = this.scale;
+    this.container.add(uiText(this, width / 2, 36, title, { size: 24, color, originX: 0.5 }));
+    this.container.add(uiText(this, width / 2, 68, sub, { size: 16, color: COL.grey, originX: 0.5 }));
+  }
 
-    if (method === 'standard') {
-      this.scores = [...STANDARD_ARRAY];
-      this._autoAssignScores();
-    } else if (method === 'pointbuy') {
-      this.pointBuyScores = [10, 10, 10, 10, 10, 10];
-      this.pointsRemaining = 27;
-    } else if (method === 'roll') {
-      this.rollResults = [];
-      for (let i = 0; i < 6; i++) {
-        const dice = [d6(), d6(), d6(), d6()];
-        dice.sort((a, b) => a - b);
-        this.rollResults.push(dice);
-      }
-      this.scores = this.rollResults.map(dice => dice[1] + dice[2] + dice[3]);
-      this._autoAssignScores();
+  // ── Step 2: Rolled abilities ───────────────────────────────────────────────
+
+  private _rollAgain() {
+    this.session.reroll();
+    this.arranging = false;
+    this.arrangePick = null;
+    Sfx.play('ui_select');
+    this.renderStep();
+  }
+
+  private _toggleArrange() {
+    if (this.session.swapped) return;
+    this.arranging = !this.arranging;
+    this.arrangePick = null;
+    Sfx.play('ui_select');
+    this.renderStep();
+  }
+
+  /** Arrange mode: the first pick waits, the second swaps (once per roll). */
+  private _pickForSwap(key: AbilityKey) {
+    if (!this.arranging || this.session.swapped) return;
+    if (this.arrangePick === null) {
+      this.arrangePick = key;
+    } else if (this.arrangePick === key) {
+      this.arrangePick = null;
+    } else {
+      this.session.swap(this.arrangePick, key);
+      this.arrangePick = null;
+      this.arranging = false;
     }
+    Sfx.play('ui_select');
+    this.renderStep();
   }
 
-  private _autoAssignScores() {
-    const classPriority: Record<ClassKey, number[]> = {
-      fighter: [0, 2, 1, 4, 3, 5],
-      thief: [1, 3, 0, 2, 4, 5],
-      wizard: [3, 1, 2, 4, 0, 5],
-      cleric: [4, 2, 0, 1, 5, 3],
-    };
-    const sorted = this.scores
-      .map((score, idx) => ({ score, idx }))
-      .sort((a, b) => b.score - a.score);
-
-    this.assigned = [null, null, null, null, null, null];
-    this._scoreToAbilityMap.clear();
-
-    classPriority[this.selectedClass].forEach((abilityIdx, rank) => {
-      const score = sorted[rank];
-      if (!score) return;
-      this.assigned[abilityIdx] = score.score;
-      this._scoreToAbilityMap.set(score.idx, abilityIdx);
-    });
-  }
-
-  // ── Step 3: Assign Scores ─────────────────────────────────────────────────
-
-  private renderAssignScores() {
+  private renderAbilityRoll() {
     const { width, height } = this.scale;
     const cls = CHARACTER_CLASSES[this.selectedClass];
+    const tone = CLASS_COL[this.selectedClass] ?? COL.gold;
+    this._heading(`ROLL ABILITIES - ${cls.name.toUpperCase()}`, 'STEP 2 OF 3 - FOUR DICE, DROP THE LOWEST', tone);
 
-    const title = this.add.text(width / 2, 55, `ASSIGN SCORES — ${cls.name}`, {
-      fontSize: '22px', color: `#${cls.color.toString(16).padStart(6, '0')}`,
-      fontFamily: 'monospace', stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
+    // What the pointer is over: a one-line description of the ability, at the foot of the screen.
+    this._abilityHint = uiText(this, width / 2, height - 118, '', { size: 16, color: COL.grey, originX: 0.5 });
+    this.container.add(this._abilityHint);
 
-    const step = this.add.text(width / 2, 82, 'Step 3 of 4 — Assign each score to an ability', {
-      fontSize: '11px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
+    const scores = this.session.scores;
+    const prime = primeRequisite(cls.key);
+    const reports = reportScores(scores, this.selectedClass);
+    const rowX = 280;
+    reports.forEach((r, i) => {
+      const y = 126 + i * 56;
+      const picked = this.arrangePick === r.key;
+      const border = picked ? COL.gold : this.arranging ? COL.sky : r.key === prime ? COL.brown : COL.slate;
+      const row = flatPanel(this, rowX, y, 500, 48, { fill: picked ? COL.navy : COL.ink, border })
+        .setInteractive({ useHandCursor: this.arranging });
+      this.container.add(row);
 
-    if (this.scoreMethod === 'pointbuy') {
-      this._renderPointBuy();
-    } else {
-      this._renderDragAssign();
-      const autoBtn = this._makeButton(width / 2, height - 100, 'AUTO ASSIGN', 160, 30);
-      autoBtn.bg.on('pointerdown', () => {
-        this._autoAssignScores();
-        this.renderStep();
-      });
-      this.container.add([autoBtn.bg, autoBtn.border, autoBtn.text]);
-    }
-
-    // Live preview
-    this._renderPreview(width - 220, height / 2);
-
-    // Back
-    const backBtn = this._makeButton(width / 2 - 130, height - 50, '← BACK', 160, 38);
-    backBtn.bg.on('pointerdown', () => { this.step = 2; this.renderStep(); });
-    this.container.add([backBtn.bg, backBtn.border, backBtn.text]);
-
-    // Begin
-    const allAssigned = this.scoreMethod === 'pointbuy'
-      ? true
-      : this.assigned.every(v => v !== null);
-
-    const nextBtn3 = this._makeButton(width / 2 + 130, height - 50, 'NEXT →', 160, 38);
-    nextBtn3.bg.setFillStyle(allAssigned ? 0x0a2a0a : 0x1a1a2e);
-    nextBtn3.text.setColor(allAssigned ? '#69f0ae' : '#555566');
-    if (allAssigned) {
-      nextBtn3.bg.setInteractive();
-      nextBtn3.bg.on('pointerdown', () => { this.step = 4; this.renderStep(); });
-    }
-    this.container.add([nextBtn3.bg, nextBtn3.border, nextBtn3.text]);
-  }
-
-  private _renderDragAssign() {
-    const leftX = 160;
-
-    // Score pool
-    const poolTitle = this.add.text(leftX, 115, 'Score Pool:', {
-      fontSize: '12px', color: '#aaaaaa', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(poolTitle);
-
-    this.scores.forEach((score, i) => {
-      const isUsed = this._isScoreUsedAt(i);
-      const isSelected = this.selectedScoreIdx === i;
-      const x = leftX - 60 + (i % 3) * 60;
-      const y = 155 + Math.floor(i / 3) * 50;
-
-      const bg = this.add.rectangle(x, y, 48, 36, isSelected ? 0x1a3050 : isUsed ? 0x111111 : 0x1a1a2e)
-        .setInteractive()
-        .setStrokeStyle(1, isSelected ? 0x4fc3f7 : isUsed ? 0x333333 : 0x444466)
-        .setAlpha(isUsed ? 0.4 : 1);
-      this.container.add(bg);
-
-      const txt = this.add.text(x, y, `${score}`, {
-        fontSize: '16px', color: isUsed ? '#555555' : '#ffffff', fontFamily: 'monospace',
-      }).setOrigin(0.5).setAlpha(isUsed ? 0.4 : 1);
-      this.container.add(txt);
-
-      if (!isUsed) {
-        bg.on('pointerdown', () => {
-          this.selectedScoreIdx = (this.selectedScoreIdx === i) ? -1 : i;
-          this.renderStep();
-        });
-      }
-    });
-
-    // Ability assignment slots
-    const slotX = 430;
-    ABILITY_NAMES.forEach((abilityKey, i) => {
-      const y = 120 + i * 65;
-      const assignedScore = this.assigned[i];
-
-      const slot = this.add.rectangle(slotX, y, 220, 52, 0x0e0e1e)
-        .setInteractive()
-        .setStrokeStyle(1, assignedScore !== null ? 0x4fc3f7 : 0x333355);
-      this.container.add(slot);
-
-      const label = this.add.text(slotX - 90, y, ABILITY_LABELS[i], {
-        fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
-      }).setOrigin(0, 0.5);
-      this.container.add(label);
-
-      const scoreDisp = this.add.text(slotX + 20, y, assignedScore !== null ? `${assignedScore}` : '—', {
-        fontSize: '18px', color: assignedScore !== null ? '#ffffff' : '#444444',
-        fontFamily: 'monospace',
-      }).setOrigin(0, 0.5);
-      this.container.add(scoreDisp);
-
-      // Modifier
-      if (assignedScore !== null) {
-        const mod = abilityMod(assignedScore);
-        const modStr = mod >= 0 ? `(+${mod})` : `(${mod})`;
-        const modText = this.add.text(slotX + 65, y, modStr, {
-          fontSize: '12px', color: mod >= 0 ? '#69f0ae' : '#ff5252', fontFamily: 'monospace',
-        }).setOrigin(0, 0.5);
-        this.container.add(modText);
+      const modColor = r.tone > 0 ? COL.lime : r.tone < 0 ? COL.red : COL.grey;
+      this.container.add(uiText(this, rowX - 236, y, `${this.arranging ? `${i + 1} ` : ''}${r.label}`, {
+        size: 16, color: r.key === prime ? COL.gold : COL.silver, originY: 0.5,
+      }));
+      this.container.add(uiText(this, rowX - 120, y, `${r.score}`, { size: 24, color: COL.white, originY: 0.5 }));
+      this.container.add(uiText(this, rowX - 60, y, r.mods, { size: 16, color: modColor, originY: 0.5 }));
+      if (r.key === prime) {
+        this.container.add(uiText(this, rowX + 236, y, 'PRIME', { size: 16, color: COL.gold, originX: 1, originY: 0.5 }));
       }
 
-      // Click to assign or unassign
-      slot.on('pointerdown', () => {
-        if (this.selectedScoreIdx >= 0) {
-          // Assign selected score to this slot
-          this.assigned[i] = this.scores[this.selectedScoreIdx];
-          this._markScoreUsed(this.selectedScoreIdx, i);
-          this.selectedScoreIdx = -1;
-        } else if (assignedScore !== null) {
-          // Unassign
-          this.assigned[i] = null;
-          this._unmarkAbility(i);
-        }
-        this.renderStep();
-      });
-
-      const descText = this.add.text(slotX + 95, y, ABILITY_DESCRIPTIONS[i].split(' — ')[1] ?? '', {
-        fontSize: '9px', color: '#555577', fontFamily: 'monospace',
-      }).setOrigin(0, 0.5);
-      this.container.add(descText);
+      row.on('pointerover', () => this._abilityHint?.setText(ABILITY_DESCRIPTIONS[r.key].toUpperCase()));
+      row.on('pointerout', () => this._abilityHint?.setText(''));
+      row.on('pointerdown', () => this._pickForSwap(r.key));
     });
 
-  }
+    const sub = this.arranging
+      ? (this.arrangePick ? 'NOW PICK THE SCORE TO TRADE IT WITH.' : 'PICK A SCORE TO MOVE. ESC CANCELS.')
+      : this.session.swapped ? 'YOU HAVE ARRANGED THIS ROLL. ROLL AGAIN FOR A NEW SET.' : 'ARRANGE LETS YOU SWAP ANY TWO ONCE.';
+    this.container.add(uiText(this, 40, 466, `ROLLS: ${this.session.rolls}`, { size: 16, color: COL.silver }));
+    this.container.add(uiText(this, 40, 490, sub, { size: 16, color: this.arranging ? COL.gold : COL.grey }));
+    this.container.add(uiText(this, width / 2, height - 98, 'R ROLL AGAIN   A ARRANGE   ENTER NEXT   ESC BACK', {
+      size: 16, color: COL.slate, originX: 0.5,
+    }));
 
-  // Track which score index is assigned to which ability slot
-  private _scoreToAbilityMap: Map<number, number> = new Map(); // scoreIdx → abilityIdx
+    this._renderPreview(580, 104);
 
-  private _isScoreUsedAt(scoreIdx: number): boolean {
-    return this._scoreToAbilityMap.has(scoreIdx);
-  }
+    // Buttons
+    const backBtn = this._makeButton(120, height - 50, '< BACK', 180, 44);
+    backBtn.bg.on('pointerdown', () => this._goTo(1));
+    this.container.add([backBtn.bg, backBtn.text]);
 
-  private _markScoreUsed(scoreIdx: number, abilityIdx: number) {
-    // Remove any previous mapping for this abilityIdx
-    for (const [sIdx, aIdx] of this._scoreToAbilityMap) {
-      if (aIdx === abilityIdx) { this._scoreToAbilityMap.delete(sIdx); break; }
-    }
-    this._scoreToAbilityMap.set(scoreIdx, abilityIdx);
-  }
+    const rollBtn = this._makeButton(340, height - 50, 'ROLL AGAIN', 200, 44);
+    rollBtn.bg.on('pointerdown', () => this._rollAgain());
+    this.container.add([rollBtn.bg, rollBtn.text]);
 
-  private _unmarkAbility(abilityIdx: number) {
-    for (const [sIdx, aIdx] of this._scoreToAbilityMap) {
-      if (aIdx === abilityIdx) {
-        this._scoreToAbilityMap.delete(sIdx);
-        break;
-      }
-    }
-  }
+    const arrTone = this.session.swapped ? 'off' : 'normal';
+    const arrBtn = this._makeButton(570, height - 50, this.arranging ? 'CANCEL' : 'ARRANGE', 200, 44, arrTone);
+    if (!this.session.swapped) arrBtn.bg.on('pointerdown', () => this._toggleArrange());
+    this.container.add([arrBtn.bg, arrBtn.text]);
 
-  private _renderPointBuy() {
-    const { height } = this.scale;
-
-    const ptText = this.add.text(430, 105, `Points remaining: ${this.pointsRemaining}`, {
-      fontSize: '14px', color: this.pointsRemaining >= 0 ? '#ffd700' : '#ff5252',
-      fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(ptText);
-
-    ABILITY_NAMES.forEach((key, i) => {
-      const y = 130 + i * 65;
-      const current = this.pointBuyScores[i];
-
-      const label = this.add.text(250, y, ABILITY_LABELS[i], {
-        fontSize: '14px', color: '#cccccc', fontFamily: 'monospace',
-      }).setOrigin(0.5);
-      this.container.add(label);
-
-      // Minus button
-      const minus = this.add.rectangle(300, y, 28, 28, 0x1a1a2e)
-        .setInteractive().setStrokeStyle(1, 0x444466);
-      this.container.add(minus);
-      this.container.add(this.add.text(300, y, '−', {
-        fontSize: '16px', color: '#aaaacc', fontFamily: 'monospace',
-      }).setOrigin(0.5));
-
-      // Score display
-      const scoreTxt = this.add.text(340, y, `${current}`, {
-        fontSize: '18px', color: '#ffffff', fontFamily: 'monospace',
-      }).setOrigin(0.5);
-      this.container.add(scoreTxt);
-
-      const mod = abilityMod(current);
-      this.container.add(this.add.text(368, y, mod >= 0 ? `+${mod}` : `${mod}`, {
-        fontSize: '11px', color: mod >= 0 ? '#69f0ae' : '#ff5252', fontFamily: 'monospace',
-      }).setOrigin(0, 0.5));
-
-      // Plus button
-      const plus = this.add.rectangle(400, y, 28, 28, 0x1a1a2e)
-        .setInteractive().setStrokeStyle(1, 0x444466);
-      this.container.add(plus);
-      this.container.add(this.add.text(400, y, '+', {
-        fontSize: '16px', color: '#aaaacc', fontFamily: 'monospace',
-      }).setOrigin(0.5));
-
-      minus.on('pointerdown', () => {
-        if (current > 8) {
-          const costDiff = (POINT_BUY_COSTS[current] ?? 0) - (POINT_BUY_COSTS[current - 1] ?? 0);
-          this.pointBuyScores[i] = current - 1;
-          this.pointsRemaining += costDiff;
-          this.renderStep();
-        }
-      });
-
-      plus.on('pointerdown', () => {
-        if (current < 15) {
-          const nextCost = POINT_BUY_COSTS[current + 1] ?? 0;
-          const curCost = POINT_BUY_COSTS[current] ?? 0;
-          const costDiff = nextCost - curCost;
-          if (this.pointsRemaining >= costDiff) {
-            this.pointBuyScores[i] = current + 1;
-            this.pointsRemaining -= costDiff;
-            this.renderStep();
-          }
-        }
-      });
-
-      void height;
-    });
-
-    // Fill in assigned from point buy
-    ABILITY_NAMES.forEach((_, i) => {
-      this.assigned[i] = this.pointBuyScores[i];
-    });
+    const nextBtn = this._makeButton(810, height - 50, 'NEXT >', 180, 44, 'go');
+    nextBtn.bg.on('pointerdown', () => this._goTo(3));
+    this.container.add([nextBtn.bg, nextBtn.text]);
   }
 
   private _renderPreview(x: number, y: number) {
     const cls = CHARACTER_CLASSES[this.selectedClass];
-    const scores = this._getEffectiveScores();
+    const scores = this.session.scores;
+    const tone = CLASS_COL[cls.key] ?? COL.silver;
 
-    const lines: string[] = [
-      `── ${cls.name} Preview ──`,
-      '',
+    this.container.add(uiText(this, x, y, `${cls.name.toUpperCase()} SHEET`, { size: 16, color: tone }));
+    this.container.add(this.add.image(x + 280, y + 4, `player_${cls.key}`).setScale(2));
+
+    const kit = starterKit(cls.key);
+    const sheet = { classKey: cls.key, level: 1, scores, inventory: kit };
+    const hp = startingHp(cls.key, scores.con);
+    const ac = playerArmorClass(sheet);
+    const thac0 = playerThac0(sheet);
+    const sv = (c: typeof SAVE_CATEGORIES[number]) => saveTarget(cls.key, 1, c);
+    const bonus = xpBonusLabel(cls.key, scores);
+
+    const lines: Array<[string, number]> = [
+      [`HP ${hp}  AC ${ac}  THAC0 ${thac0}`, COL.white],
+      [titleFor(cls.key, 1).toUpperCase().slice(0, 24), COL.gold],
+      [bonus ? `${bonus}  (PRIME ${primeRequisite(cls.key).toUpperCase()} ${scores[primeRequisite(cls.key)]})` : 'NO XP BONUS (PRIME UNDER 16)', bonus ? COL.lime : COL.slate],
+      ['SAVES (D20, AT OR OVER)', COL.grey],
+      [`DEATH ${sv('death')}  PETR ${sv('petrify')}`, COL.sky],
+      [`WAND ${sv('wands')}  BRTH ${sv('breath')}`, COL.sky],
+      [`SPELLS ${sv('spells')}`, COL.sky],
     ];
-
-    if (scores) {
-      const { str, dex, con, int: INT, wis, cha } = scores;
-      const conMod = abilityMod(con);
-      const dexMod = abilityMod(dex);
-      const strMod = abilityMod(str);
-      const wisMod = abilityMod(wis);
-      const intMod = abilityMod(INT);
-
-      const hp = cls.baseHp + conMod * 6;
-      const bab = calcBAB(1, cls.babFormula);
-      const atk = bab + strMod + cls.baseAttackBonus;
-      const ac = 10 + dexMod + cls.baseArmorBonus;
-      const fort = cls.fortGood ? goodSave(1, conMod) : poorSave(1, conMod);
-      const ref = cls.refGood ? goodSave(1, dexMod) : poorSave(1, dexMod);
-      const will = cls.willGood ? goodSave(1, wisMod) : poorSave(1, wisMod);
-      const mana = cls.startingMana + (cls.key === 'wizard' ? intMod * 5 : cls.key === 'cleric' ? wisMod * 4 : 0);
-
-      lines.push(
-        `HP:   ${hp}`,
-        `AC:   ${ac}   ATK: +${atk}`,
-        `Fort: +${fort}`,
-        `Ref:  +${ref}`,
-        `Will: +${will}`,
-      );
-      if (mana > 0) lines.push(`Mana: ${mana}`);
-      lines.push('', `STR ${str} DEX ${dex} CON ${con}`,
-        `INT ${INT} WIS ${wis} CHA ${cha}`);
-
-      void intMod; void wisMod;
-    } else {
-      lines.push('(assign all scores', 'to see preview)');
-    }
-
-    const preview = this.add.text(x, y, lines.join('\n'), {
-      fontSize: '12px', color: '#aaaacc', fontFamily: 'monospace',
-      lineSpacing: 6,
-    }).setOrigin(0.5);
-    this.container.add(preview);
-  }
-
-  private _getEffectiveScores(): { str: number; dex: number; con: number; int: number; wis: number; cha: number } | null {
-    if (this.scoreMethod === 'pointbuy') {
-      const [str, dex, con, int_, wis, cha] = this.pointBuyScores;
-      return { str, dex, con, int: int_, wis, cha };
-    }
-    if (this.assigned.every(v => v !== null)) {
-      const [str, dex, con, int_, wis, cha] = this.assigned as number[];
-      return { str, dex, con, int: int_, wis, cha };
-    }
-    return null;
+    lines.forEach(([t, color], i) => {
+      this.container.add(uiText(this, x, y + 34 + i * 22, t, { size: 16, color }));
+    });
+    const gear = kit.equipped().filter(i => i.defKey !== 'torch').map(i => displayName(i)).join(', ');
+    this._lines(x, y + 34 + lines.length * 22 + 10, wrap(`KIT: ${gear.toUpperCase()}`, 25).slice(0, 4), COL.grey, false);
   }
 
   private renderNameInput() {
     const { width, height } = this.scale;
     const cls = CHARACTER_CLASSES[this.selectedClass];
+    const tone = CLASS_COL[this.selectedClass] ?? COL.gold;
+    this._heading('NAME YOUR CHARACTER', 'STEP 3 OF 3 - A NAME, OR LEAVE IT BLANK', COL.gold);
 
-    const title = this.add.text(width / 2, 55, 'NAME YOUR CHARACTER', {
-      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
-      stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5);
-    this.container.add(title);
-
-    const step = this.add.text(width / 2, 90, 'Step 4 of 4 — Enter a name (or leave blank for default)', {
-      fontSize: '11px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(step);
-
-    // Class avatar preview
-    const avatarKey = `player_${this.selectedClass}`;
-    const avatar = this.add.image(width / 2, height / 2 - 80, avatarKey).setScale(3);
+    // Class avatar preview, 3x
+    const avatar = this.add.image(width / 2, height / 2 - 96, `player_${this.selectedClass}`).setScale(3);
     this.container.add(avatar);
 
-    const className = this.add.text(width / 2, height / 2 - 36, cls.name, {
-      fontSize: '16px', color: `#${cls.color.toString(16).padStart(6, '0')}`,
-      fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(className);
+    this.container.add(uiText(this, width / 2, height / 2 - 36, cls.name.toUpperCase(), {
+      size: 24, color: tone, originX: 0.5,
+    }));
 
     // Input field background
-    const inputW = 320;
-    const inputH = 40;
-    const inputY = height / 2 + 20;
-    const inputBg = this.add.rectangle(width / 2, inputY, inputW, inputH, 0x0e0e1e)
-      .setStrokeStyle(2, 0x4fc3f7);
-    this.container.add(inputBg);
+    const inputW = 400;
+    const inputH = 52;
+    const inputY = height / 2 + 36;
+    this.container.add(flatPanel(this, width / 2, inputY, inputW, inputH, { fill: COL.ink, border: COL.sky }));
 
     // Name display with blinking cursor
-    const cursorChar = this._cursorVisible ? '|' : '';
-    const displayText = this.characterName + cursorChar;
-    const nameText = this.add.text(width / 2, inputY, displayText || cursorChar, {
-      fontSize: '20px', color: '#ffffff', fontFamily: 'monospace',
-    }).setOrigin(0.5);
+    const cursorChar = this._cursorVisible ? '_' : '';
+    const nameText = uiText(this, width / 2, inputY, this.characterName + cursorChar, {
+      size: 24, color: COL.white, originX: 0.5, originY: 0.5,
+    });
     this.container.add(nameText);
 
     // Hint text
-    const hint = this.add.text(width / 2, inputY + 34, 'Max 16 characters. Press ENTER to confirm.', {
-      fontSize: '10px', color: '#555577', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(hint);
+    const touch = isTouchDevice();
+    this.container.add(uiText(this, width / 2, inputY + 40, touch ? 'MAX 16 CHARACTERS. TAP THE BOX TO TYPE.' : 'MAX 16 CHARACTERS. PRESS ENTER TO CONFIRM.', {
+      size: 16, color: COL.grey, originX: 0.5,
+    }));
+    this.container.add(uiText(this, width / 2, inputY + 62, `DEFAULT: ${cls.name.toUpperCase()}`, {
+      size: 16, color: COL.slate, originX: 0.5,
+    }));
 
-    const defaultHint = this.add.text(width / 2, inputY + 52, `Default: "${cls.name}"`, {
-      fontSize: '10px', color: '#444466', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-    this.container.add(defaultHint);
+    // A phone has no keyboard until an input has focus: lay a real one over the name box and mirror it into the box.
+    if (touch) this._ensureNameField(width / 2 - inputW / 2, inputY - inputH / 2, inputW, inputH);
 
     // Set up keyboard listener for name input
     this._nameInputActive = true;
+    setTextEntry(true);
     this._nameKeydownHandler = (e: KeyboardEvent) => this._onNameKeydown(e);
     this.input.keyboard!.manager.target.addEventListener('keydown', this._nameKeydownHandler);
 
@@ -667,35 +389,55 @@ export class CharacterSelectScene extends Phaser.Scene {
       loop: true,
       callback: () => {
         this._cursorVisible = !this._cursorVisible;
-        const cursor = this._cursorVisible ? '|' : '';
-        nameText.setText(this.characterName + cursor || cursor);
+        nameText.setText(this.characterName + (this._cursorVisible ? '_' : ''));
       },
     });
 
     // Back button
-    const backBtn = this._makeButton(width / 2 - 130, height - 50, '← BACK', 160, 38);
-    backBtn.bg.on('pointerdown', () => { this.step = 3; this.renderStep(); });
-    this.container.add([backBtn.bg, backBtn.border, backBtn.text]);
+    const backBtn = this._makeButton(width / 2 - 130, height - 50, '< BACK', 180, 44);
+    backBtn.bg.on('pointerdown', () => this._goTo(2));
+    this.container.add([backBtn.bg, backBtn.text]);
 
     // Begin button
-    const beginBtn = this._makeButton(width / 2 + 130, height - 50, 'BEGIN!', 160, 38);
-    beginBtn.bg.setFillStyle(0x0a2a0a);
-    beginBtn.text.setColor('#69f0ae');
-    beginBtn.bg.setInteractive();
+    const beginBtn = this._makeButton(width / 2 + 130, height - 50, 'BEGIN!', 180, 44, 'go');
     beginBtn.bg.on('pointerdown', () => this._startGame());
-    this.container.add([beginBtn.bg, beginBtn.border, beginBtn.text]);
+    this.container.add([beginBtn.bg, beginBtn.text]);
+  }
+
+  private _ensureNameField(x: number, y: number, w: number, h: number) {
+    if (this._nameField) { this._nameField.place({ x, y, w, h }); return; }
+    this._nameField = new DomTextField({
+      canvas: this.game.canvas,
+      rect: { x, y, w, h },
+      gameW: this.scale.width,
+      gameH: this.scale.height,
+      value: this.characterName,
+      maxLength: 16,
+      allowed: /[a-zA-Z0-9 '-]/,
+      onChange: (v) => { this.characterName = v; this.renderStep(); },
+      onSubmit: () => this._startGame(),
+      onCancel: () => this._goTo(2),
+      enterHint: 'go',
+    });
+    this._nameField.focus();
+  }
+
+  private _destroyNameField() {
+    this._nameField?.destroy();
+    this._nameField = undefined;
   }
 
   private _onNameKeydown(e: KeyboardEvent) {
     if (!this._nameInputActive) return;
+    // Keys typed into the phone's input are handled by the input itself.
+    if (this._nameField && e.target === this._nameField.el) return;
 
     if (e.key === 'Enter') {
       this._startGame();
       return;
     }
     if (e.key === 'Escape') {
-      this.step = 3;
-      this.renderStep();
+      this._goTo(2);
       return;
     }
     if (e.key === 'Backspace') {
@@ -712,6 +454,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private _cleanupNameInput() {
     this._nameInputActive = false;
+    setTextEntry(false);
     if (this._nameKeydownHandler) {
       this.input.keyboard!.manager.target.removeEventListener('keydown', this._nameKeydownHandler);
       this._nameKeydownHandler = undefined;
@@ -724,8 +467,8 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   private _startGame() {
     this._cleanupNameInput();
-    const scores = this._getEffectiveScores();
-    if (!scores) return;
+    this._destroyNameField();
+    const scores = this.session.scores;
 
     const cls = CHARACTER_CLASSES[this.selectedClass];
     const finalName = this.characterName.trim() || cls.name;
@@ -740,20 +483,18 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.scene.start('TavernScene', { charData, saveSlot: this.saveSlot });
   }
 
-  private _makeButton(x: number, y: number, label: string, w: number, h: number) {
-    const bg = this.add.rectangle(x, y, w, h, 0x1a1a2e).setInteractive();
-    const border = this.add.rectangle(x, y, w, h).setStrokeStyle(2, 0x4fc3f7);
-    const text = this.add.text(x, y, label, {
-      fontSize: '16px', color: '#4fc3f7', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-
-    bg.on('pointerover', () => { bg.setFillStyle(0x162040); text.setColor('#ffffff'); });
-    bg.on('pointerout', () => { bg.setFillStyle(0x1a1a2e); text.setColor('#4fc3f7'); });
-
-    return { bg, border, text };
+  /** A flat bordered button: `go` is green (ready), `off` is dimmed and does nothing. */
+  private _makeButton(x: number, y: number, label: string, w: number, h: number, tone: 'normal' | 'go' | 'off' = 'normal') {
+    const fill = tone === 'go' ? COL.pine : tone === 'off' ? COL.ink : COL.dusk;
+    const border = tone === 'go' ? COL.lime : tone === 'off' ? COL.slate : COL.sky;
+    const color = tone === 'go' ? COL.lime : tone === 'off' ? COL.slate : COL.sky;
+    const bg = flatPanel(this, x, y, w, h, { fill, border });
+    const text = uiText(this, x, y, label, { size: 16, color, originX: 0.5, originY: 0.5 });
+    bg.setInteractive({ useHandCursor: tone !== 'off' });
+    if (tone !== 'off') {
+      bg.on('pointerover', () => { bg.setFillStyle(tone === 'go' ? COL.green : COL.slate); text.setTint(COL.white); });
+      bg.on('pointerout', () => { bg.setFillStyle(fill); text.setTint(color); });
+    }
+    return { bg, text };
   }
-}
-
-function d6(): number {
-  return Math.floor(Math.random() * 6) + 1;
 }

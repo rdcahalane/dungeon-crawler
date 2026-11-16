@@ -9,10 +9,20 @@ import {
   ArmorTrait,
   WeaponTrait,
   abilityMod,
-  goodSave,
-  poorSave,
-  calcBAB,
 } from "../constants";
+import { facingFromVelocity } from "./facing";
+import { Inventory, starterKit, fromLegacyInventory, equipmentBonuses, getDef } from "../items";
+import {
+  Spellbook, isCaster, mathRng, mulberry32, titleFor, thac0For, xpForLevel, MAX_LEVEL, xpBonusPercent,
+  abilityModifiers, intelligenceEffect, spellsFor,
+} from "../rules";
+import type { SpellbookData, SaveCategory, SaveResult } from "../rules";
+import { hirelingLightRadius, sanitizeParty, type HirelingState } from "../rules/hirelings";
+import {
+  playerArmorClass, playerSave, saveTargets, legacySaveBonus, startingHp, levelUpHp, convertedHp,
+  playerToHitBonus, BASE_SWING_MS, PLAYER_HIT_GRACE_MS, applyDrain, restoreDrain,
+  type PlayerSheet,
+} from "../scenes/game/AdndCombat";
 
 export interface CharCreationData {
   classKey: ClassKey;
@@ -85,14 +95,49 @@ export interface PlayerStats {
   runGoldEarned?: number;
   runBestStreak?: number;
   runDeepestFloor?: number;
-	}
+  // ── B1 plumbing: serializable, all optional so old saves load. Nothing consumes these yet. ──
+  /** Full inventory (pack, belt, equipment, gold) from `src/game/items`. */
+  inv?: ReturnType<Inventory['toJSON']>;
+  /** Memorized spell state for casters (`src/game/rules/spells.ts`). */
+  spellbook?: SpellbookData;
+  /** Seconds of light left in the held torch. */
+  torchSecondsLeft?: number;
+  // ── B2: first-edition numbers. Optional so old saves load; `recomputeDerived` fills them. ──
+  /** Hit points before equipment (`maxHp` affixes) and drain. Absent on a pre first-edition save: converted at load. */
+  baseMaxHp?: number;
+  /** Maximum hit points lost to drain until the next long rest. */
+  drained?: number;
+  /** Player THAC0. */
+  thac0?: number;
+  /** Armor class, descending (10 is unarmored, lower is better). `defense` is the ascending twin (20 minus this). */
+  ac?: number;
+  /** d20 targets for the five saves, equipment and Wisdom already applied (lower is easier). */
+  saves?: Record<SaveCategory, number>;
+  /** Level title, "Recruit", "Cutpurse"... */
+  title?: string;
+  /** One-time hints already shown to this character (message log). */
+  seenHints?: string[];
+  /** Hirelings hired at the inn (D3). At most one torchbearer and one man-at-arms; absent on an old save. */
+  party?: HirelingState[];
+}
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   public stats!: PlayerStats;
+  /** New-model inventory (items module). Built from `stats.inv`, else from the legacy list, else a starter kit. */
+  public inventory!: Inventory;
+  /** Spellbook for casters; null for fighters and thieves. Slots replace mana. */
+  public spellbook: Spellbook | null = null;
+  /** Light from a Light spell or scroll: radius in tiles and time left (ms). */
+  public lightBoost: { radius: number; ms: number } = { radius: 0, ms: 0 };
+  private _speedMult = 1;
+  private _lightRadius = 1;
+  private _lightTimer = 0;
+  private _gutteredOut = false;
   private attackCooldown = 0;
+  /** What last hurt the character and when (scene clock, ms). `cause` is a noun phrase ("a goblin") or absent when the caller did not say. Read by the death screen. */
+  public lastHurtBy?: { cause?: string; at: number };
+  private poisonCarry = 0;
   private invincible = 0;
-  private armorWardReady = true;
-  private _idleTimer = 0; // ms standing still
   private attackIndicator!: Phaser.GameObjects.Rectangle;
   private playerShadow!: Phaser.GameObjects.Ellipse;  // floor shadow anchors character
   private playerAura!: Phaser.GameObjects.Arc;         // class-coloured halo above torch
@@ -134,6 +179,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     if (persistedStats) {
       this.stats = persistedStats;
+      // Hirelings: an old save has none; a damaged one loses only the bad entries.
+      this.stats.party = sanitizeParty(this.stats.party);
       // Restore HP to at least 1
       if (this.stats.hp <= 0) this.stats.hp = 1;
     } else if (charData) {
@@ -142,6 +189,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       // Fallback: default fighter
       this.stats = this._buildStats({ classKey: 'fighter', str: 14, dex: 12, con: 14, int: 10, wis: 10, cha: 8 });
     }
+
+    this._initInventoryAndSpellbook(!!persistedStats);
+    this.recomputeDerived();
+    if (!persistedStats) this.stats.hp = this.stats.maxHp;
 
     // Floor shadow — dark oval just below the player, depth below torch glow
     // makes character look grounded and separates them from floor texture
@@ -168,6 +219,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       right: scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
     this.attackKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    // Buffer the press: a tap shorter than one frame is lost to JustDown, and a swing asked for during the
+    // cooldown should land when it ends.
+    this.attackKey.on('down', () => { this.attackRequested = true; });
     this.turnUndeadKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.T);
 
     // Spell hotkeys Q/W/E/R
@@ -194,46 +248,89 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // No tint — avatars are drawn with real class colours
   }
 
+  private _initInventoryAndSpellbook(existingCharacter: boolean) {
+    const stats = this.stats;
+    const brandNew = !stats.inv && !existingCharacter;
+    if (stats.inv) {
+      this.inventory = Inventory.fromJSON(stats.inv);
+    } else if (existingCharacter) {
+      this.inventory = fromLegacyInventory(stats.inventory ?? [], stats).inventory;
+    } else {
+      this.inventory = starterKit(stats.classKey);
+    }
+    // `stats.gold` is the gold the tavern, the HUD and the game-over screen already read; the inventory mirrors it.
+    if (brandNew) stats.gold = this.inventory.gold;
+    else this.inventory.gold = stats.gold;
+
+    // `stats.potions` and `manaPotions` are read-only mirrors now (recomputeDerived refreshes them from the pack). A save
+    // from before the item system has its bare counters converted into real potions by `fromLegacyInventory` above.
+
+    // A save from before the first-edition scale keeps its character but gets first-edition hit points.
+    if (stats.baseMaxHp === undefined) {
+      const ratio = stats.maxHp > 0 ? Math.max(0, Math.min(1, stats.hp / stats.maxHp)) : 1;
+      const rng = mulberry32(hashString(`${stats.name ?? ''}${stats.classKey}${stats.con}`));
+      stats.baseMaxHp = convertedHp(stats.classKey, stats.level, stats.con, rng);
+      stats.drained = 0;
+      stats.maxHp = stats.baseMaxHp;
+      stats.hp = brandNew ? stats.maxHp : Math.max(1, Math.round(stats.maxHp * ratio));
+    }
+    stats.drained = stats.drained ?? 0;
+
+    this.spellbook = null;
+    if (isCaster(stats.classKey)) {
+      if (stats.spellbook) {
+        try {
+          this.spellbook = Spellbook.deserialize(stats.spellbook);
+        } catch {
+          this.spellbook = null; // fall through to a fresh book
+        }
+      }
+      if (!this.spellbook) {
+        this.spellbook = Spellbook.create(stats.classKey, stats.level);
+        this.scribeWizardSpells();
+        this.spellbook.fillDefault();
+      }
+    }
+  }
+
+  /** Wizards have no spell-learning screen yet: they write every spell they have slots for into the book. */
+  private scribeWizardSpells() {
+    const book = this.spellbook;
+    if (!book || this.stats.classKey !== 'wizard') return;
+    const maxLevel = Math.min(4, intelligenceEffect(this.stats.int).maxSpellLevel);
+    for (let lv = 1; lv <= maxLevel; lv++) {
+      if (book.maxSlots(lv) <= 0) continue;
+      for (const sp of spellsFor('wizard', lv)) book.learn(sp.key);
+    }
+  }
+
   private _buildStats(data: CharCreationData): PlayerStats {
-    const classDef = CHARACTER_CLASSES[data.classKey];
-    const conMod = abilityMod(data.con);
-    const dexMod = abilityMod(data.dex);
-    const strMod = abilityMod(data.str);
-    const intMod = abilityMod(data.int);
-    const wisMod = abilityMod(data.wis);
-
-    const bab = calcBAB(1, classDef.babFormula);
-    const weaponBonus = classDef.baseAttackBonus;
-    const armorBonus = classDef.baseArmorBonus;
-    const maxHp = classDef.baseHp + conMod * 6;
-    const maxMana = classDef.startingMana + Math.max(0,
-      data.classKey === 'wizard' ? intMod * 5 : data.classKey === 'cleric' ? wisMod * 4 : 0
-    );
-
+    const maxHp = startingHp(data.classKey, data.con);
     return {
       classKey: data.classKey,
       name: data.name,
       level: 1,
       xp: 0,
-      xpToNext: PLAYER_STATS.XP_PER_LEVEL,
+      xpToNext: xpForLevel(data.classKey, 2),
       str: data.str, dex: data.dex, con: data.con,
       int: data.int, wis: data.wis, cha: data.cha,
       hp: maxHp,
       maxHp,
-      mana: maxMana,
-      maxMana,
-      bab,
-      attack: bab + strMod + weaponBonus,
-      defense: 10 + dexMod + armorBonus,
-      fortSave: classDef.fortGood ? goodSave(1, conMod) : poorSave(1, conMod),
-      reflexSave: classDef.refGood ? goodSave(1, dexMod) : poorSave(1, dexMod),
-      willSave: classDef.willGood ? goodSave(1, wisMod) : poorSave(1, wisMod),
-      searchBonus: intMod + (data.classKey === 'thief' ? 0 : 0),
-      disableBonus: dexMod + (data.classKey === 'thief' ? 1 : 0),
-      weaponBonus,
-      armorBonus,
-      weaponTrait: data.classKey === 'fighter' ? 'cleaving' : data.classKey === 'thief' ? 'quick' : data.classKey === 'wizard' ? 'arcane' : 'vampiric',
-      armorTrait: data.classKey === 'thief' ? 'light' : data.classKey === 'wizard' ? 'warded' : 'reinforced',
+      baseMaxHp: maxHp,
+      drained: 0,
+      // Mana is gone (spell slots replace it); the fields stay at zero so untouched HUD code does not crash.
+      mana: 0,
+      maxMana: 0,
+      bab: 0,
+      attack: 0,
+      defense: 10,
+      fortSave: 0,
+      reflexSave: 0,
+      willSave: 0,
+      searchBonus: abilityMod(data.int),
+      disableBonus: abilityMod(data.dex),
+      weaponBonus: 0,
+      armorBonus: 0,
       speed: PLAYER_STATS.BASE_SPEED,
       gold: 0,
       floor: 1,
@@ -242,47 +339,174 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       cleaveReady: false,
       arcaneRecoveryTimer: 0,
       smiteBonus: 0,
-      sneakBonusDice: Math.floor(1 / 2),
-      potions: 1,      // start with 1 health potion
+      sneakBonusDice: 0,
+      potions: 0,
       manaPotions: 0,
     };
   }
 
+  /** The player as plain data for the combat math. */
+  sheet(): PlayerSheet {
+    const s = this.stats;
+    const bless = s.effects.find(e => e.key === 'BLESSED');
+    const shield = s.effects.find(e => e.key === 'SHIELDED');
+    return {
+      classKey: s.classKey,
+      level: s.level,
+      scores: { str: s.str, dex: s.dex, con: s.con, int: s.int, wis: s.wis, cha: s.cha },
+      inventory: this.inventory,
+      // Legacy `weaponBonus` / `armorBonus` are now the permanent boon points, capped so an old save cannot break the d20.
+      boonToHit: Math.max(0, Math.min(3, s.weaponBonus)),
+      boonDamage: Math.max(0, Math.min(3, s.weaponBonus)),
+      boonAc: Math.max(0, Math.min(3, s.armorBonus)),
+      blessToHit: bless ? (bless.value ?? 1) : 0,
+      buffAc: shield ? (shield.value ?? 2) : 0,
+    };
+  }
+
+  /** Saving throw by the five first-edition categories. Other lanes call this instead of rolling d20 themselves. */
+  rollSave(category: SaveCategory, modifier = 0): SaveResult {
+    return playerSave(this.sheet(), category, modifier, mathRng);
+  }
+
+  /** Refresh every derived number after anything changed: level, gear, buffs, ability scores. */
   recomputeDerived() {
     const s = this.stats;
-    const classDef = CHARACTER_CLASSES[s.classKey];
-    const conMod = abilityMod(s.con);
-    const dexMod = abilityMod(s.dex);
-    const strMod = abilityMod(s.str);
-    const intMod = abilityMod(s.int);
-    const wisMod = abilityMod(s.wis);
+    const inv = this.inventory;
+    if (!inv) return;
+    const sheet = this.sheet();
+    const eq = equipmentBonuses(inv);
+    const scores = sheet.scores;
+    const mods = abilityModifiers(scores, s.classKey);
 
-    s.bab = calcBAB(s.level, classDef.babFormula);
-    s.attack = s.bab + strMod + s.weaponBonus;
-    s.defense = 10 + dexMod + s.armorBonus;
+    s.thac0 = thac0For(s.classKey, s.level);
+    s.bab = 20 - s.thac0;
+    s.attack = s.bab + playerToHitBonus(sheet, 'melee');
+    s.ac = playerArmorClass(sheet);
+    s.defense = 20 - s.ac;
+    s.saves = saveTargets(sheet);
+    // Old trap code still rolls d20 + save vs a DC, so keep the three legacy numbers populated and sensible.
+    s.fortSave = legacySaveBonus(s.saves.death);
+    s.reflexSave = legacySaveBonus(s.saves.breath);
+    s.willSave = legacySaveBonus(s.saves.spells);
+    s.searchBonus = abilityMod(s.int) + (s.classKey === 'thief' ? Math.floor(s.level / 2) : 0);
+    s.disableBonus = abilityMod(s.dex) + (s.classKey === 'thief' ? s.level : 0);
+    s.sneakBonusDice = 0;
+    s.title = titleFor(s.classKey, s.level);
+    // The old trait system is gone: equipment effects come only from `equipmentBonuses`.
+    s.weaponTrait = undefined;
+    s.armorTrait = undefined;
 
-    // Apply BLESSED bonus
-    if (s.effects.some(e => e.key === 'BLESSED')) {
-      s.attack += 2;
+    // Hit points: the base grows with levels, gear adds, drain subtracts.
+    s.drained = s.drained ?? 0;
+    const base = s.baseMaxHp ?? s.maxHp;
+    s.maxHp = Math.max(1, base + eq.maxHp - s.drained);
+    if (s.hp > s.maxHp) s.hp = s.maxHp;
+
+    // Experience: `xp` is progress inside the level, `xpToNext` the width of the level.
+    s.xpToNext = s.level >= MAX_LEVEL
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(1, xpForLevel(s.classKey, s.level + 1) - xpForLevel(s.classKey, s.level));
+
+    // No mana any more. Legacy potion counter mirrors the healing potions actually carried.
+    s.mana = 0;
+    s.maxMana = 0;
+    s.manaPotions = 0;
+    s.potions = inv.count('healing_potion');
+    inv.gold = s.gold;
+
+    // Spell slots: level, Wisdom (clerics) and gear.
+    if (this.spellbook) {
+      const bonus = [0, 0, 0, 0].map((_, i) => (mods.bonusSlots[i] ?? 0) + (eq.extraSlots[i + 1] ?? 0));
+      const cur = this.spellbook.serialize();
+      if (cur.level !== s.level || cur.bonusSlots.join() !== bonus.join()) {
+        this.spellbook.setLevel(s.level, bonus);
+        this.scribeWizardSpells();
+        this.spellbook.fillDefault();
+      }
     }
-    // Apply SHIELDED bonus
-    if (s.effects.some(e => e.key === 'SHIELDED')) {
-      s.defense += 10;
-    }
 
-    s.fortSave = classDef.fortGood ? goodSave(s.level, conMod) : poorSave(s.level, conMod);
-    s.reflexSave = classDef.refGood ? goodSave(s.level, dexMod) : poorSave(s.level, dexMod);
-    s.willSave = classDef.willGood ? goodSave(s.level, wisMod) : poorSave(s.level, wisMod);
-    s.searchBonus = intMod + (s.classKey === 'thief' ? Math.floor(s.level / 2) : 0);
-    s.disableBonus = dexMod + (s.classKey === 'thief' ? s.level : 0);
-    s.sneakBonusDice = Math.floor(s.level / 2);
+    // Speed and light.
+    const enc = inv.encumbrance(s.str);
+    this._speedMult = enc.speedMult * (1 + eq.speedPct / 100);
+    // A living torchbearer carries the light: his lit torch's radius, whatever the off hand holds.
+    this._lightRadius = Math.max(eq.lightRadius, this.lightBoost.ms > 0 ? this.lightBoost.radius : 0, hirelingLightRadius(s.party));
+  }
 
-    // Mana max scales with level
-    if (s.classKey === 'wizard' || s.classKey === 'cleric') {
-      const bonusMod = s.classKey === 'wizard' ? intMod : wisMod;
-      const baseMana = classDef.startingMana + (s.level - 1) * classDef.manaPerLevel;
-      s.maxMana = baseMana + Math.max(0, bonusMod * 5);
+  /** Sight radius in tiles: the held light (plus affixes), a light spell, else one tile of darkness. */
+  lightRadiusTiles(): number {
+    return Math.max(1, this._lightRadius);
+  }
+
+  /** Is anything actually lit? */
+  hasLight(): boolean {
+    return this._lightRadius > 0;
+  }
+
+  /**
+   * Make sure a light is burning: if the offhand holds no lit light and the pack has a torch (or lantern with oil),
+   * hold it. Returns what happened so the caller can speak.
+   */
+  ensureLight(): 'lit' | 'equipped' | 'none' {
+    // His torchbearer holds the light, so the off hand stays free for a shield.
+    if (hirelingLightRadius(this.stats.party) > 0) return 'lit';
+    const inv = this.inventory;
+    const lit = (it: { defKey: string; charges?: number } | undefined) =>
+      !!it && !!getDef(it.defKey).light && (it.charges ?? 1) > 0;
+    if (lit(inv.equipment.offhand)) return 'lit';
+    const spare = inv.pack.find(it => !!it && lit(it) && getDef(it.defKey).slot === 'offhand');
+    if (!spare) return 'none';
+    const r = inv.equip(spare.id, 'offhand');
+    if (!r.ok) return 'none';
+    this.recomputeDerived();
+    return 'equipped';
+  }
+
+  /** Burn the held light, return true the moment it dies. Called once a frame by the combat controller. */
+  burnLight(deltaMs: number): { burntOut: boolean } {
+    // While a torchbearer lives the player's own torch is not the light, so it does not burn.
+    const r = hirelingLightRadius(this.stats.party) > 0 ? { burntOut: null } : this.inventory.burn(deltaMs / 1000);
+    this._lightTimer += deltaMs;
+    if (this.lightBoost.ms > 0) {
+      this.lightBoost.ms = Math.max(0, this.lightBoost.ms - deltaMs);
+      if (this.lightBoost.ms === 0) { this.lightBoost.radius = 0; this._lightTimer = 1000; }
     }
+    if (r.burntOut || this._lightTimer >= 1000) {
+      this._lightTimer = 0;
+      const had = this._lightRadius;
+      this.recomputeDerived();
+      if (r.burntOut || (had > 0 && this._lightRadius === 0)) return { burntOut: true };
+    }
+    return { burntOut: false };
+  }
+
+  /** Drain: lose maximum hit points until a long rest. Returns the points actually lost. */
+  drainMaxHp(amount: number): number {
+    const state = { hp: this.stats.hp, maxHp: this.stats.maxHp, drained: this.stats.drained ?? 0 };
+    const lost = applyDrain(state, amount);
+    this.stats.hp = state.hp;
+    this.stats.drained = state.drained;
+    this.recomputeDerived();
+    return lost;
+  }
+
+  /** Give back everything drain took. */
+  restoreDrained(): number {
+    const state = { hp: this.stats.hp, maxHp: this.stats.maxHp, drained: this.stats.drained ?? 0 };
+    const back = restoreDrain(state);
+    this.stats.drained = 0;
+    this.recomputeDerived();
+    return back;
+  }
+
+  removeEffect(key: StatusEffect['key']) {
+    const had = this.stats.effects.some(e => e.key === key);
+    this.stats.effects = this.stats.effects.filter(e => e.key !== key);
+    if (had) this.recomputeDerived();
+  }
+
+  hasEffect(key: StatusEffect['key']): boolean {
+    return this.stats.effects.some(e => e.key === key);
   }
 
   setCallbacks(callbacks: {
@@ -309,17 +533,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.attackCooldown = Math.max(0, this.attackCooldown - delta);
     this.invincible = Math.max(0, this.invincible - delta);
 
-    // Arcane Recovery mana regen (Wizard)
-    if (this.stats.classKey === 'wizard') {
-      this.stats.arcaneRecoveryTimer += delta;
-      if (this.stats.arcaneRecoveryTimer >= 5000 && this.stats.mana < this.stats.maxMana) {
-        this.stats.mana = Math.min(this.stats.maxMana, this.stats.mana + (2 * delta / 1000));
-      }
-    }
-
     this.tickEffects(delta);
     this.handleMovement();
-    this.tickIdleRegen(delta);
     this.updateAttackIndicator();
   }
 
@@ -333,9 +548,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
       if (eff.key === 'POISONED' && eff.value) {
         // Deal poison damage every second
-        const poisonDmg = (eff.value * delta) / 1000;
+        // Whole points only: hit points are integers everywhere else.
+        this.poisonCarry += (eff.value * delta) / 1000;
+        const poisonDmg = Math.floor(this.poisonCarry);
+        this.poisonCarry -= poisonDmg;
         s.hp = Math.max(0, s.hp - poisonDmg);
         if (s.hp <= 0) {
+          this.lastHurtBy = { cause: 'poison', at: this.scene.time.now };
           this.onDead?.();
           return;
         }
@@ -353,7 +572,22 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (needsRecompute) this.recomputeDerived();
   }
 
+  /** Scene time until which a new paralysis cannot take hold (see `addEffect`). */
+  private heldImmuneUntil = 0;
+
+  /** False while held, or in the few seconds after a hold wears off, when a new one cannot take. */
+  canBeHeld(): boolean {
+    return this.scene.time.now >= this.heldImmuneUntil;
+  }
+
   addEffect(key: StatusEffect['key'], duration: number, value?: number) {
+    // Paralysis cannot be renewed while it lasts, nor for a few seconds after it wears off. Without this one ghoul
+    // re-paralyzed a level-5 cleric on every hit until it died (test play, 2026-11-14).
+    if (key === 'HELD') {
+      const now = this.scene.time.now;
+      if (now < this.heldImmuneUntil) return;
+      this.heldImmuneUntil = now + duration + 6000;
+    }
     // Remove existing same effect
     this.stats.effects = this.stats.effects.filter(e => e.key !== key);
     this.stats.effects.push({ key, duration, value });
@@ -364,23 +598,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  private tickIdleRegen(delta: number) {
-    const s = this.stats;
-    if (s.hp >= s.maxHp || s.hp <= 0) return;
-    if (s.effects.some(e => e.key === 'POISONED')) return;
-
-    this._idleTimer += delta;
-    if (this._idleTimer < 3000) return; // 3s before regen starts
-
-    const conMod = abilityMod(s.con);
-    const regenPerSec = Math.max(0.25, 0.5 + conMod * 0.25);
-    const healed = regenPerSec * delta / 1000;
-    const prev = s.hp;
-    s.hp = Math.min(s.maxHp, s.hp + healed);
-    if (Math.floor(s.hp) > Math.floor(prev)) {
-      this.onHeal?.(Math.floor(s.hp) - Math.floor(prev));
-    }
-  }
+  /** Set by InputController each frame: direction to walk when no movement key is held (any length; null = none). */
+  public moveIntent: { x: number; y: number } | null = null;
+  /** Set true by InputController to swing once as soon as the cooldown allows; cleared when the swing starts. */
+  public attackRequested = false;
+  /** Old behavior: any mouse press swings. InputController turns this off when it takes over the mouse. */
+  public legacyMouseAttack = true;
 
   private handleMovement() {
     const body = this.body as Phaser.Physics.Arcade.Body;
@@ -392,23 +615,34 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.cursors.up.isDown || this.wasd.up.isDown) vy -= 1;
     if (this.cursors.down.isDown || this.wasd.down.isDown) vy += 1;
 
+    // No keys held: follow the input controller's intent (click-to-move).
+    if (vx === 0 && vy === 0 && this.moveIntent) {
+      vx = this.moveIntent.x;
+      vy = this.moveIntent.y;
+    }
+
+    // Held (ghoul touch, Hold Person): rooted to the spot.
+    if (this.stats.effects.some(e => e.key === 'HELD')) {
+      body.setVelocity(0, 0);
+      return;
+    }
+
     if (vx !== 0 || vy !== 0) {
       const len = Math.sqrt(vx * vx + vy * vy);
       const spd = this.getEffectiveSpeed();
       vx = (vx / len) * spd;
       vy = (vy / len) * spd;
-      this.stats.facing = { x: vx > 0 ? 1 : vx < 0 ? -1 : 0, y: vy > 0 ? 1 : vy < 0 ? -1 : 0 };
-      this._idleTimer = 0;
+      this.stats.facing = facingFromVelocity(vx, vy, this.stats.facing);
     }
 
     body.setVelocity(vx, vy);
   }
 
   private getEffectiveSpeed(): number {
-    let spd = this.stats.speed;
+    let spd = this.stats.speed * this._speedMult;
     if (this.stats.effects.some(e => e.key === 'SLOWED')) spd *= 0.5;
-    if (this.stats.effects.some(e => e.key === 'RUSHED')) spd *= 1.25;
-    if (this.stats.armorTrait === 'light') spd *= 1.12;
+    const rushed = this.stats.effects.find(e => e.key === 'RUSHED');
+    if (rushed) spd *= rushed.value && rushed.value > 1 ? rushed.value : 1.25;
     return spd;
   }
 
@@ -426,23 +660,29 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   canAttack(): boolean {
-    return this.attackCooldown <= 0 && this.stats.hp > 0;
+    return this.attackCooldown <= 0 && this.stats.hp > 0 && !this.stats.effects.some(e => e.key === 'HELD');
   }
 
   tryAttack(): boolean {
     if (!this.canAttack()) return false;
-    if (
-      !Phaser.Input.Keyboard.JustDown(this.attackKey) &&
-      !this.scene.input.mousePointer.isDown
-    ) return false;
+    const wanted =
+      Phaser.Input.Keyboard.JustDown(this.attackKey) ||
+      this.attackRequested ||
+      (this.legacyMouseAttack && this.scene.input.mousePointer.isDown);
+    if (!wanted) return false;
+    this.attackRequested = false;
 
-    const haste = this.stats.weaponTrait === 'quick' ? 0.68 : 1;
-    this.attackCooldown = PLAYER_STATS.ATTACK_COOLDOWN * haste;
+    this.attackCooldown = BASE_SWING_MS;
     this.setTint(0xffffff); // brief white flash
     this.scene.time.delayedCall(80, () => {
       if (this.active) this.clearTint();
     });
     return true;
+  }
+
+  /** Lengthen the current swing cooldown (the wizard's dart is slower than a dagger). */
+  setAttackCooldown(ms: number) {
+    this.attackCooldown = Math.max(this.attackCooldown, ms);
   }
 
   tryTurnUndead(): boolean {
@@ -464,43 +704,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     );
   }
 
-  getAttackDamage(isSneakAttack = false): number {
-    let dmg = this.stats.attack;
-    // Sneak attack for Thief
-    if (isSneakAttack && this.stats.classKey === 'thief') {
-      for (let i = 0; i < this.stats.sneakBonusDice; i++) {
-        dmg += Math.floor(Math.random() * 6) + 1;
-      }
-    }
-    // Smite bonus (Cleric)
-    if (this.stats.smiteBonus > 0) {
-      dmg += this.stats.smiteBonus;
-      this.stats.smiteBonus = 0;
-    }
-    return dmg;
-  }
+  /**
+   * Apply damage that already passed its to-hit roll. Armor works through AC before this point, so it no longer
+   * subtracts here; `bypassArmor` is kept for old callers (traps) and means nothing now.
+   */
+  /** Returns false when the hit was swallowed by the hit-grace window (or the character is already dead). */
+  takeDamage(amount: number, bypassArmor = false, cause?: string): boolean {
+    void bypassArmor;
+    if (this.invincible > 0 || this.stats.hp <= 0) return false;
+    this.lastHurtBy = { cause, at: this.scene.time.now };
 
-  takeDamage(amount: number, bypassArmor = false) {
-    if (this.invincible > 0 || this.stats.hp <= 0) return;
-
-    let dmg: number;
-    if (bypassArmor) {
-      dmg = Math.max(1, amount);
-    } else {
-      dmg = Math.max(1, amount - (this.stats.defense - 10));
-    }
-    if (this.stats.armorTrait === 'reinforced') dmg = Math.max(1, dmg - 1);
-    if (this.stats.armorTrait === 'warded' && this.armorWardReady) {
-      dmg = Math.max(0, Math.floor(dmg * 0.25));
-      this.armorWardReady = false;
-    }
-
+    const dmg = Math.max(1, Math.round(amount));
     this.stats.hp = Math.max(0, this.stats.hp - dmg);
-    this.invincible = 600;
-    this._idleTimer = 0;
-
-    // Arcane recovery timer reset
-    this.stats.arcaneRecoveryTimer = 0;
+    this.invincible = PLAYER_HIT_GRACE_MS;
 
     this.setTint(0xff4444);
     this.scene.time.delayedCall(150, () => {
@@ -512,57 +728,54 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.stats.hp <= 0) {
       this.onDead?.();
     }
+    return true;
   }
 
-  refreshArmorWard() {
-    if (this.stats.armorTrait === 'warded') this.armorWardReady = true;
-  }
+  /** Kept so old callers compile; the armor ward trait no longer exists. */
+  refreshArmorWard() {}
 
   heal(amount: number) {
-    const healed = Math.min(amount, this.stats.maxHp - this.stats.hp);
+    const healed = Math.max(0, Math.min(amount, this.stats.maxHp - this.stats.hp));
     this.stats.hp += healed;
     this.onHeal?.(healed);
   }
 
+  /** Mana is gone; these stay as no-ops so untouched code keeps compiling. */
   spendMana(amount: number): boolean {
-    if (this.stats.mana < amount) return false;
-    this.stats.mana -= amount;
-    return true;
+    void amount;
+    return false;
   }
 
   restoreMana(amount: number) {
-    this.stats.mana = Math.min(this.stats.maxMana, this.stats.mana + amount);
+    void amount;
   }
 
   gainXP(amount: number) {
-    this.stats.xp += amount;
-    this.onXP?.(amount, this.stats.xp);
+    const bonus = xpBonusPercent(this.stats.classKey, {
+      str: this.stats.str, dex: this.stats.dex, con: this.stats.con,
+      int: this.stats.int, wis: this.stats.wis, cha: this.stats.cha,
+    });
+    const gained = Math.max(0, Math.round(amount * (1 + bonus / 100)));
+    this.stats.xp += gained;
+    this.onXP?.(gained, this.stats.xp);
 
-    while (this.stats.xp >= this.stats.xpToNext) {
+    while (this.stats.level < MAX_LEVEL && this.stats.xp >= this.stats.xpToNext) {
       this.stats.xp -= this.stats.xpToNext;
       this.stats.level++;
-      this.stats.xpToNext = Math.floor(PLAYER_STATS.XP_PER_LEVEL * Math.pow(1.3, this.stats.level - 1));
-
-      const classDef = CHARACTER_CLASSES[this.stats.classKey];
-      const conMod = abilityMod(this.stats.con);
-
-      // HP gain on level up: average hit die + CON mod, scaled
-      const hpGain = Math.floor(classDef.hitDie * 0.5 + 1) * 3 + conMod * 2;
-      this.stats.maxHp += Math.max(1, hpGain);
-      this.stats.hp = Math.min(this.stats.hp + Math.floor(hpGain / 2), this.stats.maxHp);
-
+      const gain = levelUpHp(this.stats.classKey, this.stats.level, this.stats.con, mathRng);
+      this.stats.baseMaxHp = (this.stats.baseMaxHp ?? this.stats.maxHp) + gain;
+      this.stats.hp += gain;
       this.recomputeDerived();
-      // Restore partial mana on level up
-      if (this.stats.maxMana > 0) {
-        this.stats.mana = Math.min(this.stats.maxMana, this.stats.mana + classDef.manaPerLevel);
-      }
-
+      this.stats.hp = Math.min(this.stats.hp, this.stats.maxHp);
       this.onLevelUp?.(this.stats.level);
     }
   }
 
   getSerializable(): PlayerStats {
-    return { ...this.stats };
+    this.inventory.gold = this.stats.gold;
+    const out: PlayerStats = { ...this.stats, inv: this.inventory.toJSON() };
+    if (this.spellbook) out.spellbook = this.spellbook.serialize();
+    return out;
   }
 
   destroy(fromScene?: boolean) {
@@ -571,4 +784,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.playerAura?.destroy();
     super.destroy(fromScene);
   }
+}
+
+function hashString(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }

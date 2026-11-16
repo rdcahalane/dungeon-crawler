@@ -5,15 +5,17 @@ import dynamic from "next/dynamic";
 const PhaserGame = dynamic(() => import("@/game/PhaserGame"), {
   ssr: false,
   loading: () => (
-    <div
-      className="bg-[#0a0a0f] border border-gray-800 flex items-center justify-center"
-      style={{ width: "min(100vw - 24px, 960px)", height: "min(calc((100vw - 24px) * 0.6667), 640px)" }}
-    >
-      <p className="text-gray-600 font-mono text-sm animate-pulse">Loading dungeon…</p>
+    <div className="screen flex items-center justify-center bg-[#12101a]">
+      <p className="arcade-text text-[#7d7890] animate-pulse">Loading dungeon...</p>
     </div>
   ),
 });
 
 export default function GameWrapper() {
-  return <PhaserGame />;
+  // `.screen` (globals.css) sizes the canvas box at 3:2 (largest that fits width and height) and keeps pixels crisp.
+  return (
+    <div className="screen">
+      <PhaserGame />
+    </div>
+  );
 }

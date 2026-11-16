@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,11 +45,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6 rounded-xl bg-[#141420] p-8 border border-gray-800">
+    <div className="cabinet-stage">
+      <div className="arcade-panel arcade-text space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-white font-mono">Dungeon Crawler</h1>
-          <p className="text-sm text-gray-500 mt-1 font-mono">
+          <h1 className="text-[#f4c42c] text-base tracking-[0.25em]">Dungeon Crawler</h1>
+          <p className="text-[#7d7890] mt-2">
             {mode === "login" ? "Sign in to save your progress" : "Create an account"}
           </p>
         </div>
@@ -56,53 +57,56 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === "register" && (
             <div>
-              <label className="block text-xs font-mono text-gray-400 mb-1">Username</label>
+              <label className="block text-[#b8b4c8] mb-1">Username</label>
               <input
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="dungeon_knight"
-                className="w-full rounded bg-[#0a0a0f] border border-gray-700 px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-yellow-500"
+                className="arcade-input"
               />
             </div>
           )}
           <div>
-            <label className="block text-xs font-mono text-gray-400 mb-1">Email</label>
+            <label className="block text-[#b8b4c8] mb-1">Email</label>
             <input
               type="email"
               required
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full rounded bg-[#0a0a0f] border border-gray-700 px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-yellow-500"
+              className="arcade-input"
             />
           </div>
           <div>
-            <label className="block text-xs font-mono text-gray-400 mb-1">Password</label>
+            <label className="block text-[#b8b4c8] mb-1">Password</label>
             <input
               type="password"
               required
               minLength={6}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full rounded bg-[#0a0a0f] border border-gray-700 px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-yellow-500"
+              className="arcade-input"
             />
           </div>
-          {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+          {error && <p className="text-[#d8382c]">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded bg-yellow-600 hover:bg-yellow-500 px-4 py-2 text-sm font-bold text-black font-mono disabled:opacity-50"
+            className="arcade-btn arcade-btn-primary w-full py-2"
           >
             {loading ? "..." : mode === "login" ? "Sign in" : "Create account"}
           </button>
         </form>
 
-        <p className="text-xs text-center text-gray-600 font-mono">
+        <p className="text-center text-[#7d7890]">
           {mode === "login" ? (
-            <>No account? <button onClick={() => setMode("register")} className="text-yellow-500 hover:underline">Register</button></>
+            <>No account? <button onClick={() => setMode("register")} className="arcade-link">Register</button></>
           ) : (
-            <>Have an account? <button onClick={() => setMode("login")} className="text-yellow-500 hover:underline">Sign in</button></>
+            <>Have an account? <button onClick={() => setMode("login")} className="arcade-link">Sign in</button></>
           )}
+        </p>
+        <p className="text-center">
+          <Link href="/" className="arcade-link">Back to the game (guest)</Link>
         </p>
       </div>
     </div>
