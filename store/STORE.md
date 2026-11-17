@@ -98,10 +98,13 @@ Production release 2 (1.1), 2026-11-16: the six map styles (halls, caverns, ruin
 temples) and wading. Sending it restarted the review 1.0 had begun the same day, so 1.0 never ships on its own and
 1.1 is the first public build. The iOS project is bumped to 1.1 (build 2) too, waiting on the Apple account.
 
-Production release 1.2 (versionCode 5, iOS build 5), 2026-11-17: recorded narration (189 clips, the bundle grows to
-16 MB), visible chests, Esc pause menu, found-trap X without its own tile. versionCodes 3 and 4 were uploaded to Play
-and abandoned, so never reuse them. Sending 1.2 restarts the review 1.1 was in. The 16 MB bundle is over the
-Chrome-extension upload limit (about 10 MB), so the file has to be chosen in the browser by hand.
+Production release 1.2 (versionCode 5, iOS build 5), 2026-11-17, sent for review the same day (restarting 1.1's):
+harder floors 1 to 5, Esc pause menu, softer sound with a one-tap switch, visible chests, found-trap X without its own
+tile. It ships WITHOUT the recorded narration: `native-dist/narration` was deleted after `native:build`, so every line
+404s and falls back to the device voice (Android TTS plugin). The clips make the bundle 16 MB, over the
+Chrome-extension upload limit (about 10 MB); Ryan's call was to ship without the voice rather than wait for a manual
+upload. versionCodes 3 and 4 were uploaded to Play and abandoned, so never reuse them. Next: 1.3 (versionCode 6, iOS
+build 6) with the clips, uploaded by hand or with the clips made smaller.
 Build releases from a clean worktree at a pushed commit (`git worktree add`, `cp -cR node_modules`, copy
 `android/local.properties`, `android/keystore.properties` and `android/capacitor-cordova-android-plugins`):
 `deploy-canoe.sh` and `native:sync` both take the working tree as it is, uncommitted edits included.
