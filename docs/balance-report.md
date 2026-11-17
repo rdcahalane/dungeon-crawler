@@ -1,6 +1,6 @@
 # Balance report
 
-Generated 2026-11-14 at commit 926758b; 400 seeded runs per cell, seed 1. Regenerate with `npm run sim`.
+Generated 2026-11-17 at commit de7f5ab; 400 seeded runs per cell, seed 1. Regenerate with `npm run sim`.
 
 Each cell: probability of clearing 4 encounters in a row / 8 in a row (no rest, potions and class healing only), then the monster that dealt the most damage. Character level equals the floor number. Encounters are drawn the way the generator fills rooms. "stuck" is the share of runs that ended because nothing left could be hurt (a monster that needs a magic weapon), counted as a failure to clear.
 
@@ -8,11 +8,11 @@ Each cell: probability of clearing 4 encounters in a row / 8 in a row (no rest, 
 
 | Floor (level) | starter c4 / c8 / top | found c4 / c8 / top | good c4 / c8 / top | found AC, to-hit, avg dmg, HP, potions |
 |---|---|---|---|---|
-| 1 (1) | 100 / 98 / Goblin 47% | 100 / 98 / Goblin 47% | 100 / 100 / Goblin 48% | 4, +2, 5.5, 14, 2 |
-| 2 (2) | 100 / 94 / Giant Spider 53% | 100 / 98 / Giant Spider 54% | 100 / 100 / Giant Spider 57% | 3, +2, 5.5, 23, 2 |
-| 3 (3) | 100 / 97 / Giant Spider 52% | 100 / 100 / Giant Spider 52% | 100 / 100 / Giant Spider 56% | 3, +2, 5.5, 26, 3 |
-| 4 (4) | 96 / 66 / Corrosive Ooze 29% | 98 / 92 / Corrosive Ooze 32% | 100 / 100 / Dark Elf 32% | 3, +3, 6.5, 40, 4 |
-| 5 (5) | 91 / 49 / Ghoul 31% | 100 / 97 / Ghoul 27% | 100 / 100 / Cultist 26% | 2, +3, 6.5, 38, 6 |
+| 1 (1) | 100 / 94 / Goblin 47% | 100 / 94 / Goblin 47% | 100 / 100 / Goblin 46% | 4, +2, 5.5, 14, 2 |
+| 2 (2) | 94 / 56 / Giant Spider 53% | 98 / 77 / Giant Spider 55% | 100 / 98 / Giant Spider 55% | 3, +2, 5.5, 23, 2 |
+| 3 (3) | 98 / 78 / Giant Spider 47% | 100 / 95 / Giant Spider 48% | 100 / 100 / Giant Spider 49% | 3, +2, 5.5, 26, 3 |
+| 4 (4) | 73 / 17 / Dark Elf 29% | 94 / 58 / Dark Elf 32% | 100 / 98 / Dark Elf 37% | 3, +3, 6.5, 40, 4 |
+| 5 (5) | 63 / 9 / Ghoul 26% | 97 / 66 / Ghoul 26% | 100 / 98 / Cultist 27% | 2, +3, 6.5, 38, 6 |
 | 6 (6) | 38 / 10 / Gargoyle 44% (stuck 36%) | 82 / 59 / Gargoyle 45% (stuck 24%) | 99 / 92 / Cultist 41% (stuck 6%) | -1, +3, 6.5, 54, 6 |
 | 7 (7) | 28 / 1 / Gargoyle 40% (stuck 39%) | 84 / 57 / Gargoyle 33% (stuck 24%) | 97 / 88 / Ghost 30% (stuck 10%) | -3, +3, 6.5, 50, 6 |
 | 8 (8) | 13 / 1 / Gargoyle 31% (stuck 53%) | 81 / 55 / Gargoyle 31% (stuck 32%) | 96 / 83 / Cultist 29% (stuck 17%) | -3, +3, 6.5, 54, 6 |
@@ -25,11 +25,11 @@ Each cell: probability of clearing 4 encounters in a row / 8 in a row (no rest, 
 
 | Floor (level) | starter c4 / c8 / top | found c4 / c8 / top | good c4 / c8 / top | found AC, to-hit, avg dmg, HP, potions |
 |---|---|---|---|---|
-| 1 (1) | 90 / 70 / Goblin 47% | 90 / 70 / Goblin 47% | 97 / 93 / Goblin 54% | 6, +2, 3.5, 10, 2 |
-| 2 (2) | 84 / 52 / Giant Spider 54% | 92 / 73 / Giant Spider 56% | 99 / 98 / Giant Spider 58% | 5, +2, 3.5, 17, 2 |
-| 3 (3) | 89 / 49 / Giant Spider 46% | 99 / 86 / Giant Spider 49% | 100 / 100 / Giant Spider 57% | 4, +2, 3.5, 19, 3 |
-| 4 (4) | 55 / 9 / Corrosive Ooze 26% | 89 / 57 / Corrosive Ooze 29% | 100 / 99 / Dark Elf 30% | 4, +3, 5.5, 27, 4 |
-| 5 (5) | 57 / 15 / Ghoul 28% | 95 / 76 / Ghoul 28% | 100 / 100 / Ghoul 25% | 3, +3, 5.5, 28, 6 |
+| 1 (1) | 89 / 58 / Goblin 45% | 89 / 58 / Goblin 45% | 98 / 91 / Goblin 50% | 6, +2, 3.5, 10, 2 |
+| 2 (2) | 50 / 6 / Giant Spider 54% | 69 / 24 / Giant Spider 55% | 97 / 90 / Giant Spider 55% | 5, +2, 3.5, 17, 2 |
+| 3 (3) | 54 / 10 / Giant Spider 44% | 88 / 53 / Giant Spider 47% | 100 / 100 / Giant Spider 48% | 4, +2, 3.5, 19, 3 |
+| 4 (4) | 12 / 0 / Dark Elf 27% | 65 / 17 / Dark Elf 29% | 97 / 83 / Dark Elf 31% | 4, +3, 5.5, 27, 4 |
+| 5 (5) | 14 / 0 / Ghoul 28% | 78 / 38 / Ghoul 26% | 100 / 92 / Ghoul 27% | 3, +3, 5.5, 28, 6 |
 | 6 (6) | 19 / 2 / Gargoyle 34% (stuck 20%) | 71 / 40 / Gargoyle 39% (stuck 25%) | 100 / 96 / Gargoyle 37% | 1, +3, 5.5, 34, 6 |
 | 7 (7) | 8 / 0 / Gargoyle 27% (stuck 16%) | 68 / 37 / Gargoyle 29% (stuck 20%) | 98 / 92 / Gargoyle 29% | -2, +3, 5.5, 31, 6 |
 | 8 (8) | 5 / 0 / Gargoyle 24% (stuck 36%) | 74 / 43 / Gargoyle 26% (stuck 31%) | 99 / 94 / Gargoyle 25% | -3, +3, 5.5, 35, 6 |
@@ -42,11 +42,11 @@ Each cell: probability of clearing 4 encounters in a row / 8 in a row (no rest, 
 
 | Floor (level) | starter c4 / c8 / top | found c4 / c8 / top | good c4 / c8 / top | found AC, to-hit, avg dmg, HP, potions |
 |---|---|---|---|---|
-| 1 (1) | 100 / 99 / Goblin 47% | 100 / 99 / Goblin 47% | 100 / 100 / Goblin 48% | 4, +2, 3.5, 12, 2 |
-| 2 (2) | 100 / 97 / Giant Spider 55% | 100 / 99 / Giant Spider 57% | 100 / 100 / Giant Spider 62% | 3, +2, 3.5, 20, 2 |
-| 3 (3) | 100 / 98 / Giant Spider 54% | 100 / 100 / Giant Spider 54% | 100 / 100 / Giant Spider 51% | 3, +2, 3.5, 22, 3 |
-| 4 (4) | 91 / 60 / Corrosive Ooze 31% | 99 / 91 / Corrosive Ooze 35% | 100 / 100 / Corrosive Ooze 29% | 3, +2, 3.5, 34, 4 |
-| 5 (5) | 84 / 47 / Ghoul 25% | 99 / 88 / Ghoul 25% | 100 / 100 / Cultist 39% | 2, +2, 3.5, 33, 6 |
+| 1 (1) | 99 / 94 / Goblin 45% | 99 / 94 / Goblin 45% | 100 / 99 / Goblin 48% | 4, +2, 3.5, 12, 2 |
+| 2 (2) | 93 / 58 / Giant Spider 54% | 98 / 73 / Giant Spider 57% | 100 / 100 / Giant Spider 58% | 3, +2, 3.5, 20, 2 |
+| 3 (3) | 97 / 66 / Giant Spider 48% | 99 / 92 / Giant Spider 52% | 100 / 100 / Giant Spider 57% | 3, +2, 3.5, 22, 3 |
+| 4 (4) | 62 / 10 / Corrosive Ooze 30% | 89 / 43 / Dark Elf 33% | 100 / 97 / Corrosive Ooze 38% | 3, +2, 3.5, 34, 4 |
+| 5 (5) | 46 / 4 / Ghoul 23% | 88 / 41 / Cultist 24% | 100 / 99 / Cultist 38% | 2, +2, 3.5, 33, 6 |
 | 6 (6) | 31 / 6 / Gargoyle 49% (stuck 28%) | 67 / 43 / Gargoyle 56% (stuck 36%) | 98 / 88 / Gargoyle 34% (stuck 11%) | -1, +3, 3.5, 44, 6 |
 | 7 (7) | 26 / 3 / Gargoyle 51% (stuck 28%) | 69 / 45 / Gargoyle 45% (stuck 33%) | 96 / 80 / Cultist 29% (stuck 19%) | -3, +3, 3.5, 42, 6 |
 | 8 (8) | 28 / 8 / Gargoyle 60% (stuck 56%) | 78 / 55 / Gargoyle 57% (stuck 36%) | 97 / 81 / Gargoyle 42% (stuck 18%) | -3, +5, 4.5, 46, 6 |
@@ -59,11 +59,11 @@ Each cell: probability of clearing 4 encounters in a row / 8 in a row (no rest, 
 
 | Floor (level) | starter c4 / c8 / top | found c4 / c8 / top | good c4 / c8 / top | found AC, to-hit, avg dmg, HP, potions |
 |---|---|---|---|---|
-| 1 (1) | 57 / 14 / Goblin 42% | 57 / 14 / Goblin 42% | 84 / 64 / Goblin 43% | 10, +2, 2.5, 8, 2 |
-| 2 (2) | 59 / 12 / Giant Spider 54% | 72 / 25 / Giant Spider 54% | 91 / 70 / Giant Spider 55% | 9, +2, 2.5, 14, 2 |
-| 3 (3) | 73 / 14 / Giant Spider 46% | 88 / 46 / Giant Spider 48% | 97 / 91 / Giant Spider 51% | 9, +2, 2.5, 15, 3 |
-| 4 (4) | 39 / 2 / Dark Elf 28% | 69 / 23 / Dark Elf 32% | 96 / 81 / Dark Elf 35% | 9, +2, 3.5, 21, 4 |
-| 5 (5) | 30 / 2 / Ghoul 30% | 69 / 20 / Ghoul 31% | 89 / 64 / Ghoul 37% | 9, +2, 3.5, 21, 6 |
+| 1 (1) | 49 / 12 / Goblin 43% | 49 / 12 / Goblin 43% | 82 / 57 / Goblin 42% | 10, +2, 2.5, 8, 2 |
+| 2 (2) | 18 / 0 / Giant Spider 51% | 34 / 3 / Giant Spider 52% | 74 / 23 / Giant Spider 54% | 9, +2, 2.5, 14, 2 |
+| 3 (3) | 34 / 0 / Giant Spider 42% | 63 / 10 / Giant Spider 46% | 95 / 64 / Giant Spider 48% | 9, +2, 2.5, 15, 3 |
+| 4 (4) | 8 / 0 / Dark Elf 29% | 36 / 3 / Dark Elf 34% | 83 / 39 / Dark Elf 36% | 9, +2, 3.5, 21, 4 |
+| 5 (5) | 9 / 0 / Ghoul 27% | 36 / 3 / Ghoul 31% | 78 / 17 / Ghoul 34% | 9, +2, 3.5, 21, 6 |
 | 6 (6) | 25 / 0 / Ghoul 21% | 64 / 15 / Ghoul 22% | 92 / 65 / Ghoul 26% | 8, +2, 3.5, 25, 6 |
 | 7 (7) | 17 / 0 / Ghoul 19% | 60 / 11 / Gargoyle 19% | 95 / 58 / Ghoul 23% | 8, +2, 3.5, 23, 6 |
 | 8 (8) | 34 / 0 / Gargoyle 17% | 84 / 33 / Ghoul 17% | 98 / 79 / Ghoul 22% | 7, +2, 3.5, 25, 6 |
@@ -78,22 +78,20 @@ Monsters above 40% of damage dealt on a floor (found gear, all classes pooled):
 
 - Floor 1: Goblin deals 45% of all damage to found-gear characters.
 - Floor 2: Giant Spider deals 55% of all damage to found-gear characters.
-- Floor 3: Giant Spider deals 50% of all damage to found-gear characters.
+- Floor 3: Giant Spider deals 48% of all damage to found-gear characters.
 
 Floors where found-gear clear-4 is below 60% or above 97%:
 
 - fighter, floor 1: clear-4 100% (above 97)
-- fighter, floor 2: clear-4 100% (above 97)
+- fighter, floor 2: clear-4 98% (above 97)
 - fighter, floor 3: clear-4 100% (above 97)
-- fighter, floor 4: clear-4 98% (above 97)
-- fighter, floor 5: clear-4 100% (above 97)
-- thief, floor 3: clear-4 99% (above 97)
-- cleric, floor 1: clear-4 100% (above 97)
-- cleric, floor 2: clear-4 100% (above 97)
-- cleric, floor 3: clear-4 100% (above 97)
-- cleric, floor 4: clear-4 99% (above 97)
-- cleric, floor 5: clear-4 99% (above 97)
-- wizard, floor 1: clear-4 57% (below 60)
+- cleric, floor 1: clear-4 99% (above 97)
+- cleric, floor 2: clear-4 98% (above 97)
+- cleric, floor 3: clear-4 99% (above 97)
+- wizard, floor 1: clear-4 49% (below 60)
+- wizard, floor 2: clear-4 34% (below 60)
+- wizard, floor 4: clear-4 36% (below 60)
+- wizard, floor 5: clear-4 36% (below 60)
 
 Target bands for found-gear clear-4 on floors 3 to 12: fighter 70-90%, thief 55-80%, cleric 70-90%, wizard 55-80%.
 
@@ -101,60 +99,60 @@ Target bands for found-gear clear-4 on floors 3 to 12: fighter 70-90%, thief 55-
 
 The king alone in his chamber (tomb.ts puts no guards there): 12d8 hit points, AC 0, crown touch 1d10+2 every 1.4 s with a death save against paralysis, a spell every 5 s (magic missile, hold person, fireball), a skeleton summoned every 12 s up to four alive, ghouls at 66% and a wraith at 33%. The paralysis immunity window (no new hold while held or for 6 s after) is on. Median seconds is over all runs.
 
-Check against the browser play (level 10 fighter, +2 long sword, AC 5, 52 HP, three potions): wins 22% without the immunity window (median 15 s), 100% with it (median 9 s).
+Check against the browser play (level 10 fighter, +2 long sword, AC 5, 52 HP, three potions): wins 0% without the immunity window (median 16 s), 6% with it (median 16 s).
 
 | Class | Level | Gear | Hireling | Win % | Died % | Stuck % | Median s | Potions |
 |---|---|---|---|---|---|---|---|---|
-| fighter | 10 | found | no | 99 | 0 | 1 | 7.5 | 0.1 |
-| fighter | 10 | found | yes | 99 | 0 | 1 | 7.3 | 0.1 |
-| fighter | 10 | good | no | 100 | 0 | 0 | 8.0 | 0.1 |
-| fighter | 10 | good | yes | 100 | 0 | 0 | 7.5 | 0.0 |
-| fighter | 11 | found | no | 99 | 0 | 1 | 7.2 | 0.0 |
-| fighter | 11 | found | yes | 99 | 0 | 1 | 6.7 | 0.0 |
-| fighter | 11 | good | no | 100 | 0 | 0 | 7.2 | 0.0 |
-| fighter | 11 | good | yes | 100 | 0 | 0 | 6.6 | 0.0 |
-| fighter | 12 | found | no | 98 | 0 | 2 | 6.3 | 0.0 |
-| fighter | 12 | found | yes | 98 | 0 | 2 | 6.5 | 0.0 |
-| fighter | 12 | good | no | 100 | 0 | 0 | 6.5 | 0.0 |
-| fighter | 12 | good | yes | 100 | 0 | 0 | 6.5 | 0.0 |
-| thief | 10 | found | no | 98 | 1 | 1 | 10.2 | 1.3 |
-| thief | 10 | found | yes | 99 | 0 | 1 | 10.0 | 1.1 |
-| thief | 10 | good | no | 100 | 0 | 0 | 9.6 | 1.1 |
-| thief | 10 | good | yes | 100 | 0 | 0 | 9.4 | 0.8 |
-| thief | 11 | found | no | 99 | 0 | 1 | 9.9 | 1.1 |
-| thief | 11 | found | yes | 98 | 1 | 1 | 9.9 | 1.0 |
-| thief | 11 | good | no | 100 | 0 | 0 | 9.7 | 1.0 |
-| thief | 11 | good | yes | 100 | 0 | 0 | 9.3 | 0.8 |
-| thief | 12 | found | no | 98 | 1 | 1 | 9.7 | 1.1 |
-| thief | 12 | found | yes | 99 | 1 | 1 | 9.9 | 0.9 |
-| thief | 12 | good | no | 100 | 0 | 0 | 9.4 | 0.9 |
-| thief | 12 | good | yes | 100 | 0 | 0 | 9.2 | 0.7 |
-| cleric | 10 | found | no | 96 | 0 | 4 | 8.9 | 0.2 |
-| cleric | 10 | found | yes | 96 | 0 | 4 | 8.6 | 0.1 |
-| cleric | 10 | good | no | 100 | 0 | 0 | 8.8 | 0.2 |
-| cleric | 10 | good | yes | 100 | 0 | 0 | 8.5 | 0.1 |
-| cleric | 11 | found | no | 96 | 0 | 4 | 8.8 | 0.2 |
-| cleric | 11 | found | yes | 96 | 0 | 4 | 8.8 | 0.1 |
-| cleric | 11 | good | no | 100 | 0 | 0 | 8.8 | 0.1 |
-| cleric | 11 | good | yes | 100 | 0 | 0 | 8.3 | 0.1 |
-| cleric | 12 | found | no | 96 | 0 | 4 | 8.8 | 0.2 |
-| cleric | 12 | found | yes | 96 | 0 | 4 | 8.6 | 0.1 |
-| cleric | 12 | good | no | 100 | 0 | 0 | 8.7 | 0.1 |
-| cleric | 12 | good | yes | 100 | 0 | 0 | 8.6 | 0.1 |
-| wizard | 10 | found | no | 99 | 1 | 0 | 2.0 | 0.3 |
-| wizard | 10 | found | yes | 100 | 0 | 0 | 1.6 | 0.2 |
-| wizard | 10 | good | no | 100 | 0 | 0 | 2.0 | 0.4 |
-| wizard | 10 | good | yes | 100 | 1 | 0 | 1.9 | 0.3 |
-| wizard | 11 | found | no | 100 | 0 | 0 | 1.7 | 0.2 |
-| wizard | 11 | found | yes | 100 | 0 | 0 | 1.6 | 0.1 |
-| wizard | 11 | good | no | 100 | 0 | 0 | 2.0 | 0.3 |
-| wizard | 11 | good | yes | 100 | 0 | 0 | 1.6 | 0.2 |
-| wizard | 12 | found | no | 100 | 0 | 0 | 1.6 | 0.2 |
-| wizard | 12 | found | yes | 100 | 0 | 0 | 1.6 | 0.1 |
-| wizard | 12 | good | no | 100 | 0 | 0 | 1.6 | 0.4 |
-| wizard | 12 | good | yes | 100 | 0 | 0 | 1.6 | 0.1 |
+| fighter | 10 | found | no | 96 | 3 | 1 | 16.4 | 3.0 |
+| fighter | 10 | found | yes | 98 | 1 | 1 | 15.9 | 2.6 |
+| fighter | 10 | good | no | 100 | 0 | 0 | 16.8 | 3.1 |
+| fighter | 10 | good | yes | 100 | 0 | 0 | 16.1 | 2.6 |
+| fighter | 11 | found | no | 98 | 1 | 1 | 15.8 | 2.6 |
+| fighter | 11 | found | yes | 98 | 1 | 1 | 15.5 | 2.3 |
+| fighter | 11 | good | no | 100 | 0 | 0 | 15.8 | 2.5 |
+| fighter | 11 | good | yes | 100 | 0 | 0 | 15.3 | 2.1 |
+| fighter | 12 | found | no | 98 | 0 | 2 | 14.3 | 2.1 |
+| fighter | 12 | found | yes | 98 | 0 | 2 | 14.2 | 1.8 |
+| fighter | 12 | good | no | 100 | 0 | 0 | 14.6 | 1.8 |
+| fighter | 12 | good | yes | 100 | 0 | 0 | 14.6 | 1.7 |
+| thief | 10 | found | no | 33 | 66 | 1 | 22.8 | 5.6 |
+| thief | 10 | found | yes | 38 | 62 | 1 | 22.6 | 5.5 |
+| thief | 10 | good | no | 70 | 30 | 0 | 24.2 | 6.6 |
+| thief | 10 | good | yes | 74 | 26 | 0 | 25.1 | 6.4 |
+| thief | 11 | found | no | 38 | 61 | 1 | 22.9 | 5.6 |
+| thief | 11 | found | yes | 41 | 58 | 1 | 23.4 | 5.6 |
+| thief | 11 | good | no | 75 | 25 | 0 | 24.9 | 6.6 |
+| thief | 11 | good | yes | 79 | 21 | 0 | 24.9 | 6.5 |
+| thief | 12 | found | no | 36 | 63 | 1 | 23.1 | 5.5 |
+| thief | 12 | found | yes | 40 | 59 | 1 | 23.1 | 5.5 |
+| thief | 12 | good | no | 74 | 26 | 0 | 24.9 | 6.5 |
+| thief | 12 | good | yes | 81 | 19 | 0 | 24.8 | 6.4 |
+| cleric | 10 | found | no | 93 | 3 | 4 | 22.3 | 2.8 |
+| cleric | 10 | found | yes | 94 | 2 | 4 | 22.4 | 2.8 |
+| cleric | 10 | good | no | 100 | 0 | 0 | 22.2 | 2.7 |
+| cleric | 10 | good | yes | 100 | 0 | 0 | 21.8 | 2.5 |
+| cleric | 11 | found | no | 94 | 2 | 4 | 22.6 | 2.8 |
+| cleric | 11 | found | yes | 94 | 2 | 4 | 22.0 | 2.5 |
+| cleric | 11 | good | no | 100 | 0 | 0 | 22.4 | 2.6 |
+| cleric | 11 | good | yes | 100 | 0 | 0 | 22.1 | 2.4 |
+| cleric | 12 | found | no | 95 | 2 | 4 | 22.7 | 2.7 |
+| cleric | 12 | found | yes | 94 | 2 | 4 | 22.7 | 2.6 |
+| cleric | 12 | good | no | 100 | 0 | 0 | 22.4 | 2.6 |
+| cleric | 12 | good | yes | 100 | 0 | 0 | 21.9 | 2.3 |
+| wizard | 10 | found | no | 46 | 54 | 0 | 15.9 | 4.0 |
+| wizard | 10 | found | yes | 42 | 58 | 0 | 16.4 | 3.8 |
+| wizard | 10 | good | no | 66 | 34 | 0 | 15.6 | 4.2 |
+| wizard | 10 | good | yes | 71 | 29 | 0 | 15.4 | 3.7 |
+| wizard | 11 | found | no | 79 | 22 | 0 | 11.3 | 3.1 |
+| wizard | 11 | found | yes | 82 | 19 | 0 | 10.8 | 2.6 |
+| wizard | 11 | good | no | 95 | 5 | 0 | 9.2 | 2.7 |
+| wizard | 11 | good | yes | 94 | 6 | 0 | 9.4 | 2.4 |
+| wizard | 12 | found | no | 84 | 16 | 0 | 9.1 | 2.7 |
+| wizard | 12 | found | yes | 85 | 15 | 0 | 9.4 | 2.4 |
+| wizard | 12 | good | no | 98 | 2 | 0 | 7.8 | 2.5 |
+| wizard | 12 | good | yes | 97 | 3 | 0 | 7.7 | 2.0 |
 
-<!-- generated in 268 s -->
+<!-- generated in 405 s -->
 
 ## Proposed changes
 
