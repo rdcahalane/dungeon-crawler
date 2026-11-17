@@ -34,6 +34,18 @@ function audioCtor(): AudioCtor | undefined {
 const LOOKAHEAD_S = 0.3;
 const TICK_MS = 90;
 const MIN_REPEAT_S = 0.03;
+/**
+ * Effects that come often (every swing, every hit, every coin) get a longer gap before the same one plays again, and
+ * a little pitch and level variation, so a fight sounds like a fight instead of the same beep over and over.
+ */
+const FREQUENT: Readonly<Record<string, number>> = {
+  step: 0.12, splash: 0.25, swing: 0.12, hit: 0.1, miss: 0.12, crit: 0.15, hurt: 0.3, monster_die: 0.15,
+  pickup: 0.12, gold: 0.15, ui_move: 0.06, ui_select: 0.08, ui_back: 0.08, plate: 0.2, lever: 0.2,
+};
+/** Effects pass a gentle low-pass (takes the fizz off the square waves) and a short stone-room echo. */
+const SFX_TONE_HZ = 4200;
+const ROOM_WET = 0.2;
+const ROOM_SECONDS = 1.1;
 /** Seconds one bed takes to fade out as the next fades in. */
 const CROSSFADE_S = 1.5;
 /** Fade for the very first bed, and for music(null). */
@@ -64,7 +76,7 @@ interface Player {
 /** Music level while the narrator speaks: almost silent, so the voice is clear. */
 export const DUCK_LEVEL = 0.06;
 /** The music bus level when music is on. */
-const MUSIC_BUS_LEVEL = 0.7;
+const MUSIC_BUS_LEVEL = 0.55;
 const DUCK_DOWN_S = 0.35;
 const DUCK_UP_S = 1.2;
 
@@ -221,12 +233,14 @@ class SfxEngine {
     if (!ctx || !this.sfxBus || ctx.state !== "running") return;
     const now = ctx.currentTime;
     const last = this.lastPlayed.get(key) ?? -1;
-    if (now - last < MIN_REPEAT_S) return;
+    const gap = FREQUENT[key];
+    if (now - last < (gap ?? MIN_REPEAT_S)) return;
     this.lastPlayed.set(key, now);
-    // a little random pitch drift keeps repeats (footsteps, hits) from sounding mechanical
-    const drift = key === "step" || key === "hit" || key === "swing" ? 0.9 + Math.random() * 0.2 : 1;
+    // a little random pitch and level drift keeps repeats (footsteps, hits, coins) from sounding mechanical
+    const drift = gap !== undefined ? 0.92 + Math.random() * 0.16 : 1;
+    const level = gap !== undefined ? 0.85 + Math.random() * 0.15 : 1;
     try {
-      for (const v of recipe) this.voice(v, now + (v.delay ?? 0), drift, this.sfxBus);
+      for (const v of recipe) this.voice(level === 1 ? v : { ...v, vol: v.vol * level }, now + (v.delay ?? 0), drift, this.sfxBus);
     } catch {
       /* ignore */
     }
@@ -290,7 +304,24 @@ class SfxEngine {
     comp.connect(ctx.destination);
     this.master = master;
     this.sfxBus = ctx.createGain();
-    this.sfxBus.connect(master);
+    // effects: on/off gain -> soft low-pass -> master, with a send into a small stone-room reverb
+    const tone = ctx.createBiquadFilter();
+    tone.type = "lowpass";
+    tone.frequency.value = SFX_TONE_HZ;
+    tone.Q.value = 0.5;
+    this.sfxBus.connect(tone);
+    tone.connect(master);
+    try {
+      const room = ctx.createConvolver();
+      room.buffer = roomImpulse(ctx);
+      const wet = ctx.createGain();
+      wet.gain.value = ROOM_WET;
+      tone.connect(room);
+      room.connect(wet);
+      wet.connect(master);
+    } catch {
+      /* no convolver: dry effects only */
+    }
     this.musicBus = ctx.createGain();
     this.musicBus.gain.value = MUSIC_BUS_LEVEL;
     // A separate stage after the music bus, so ducking for the narrator never fights the bed crossfades.
@@ -533,3 +564,21 @@ class SfxEngine {
 }
 
 export const Sfx = new SfxEngine();
+
+/** A short decaying noise burst, darker as it fades: the echo of a small stone room. */
+function roomImpulse(ctx: BaseAudioContext): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * ROOM_SECONDS);
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      const k = 0.15 + 0.8 * t; // more smoothing (darker) further into the tail
+      lp += (Math.random() * 2 - 1 - lp) * (1 - k);
+      d[i] = lp * Math.pow(1 - t, 3.2) * (i < rate * 0.012 ? i / (rate * 0.012) : 1);
+    }
+  }
+  return buf;
+}

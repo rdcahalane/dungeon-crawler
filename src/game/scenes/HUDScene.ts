@@ -26,6 +26,7 @@ import { UI, drawBox, label, setLabel } from "./ui/theme";
 import { uiState } from "./ui/uiState";
 import { Sfx } from "../audio/Sfx";
 import { narrator } from "../audio/Narrator";
+import { notifySoundChanged, onSoundChanged, toggleAllSound } from "../audio/soundSettings";
 
 export interface HUDData {
   hp: number;
@@ -99,7 +100,7 @@ export class HUDScene extends Phaser.Scene {
   private shop?: ShopPanel;
   private innkeeper?: InnkeeperPanel;
   private menu?: MenuPanel;
-  /** True while the menu holds the dungeon still (Esc, the SOUND button or the touch MENU). */
+  /** True while the menu holds the dungeon still (Esc or the touch MENU). */
   private pausedGame = false;
   private pad?: TouchPad;
   private touch = false;
@@ -201,12 +202,13 @@ export class HUDScene extends Phaser.Scene {
   private button(x: number, y: number, w: number, h: number, text: string, onClick: () => void, rectId: string) {
     const g = this.add.graphics().setDepth(5);
     drawBox(g, x, y, w, h, UI.dusk, UI.slate, UI.slate);
-    label(this, x + w / 2, y + h / 2, text, { color: UI.white, ox: 0.5, oy: 0.5, depth: 8 });
+    const txt = label(this, x + w / 2, y + h / 2, text, { color: UI.white, ox: 0.5, oy: 0.5, depth: 8 });
     const hit = this.add.rectangle(x, y, w, h, 0x000000, 0).setOrigin(0, 0).setDepth(9).setInteractive();
     hit.on("pointerover", () => { g.clear(); drawBox(g, x, y, w, h, UI.slate, UI.silver, UI.grey); });
     hit.on("pointerout", () => { g.clear(); drawBox(g, x, y, w, h, UI.dusk, UI.slate, UI.slate); });
     hit.on("pointerdown", () => { if (!uiState.panelOpen) onClick(); });
     uiState.setRect(rectId, { x, y, w, h });
+    return txt;
   }
 
   private buildButtons() {
@@ -230,8 +232,15 @@ export class HUDScene extends Phaser.Scene {
     this.button(776, py, 56, ph, "INV", () => this.toggle("inventory"), "btn-inv");
     this.button(836, py, 56, ph, "BOOK", () => this.toggle("spellbook"), "btn-book");
     this.button(896, py, 56, ph, "MAP", () => this.toggleMap(), "btn-map");
-    // The sound switches were only on keys (N, J, K, V) with a mouse; the touch pad has its own MENU button.
-    if (!t) this.button(706, py, 66, ph, "SOUND", () => this.toggle("menu"), "btn-sound");
+    // One tap turns every sound off or back on, and the button says which it is. Music, effects and the voice each
+    // have their own switch in the menu (Esc, or MENU on a touch screen).
+    const soundText = () => (Sfx.isMuted() ? "SOUND OFF" : "SOUND ON");
+    const sound = this.button(670, py, 102, ph, soundText(), () => {
+      toggleAllSound();
+      notifySoundChanged();
+    }, "btn-sound");
+    const offSound = onSoundChanged(() => setLabel(sound, soundText()));
+    this.cleanups.push(offSound);
   }
 
   // ── Panels ─────────────────────────────────────────────────────────────────
