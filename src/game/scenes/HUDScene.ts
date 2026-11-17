@@ -226,6 +226,8 @@ export class HUDScene extends Phaser.Scene {
     this.button(776, py, 56, ph, "INV", () => this.toggle("inventory"), "btn-inv");
     this.button(836, py, 56, ph, "BOOK", () => this.toggle("spellbook"), "btn-book");
     this.button(896, py, 56, ph, "MAP", () => this.toggleMap(), "btn-map");
+    // The sound switches were only on keys (N, J, K, V) with a mouse; the touch pad has its own MENU button.
+    if (!t) this.button(706, py, 66, ph, "SOUND", () => this.toggle("menu"), "btn-sound");
   }
 
   // ── Panels ─────────────────────────────────────────────────────────────────

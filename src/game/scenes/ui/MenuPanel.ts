@@ -50,7 +50,7 @@ export class MenuPanel extends PanelBase {
     row(snd.sfx, true, flip(toggleSfx));
     row(snd.all, true, flip(toggleAllSound));
     row("SCANLINES ON OR OFF", true, () => later("crt"));
-    this.dyn.add(label(this.scene, x, y + 4, "TAP A ROW. X CLOSES THIS.", { color: UI.grey }));
+    this.dyn.add(label(this.scene, x, y + 4, "PICK A ROW. X CLOSES THIS.", { color: UI.grey }));
   }
 
   protected onKey(e: KeyboardEvent): void {
