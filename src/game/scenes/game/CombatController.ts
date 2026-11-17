@@ -1,4 +1,5 @@
 import { ARCADE_ROOM_EVENTS } from "./RoomEventController";
+import { monsterPressure } from "../../rules/pressure";
 import * as Phaser from "phaser";
 import type { PlayerStats, CharCreationData } from "../../entities/Player";
 import { TILE, TILE_SIZE, COLORS, PLAYER_STATS, ENEMY_TYPES, EnemyTypeKey } from "../../constants";
@@ -415,9 +416,10 @@ export class CombatController {
   private rollMonsterRound(enemy: Enemy): MonsterRound {
     const sheet = this.ctx.player.sheet();
     const ac = playerArmorClass(sheet, { ignoreArmor: ignoresArmor(enemy.def) });
+    const press = monsterPressure(this.ctx.currentFloor, this.ctx.player.stats.level);
     return resolveMonsterRound(enemy.def, ac, mathRng, {
-      toHit: enemy.isElite ? 1 : 0,
-      damage: enemy.isElite ? 1 : 0,
+      toHit: (enemy.isElite ? 1 : 0) + press.toHit,
+      damage: (enemy.isElite ? 1 : 0) + press.damage,
     });
   }
 

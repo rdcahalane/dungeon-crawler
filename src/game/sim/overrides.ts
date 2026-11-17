@@ -26,11 +26,13 @@ export interface SimOverrides {
   pool?: (floor: number) => readonly MonsterKey[];
   /** Normal rooms hold 1 to 2 + floor(floor / groupDivisor) monsters, the den 3 to 4 + the same (game: 3). */
   groupDivisor?: number;
+  /** Extra monsters in every room by floor, added to both ends of the range. The game: `extraMonstersPerRoom`. */
+  groupExtra?: (floor: number) => number;
   /** Multiplier on monster hit points by floor. The game has none, so the default is 1. */
   hpMult?: (floor: number) => number;
-  /** Added to every monster hit's damage by floor. The game has none (elites get +1). */
+  /** Added to every monster hit's damage by floor, on top of the game's own (rules/pressure.ts; elites get +1). */
   damageBonus?: (floor: number) => number;
-  /** Added to every monster to-hit roll by floor. The game has none (elites get +1). */
+  /** Added to every monster to-hit roll by floor, on top of the game's own (rules/pressure.ts; elites get +1). */
   toHitBonus?: (floor: number) => number;
   /** false removes the 6 s paralysis immunity (Player.canBeHeld), to reproduce play before it existed. Default true. */
   holdImmunity?: boolean;

@@ -2,6 +2,7 @@
  * A delve: a character fights a run of encounters on one floor with no rest, only potions and class healing.
  * Encounters are drawn the way DungeonGenerator.ts fills rooms (line numbers in comments).
  */
+import { extraMonstersPerRoom } from '../rules/pressure';
 import type { ClassKey } from '../constants';
 import { FLOOR_10_PLUS_POOL, FLOOR_ENEMY_POOLS } from '../constants';
 import { mulberry32, type MonsterKey, type Rng } from '../rules';
@@ -57,11 +58,12 @@ const rint = (rng: Rng, lo: number, hi: number): number => lo + Math.floor(rng.n
  * One room's monsters. A floor has `min(8 + floor, 18) - 2` monster rooms; one is the den (3 to 4 + floor/3 monsters,
  * the first of them the champion, an elite), the rest hold 1 to 2 + floor/3 (DungeonGenerator.ts, "Enemies").
  */
-export function drawEncounter(floor: number, rng: Rng, overrides?: SimOverrides): MobSpec[] {
+export function drawEncounter(floor: number, rng: Rng, overrides?: SimOverrides, level = floor): MobSpec[] {
   const div = overrides?.groupDivisor ?? 3;
   const inner = Math.max(1, Math.min(8 + floor, 18) - 2);
   const den = rng.next() < 1 / inner;
-  const count = den ? rint(rng, 3, 4 + Math.floor(floor / div)) : rint(rng, 1, 2 + Math.floor(floor / div));
+  const extra = extraMonstersPerRoom(floor, level) + (overrides?.groupExtra?.(floor) ?? 0);
+  const count = extra + (den ? rint(rng, 3, 4 + Math.floor(floor / div)) : rint(rng, 1, 2 + Math.floor(floor / div)));
   const pool = poolFor(floor, overrides);
   const out: MobSpec[] = [];
   for (let i = 0; i < count; i++) out.push({ key: pool[Math.floor(rng.next() * pool.length)], elite: den && i === 0 });
@@ -99,7 +101,7 @@ export function runDelve(cfg: DelveConfig): DelveStats {
     let cleared = 0;
     let potionsAt4 = 0;
     for (let e = 0; e < K; e++) {
-      const res = simulateFight(hero, { monsters: drawEncounter(cfg.floor, rng, cfg.overrides), floor: cfg.floor, overrides: cfg.overrides }, rng);
+      const res = simulateFight(hero, { monsters: drawEncounter(cfg.floor, rng, cfg.overrides, level), floor: cfg.floor, overrides: cfg.overrides }, rng);
       fightSecs.push(res.durationMs / 1000);
       for (const [k, v] of Object.entries(res.damageBy)) damageBy[k as MonsterKey] = (damageBy[k as MonsterKey] ?? 0) + (v ?? 0);
       if (res.outcome !== 'won') { if (res.outcome === 'stuck') stuck++; break; }

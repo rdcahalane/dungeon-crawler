@@ -136,7 +136,7 @@ export class GameScene extends Phaser.Scene {
       }
     } else {
       // Generate a fresh dungeon for this floor
-      dungeon = this.currentFloor >= TOMB_FLOOR ? buildTombFloor() : generateDungeon(this.currentFloor, this.initData.specialRoomTags);
+      dungeon = this.currentFloor >= TOMB_FLOOR ? buildTombFloor() : generateDungeon(this.currentFloor, this.initData.specialRoomTags, this.initData.persistedStats?.level ?? 1);
       // Store the original as base BEFORE any runtime modifications
       baseDungeon = JSON.parse(JSON.stringify(dungeon)) as DungeonData;
     }

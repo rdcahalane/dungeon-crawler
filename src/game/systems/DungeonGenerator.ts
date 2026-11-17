@@ -4,6 +4,7 @@ import {
   FLOOR_ENEMY_POOLS, FLOOR_10_PLUS_POOL,
   TRAP_TYPES, TrapTypeKey, TrapSpawn, ChestSpawn, ChestTier,
 } from "../constants";
+import { extraMonstersPerRoom } from '../rules/pressure';
 import type { InscriptionSpawn, MechanismSpec } from "../world/types";
 import { stampVaults } from "../world/stamp";
 import type { ItemInstance } from "../items";
@@ -155,7 +156,8 @@ function pickTrapType(floor: number): TrapTypeKey {
   return keys[rng(0, keys.length - 1)];
 }
 
-export function generateDungeon(floor: number, specialRoomTags?: string[]): DungeonData {
+/** `level` is the hero's level (the early floors get more monsters per room once the hero has gained one). */
+export function generateDungeon(floor: number, specialRoomTags?: string[], level = floor): DungeonData {
   const w = MAP_WIDTH;
   const h = MAP_HEIGHT;
 
@@ -332,9 +334,9 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
 
   for (let i = 1; i < rooms.length - 1; i++) {
     const room = rooms[i];
-    const count = room.type === 'monster_closet'
+    const count = extraMonstersPerRoom(floor, level) + (room.type === 'monster_closet'
       ? rng(3, 4 + Math.floor(floor / 3))
-      : rng(1, 2 + Math.floor(floor / 3));
+      : rng(1, 2 + Math.floor(floor / 3)));
     for (let e = 0; e < count; e++) {
       const { tx: ex, ty: ey } = spot(room);
       const type = pool[rng(0, pool.length - 1)];

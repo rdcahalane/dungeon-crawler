@@ -11,6 +11,7 @@
  * The player is a policy, not a person: it swings at the nearest monster in reach, drinks a potion at 45% hit points
  * (1.2 s apart), and casts spells by the simple rules in `wizardCast` / `clericCast`.
  */
+import { monsterPressure } from '../rules/pressure';
 import type { ClassKey } from '../constants';
 import { PLAYER_STATS } from '../constants';
 import {
@@ -205,8 +206,10 @@ export function simulateFight(hero: Hero, spec: FightSpec, rng: Rng, opts: { tra
 
   // ── Monsters ──
   const hpMult = ov?.hpMult?.(floor) ?? 1;
-  const dmgBonus = ov?.damageBonus?.(floor) ?? 0;
-  const hitBonus = ov?.toHitBonus?.(floor) ?? 0;
+  // The game's own pressure (rules/pressure.ts), then any proposal on top.
+  const press = monsterPressure(floor, hero.level);
+  const dmgBonus = press.damage + (ov?.damageBonus?.(floor) ?? 0);
+  const hitBonus = press.toHit + (ov?.toHitBonus?.(floor) ?? 0);
   const makeMob = (ms: MobSpec, idx: number, d0: number, summoned: boolean): Mob => {
     const def = monsterDef(ms.key, ov);
     const elite = !!ms.elite;
