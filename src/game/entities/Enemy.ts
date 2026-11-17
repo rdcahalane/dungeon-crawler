@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, ENEMY_TYPES, EnemyTypeKey } from "../constants";
+import { TILE_SIZE, ENEMY_TYPES, EnemyTypeKey, wadingSpeed } from "../constants";
 import { MONSTERS, hasSpecial, mathRng, rollMonsterHp, isTurnable } from "../rules";
 import type { BossPhase, MonsterDef } from "../rules";
 import { bodySizePx, isLargeSize, meleeDistances, type MeleeDistances } from "../rules/largeMonsters";
@@ -41,7 +41,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   /** Descending armor class. */
   public ac: number;
   public thac0: number;
-  public speed: number;
+  /** Speed on dry floor; boss phases scale this. */
+  public baseSpeed: number;
+  /** Standing in shallows (set by WaterController): moves at WADE_SPEED_MULT. */
+  public wading = false;
+  /** Current movement speed, after wading. */
+  get speed(): number {
+    return wadingSpeed(this.baseSpeed, this.wading);
+  }
   public xp: number;
   public attackRange: number;
   public aggroRange: number;
@@ -124,7 +131,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.hp = this.maxHp;
     this.ac = def.ac;
     this.thac0 = def.thac0 - (elite ? 1 : 0);
-    this.speed = def.speed * (elite ? 1.08 : 1);
+    this.baseSpeed = def.speed * (elite ? 1.08 : 1);
     this.xp = Math.ceil(def.xp * (elite ? 2.4 : 1));
     this.attackRange = def.attackRange;
     this.aggroRange = def.aggroRange;
@@ -619,7 +626,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const next = phases[this._phaseIdx];
     if (this.hp / this.maxHp * 100 > next.hpBelowPct) return null;
     this._phaseIdx++;
-    if (next.speedMult) this.speed *= next.speedMult;
+    if (next.speedMult) this.baseSpeed *= next.speedMult;
     if (next.cooldownMult) this.attackCooldown *= next.cooldownMult;
     this.scene.tweens.add({ targets: this, scaleX: 1.3, scaleY: 1.3, duration: 140, yoyo: true });
     return next;

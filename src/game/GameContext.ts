@@ -25,6 +25,7 @@ import type { FloatingTextController } from "./scenes/game/FloatingText";
 import type { MechanismController } from "./scenes/game/MechanismController";
 import type { InputController } from "./scenes/game/InputController";
 import type { WanderController } from "./scenes/game/WanderController";
+import type { WaterController } from "./scenes/game/WaterController";
 import type { PartyController } from "./scenes/game/PartyController";
 import type { NarratorController } from "./scenes/game/NarratorController";
 
@@ -116,6 +117,8 @@ export interface GameContext {
   mech: MechanismController;
   input: InputController;
   wander: WanderController;
+  /** Shallows on flooded floors: wading speed, splashes, noise. */
+  water: WaterController;
   /** Hired companions (D3). */
   party: PartyController;
   /** Boxed room text and the narrator's voice. */

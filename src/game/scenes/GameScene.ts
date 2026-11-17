@@ -21,6 +21,7 @@ import { FloatingTextController } from "./game/FloatingText";
 import { MechanismController } from "./game/MechanismController";
 import { InputController } from "./game/InputController";
 import { WanderController } from "./game/WanderController";
+import { WaterController } from "./game/WaterController";
 import { PartyController } from "./game/PartyController";
 import { NarratorController } from "./game/NarratorController";
 import { buildHudExtras } from "./game/AdndHud";
@@ -243,11 +244,12 @@ export class GameScene extends Phaser.Scene {
     ctx.spells = new SpellInputController(ctx);
     ctx.input = new InputController(ctx);
     ctx.wander = new WanderController(ctx);
+    ctx.water = new WaterController(ctx);
     ctx.party = new PartyController(ctx);
     ctx.narrator = new NarratorController(ctx);
     this.controllers = [
       ctx.text, ctx.map, ctx.mech, ctx.traps, ctx.combat, ctx.loot, ctx.rooms, ctx.floor, ctx.spells, ctx.input,
-      ctx.wander, ctx.party, ctx.narrator,
+      ctx.wander, ctx.water, ctx.party, ctx.narrator,
     ];
     return ctx;
   }
@@ -337,6 +339,9 @@ export class GameScene extends Phaser.Scene {
     // Enemy update, enemy bolts
     ctx.combat.updateEnemies(delta);
     ctx.combat.updateEnemyProjectiles(delta);
+
+    // Shallows: who is wading (speed applies next frame), splashes, noise
+    ctx.water.update(delta, curTx, curTy);
 
     // Game-turn clock: wandering monsters
     ctx.wander.update(delta);

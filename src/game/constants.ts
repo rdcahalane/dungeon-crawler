@@ -5,6 +5,14 @@ export const TILE_SIZE = 32;
 export const MAP_WIDTH = 64;
 export const MAP_HEIGHT = 48;
 export const FOG_RADIUS = 5; // tiles
+
+/** Wading through shallows (flooded crypts, sunken temples): everything moves at this share of its speed. */
+export const WADE_SPEED_MULT = 0.6;
+
+/** A speed after wading is applied. */
+export function wadingSpeed(speed: number, wading: boolean): number {
+  return wading ? speed * WADE_SPEED_MULT : speed;
+}
 /** The fixed final level, "The Tomb of the Hollow King". Taking its stairs down wins the game. */
 export const TOMB_FLOOR = 13;
 

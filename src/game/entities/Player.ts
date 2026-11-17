@@ -9,6 +9,7 @@ import {
   ArmorTrait,
   WeaponTrait,
   abilityMod,
+  wadingSpeed,
 } from "../constants";
 import { facingFromVelocity } from "./facing";
 import { Inventory, starterKit, fromLegacyInventory, equipmentBonuses, getDef } from "../items";
@@ -638,8 +639,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     body.setVelocity(vx, vy);
   }
 
+  /** Standing in shallows (set by WaterController): moves at WADE_SPEED_MULT. */
+  public wading = false;
+
   private getEffectiveSpeed(): number {
-    let spd = this.stats.speed * this._speedMult;
+    let spd = wadingSpeed(this.stats.speed * this._speedMult, this.wading);
     if (this.stats.effects.some(e => e.key === 'SLOWED')) spd *= 0.5;
     const rushed = this.stats.effects.find(e => e.key === 'RUSHED');
     if (rushed) spd *= rushed.value && rushed.value > 1 ? rushed.value : 1.25;

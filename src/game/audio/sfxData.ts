@@ -25,6 +25,7 @@ export interface Voice {
 
 export const SFX_KEYS = [
   "step",
+  "splash",
   "swing",
   "hit",
   "miss",
@@ -97,6 +98,8 @@ const arp = (notes: number[], step: number, vol: number, wave: "square" | "trian
 
 export const EFFECTS: Record<SfxKey, Voice[]> = {
   step: [nz("lowpass", 420, 160, 0.06, 0.16), tri(95, 60, 0.05, 0.12)],
+  // a slap of water, then the wash running off it
+  splash: [nz("bandpass", 1800, 500, 0.16, 0.2), nz("lowpass", 900, 200, 0.22, 0.12)],
   swing: [nz("bandpass", 700, 2600, 0.16, 0.22)],
   hit: [nz("lowpass", 2000, 260, 0.13, 0.38), sq(190, 60, 0.11, 0.26)],
   miss: [nz("highpass", 3200, 5200, 0.08, 0.1), tri(640, 300, 0.09, 0.1)],
