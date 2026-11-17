@@ -94,6 +94,10 @@ https://play.google.com/apps/testing/io.civops.dungeoncrawler. Production releas
 countries + rest of world, sent for review 2026-11-16 (Ryan's go-ahead). Managed publishing is off, so it goes public
 as soon as Google approves (typically within 7 days).
 
+Production release 2 (1.1), 2026-11-16: the six map styles (halls, caverns, ruins, mines, flooded crypts, sunken
+temples) and wading. Sending it restarted the review 1.0 had begun the same day, so 1.0 never ships on its own and
+1.1 is the first public build. The iOS project is bumped to 1.1 (build 2) too, waiting on the Apple account.
+
 ## What only Ryan can do (hard gates)
 
 1. **Apple Developer Program**, $99 a year, enrolled under the account that should publish the app.
