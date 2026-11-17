@@ -91,6 +91,8 @@ class SfxEngine {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastPlayed = new Map<string, number>();
   private listening = false;
+  /** The Esc pause: the context is suspended and the first-input unlock must not wake it. */
+  private paused = false;
 
   /** True if this environment can make sound at all. */
   isSupported(): boolean {
@@ -108,7 +110,7 @@ class SfxEngine {
     if (!Ctor) return;
     try {
       if (!this.ctx) this.build(Ctor);
-      if (this.ctx && this.ctx.state === "suspended") {
+      if (this.ctx && this.ctx.state === "suspended" && !this.paused) {
         // the context is only "running" once resume settles, so start the bed then
         void this.ctx.resume().then(
           () => {
@@ -137,6 +139,22 @@ class SfxEngine {
   mute(m: boolean): void {
     this.muted = m;
     this.applyGain();
+  }
+
+  /** Freeze every sound where it is (true), or let it carry on (false). Used by the Esc pause. */
+  setPaused(p: boolean): void {
+    this.paused = p;
+    const ctx = this.ctx;
+    if (!ctx) return;
+    try {
+      void (p ? ctx.suspend() : ctx.resume()).catch(() => undefined);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  isPaused(): boolean {
+    return this.paused;
   }
 
   /** Drop the music to almost nothing (true) or bring it back (false). Used while the narrator speaks. */

@@ -24,6 +24,8 @@ import { buildSheet, heldLightSeconds } from "./ui/charSheet";
 import { activateBeltSlot, type PanelHost } from "./ui/panelHost";
 import { UI, drawBox, label, setLabel } from "./ui/theme";
 import { uiState } from "./ui/uiState";
+import { Sfx } from "../audio/Sfx";
+import { narrator } from "../audio/Narrator";
 
 export interface HUDData {
   hp: number;
@@ -97,6 +99,8 @@ export class HUDScene extends Phaser.Scene {
   private shop?: ShopPanel;
   private innkeeper?: InnkeeperPanel;
   private menu?: MenuPanel;
+  /** True while the menu holds the dungeon still (Esc, the SOUND button or the touch MENU). */
+  private pausedGame = false;
   private pad?: TouchPad;
   private touch = false;
   private last?: HUDData;
@@ -255,6 +259,7 @@ export class HUDScene extends Phaser.Scene {
         close: () => this.close("menu"),
       });
       this.menu.open();
+      this.setPaused(true);
     } else if (panel === "quest") {
       this.quest = new QuestPanel(this, this.last?.activeQuests ?? [], this.last?.completedQuests ?? [], () => this.close("quest"));
       this.quest.open();
@@ -291,10 +296,23 @@ export class HUDScene extends Phaser.Scene {
     else if (panel === "spellbook") this.book?.close();
     else if (panel === "shop") this.shop?.close();
     else if (panel === "inn") this.innkeeper?.close();
-    else if (panel === "menu") this.menu?.close();
+    else if (panel === "menu") { this.menu?.close(); this.setPaused(false); }
     else { this.quest?.destroy(); this.quest = undefined; }
     uiState.setPanel(false);
     this.gameScene()?.gameEvents?.emit("ui_close", { panel });
+  }
+
+  /** The menu is the pause: the dungeon stops, every sound freezes and the narrator stops reading. */
+  private setPaused(on: boolean) {
+    if (on === this.pausedGame) return;
+    this.pausedGame = on;
+    Sfx.setPaused(on);
+    if (on) {
+      narrator.stop();
+      if (this.scene.isActive("GameScene")) this.scene.pause("GameScene");
+    } else if (this.scene.isPaused("GameScene")) {
+      this.scene.resume("GameScene");
+    }
   }
 
   private closeAll() {
@@ -398,7 +416,14 @@ export class HUDScene extends Phaser.Scene {
     if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    if (e.code === "Escape") { this.closeAll(); return; }
+    if (e.code === "Escape") {
+      // Esc closes whatever is open; with nothing open in the dungeon it pauses (the menu, with the sound switches).
+      if (uiState.isBlocking()) { this.closeAll(); return; }
+      const c = this.ctx();
+      const dialogUp = !!c && (c.modalOpen === true || c.rooms?.isModalOpen === true || c.floor?.restDialogOpen === true);
+      if (c && !dialogUp && !uiState.externalModal) this.toggle("menu");
+      return;
+    }
     if (this.ctx()?.modalOpen === true || uiState.externalModal) return;
     switch (e.code) {
       case "KeyI": this.toggle("inventory"); break;

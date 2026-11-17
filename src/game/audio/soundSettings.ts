@@ -4,6 +4,7 @@
  * Phaser-free so the title screen, the touch menu and the key handler share one place.
  */
 import { Sfx } from "./Sfx";
+import { narrator } from "./Narrator";
 
 export const MUTE_STORAGE_KEY = "dc-mute";
 export const MUSIC_STORAGE_KEY = "dc-music";
@@ -48,6 +49,7 @@ export function toggleAllSound(s: Store | null = store()): boolean {
   const muted = !Sfx.isMuted();
   Sfx.mute(muted);
   write(MUTE_STORAGE_KEY, muted, s);
+  if (muted) narrator.stop(); // a line already being read would otherwise run on to its end
   // Turning all sound on with both parts switched off would still be silent, so bring both back.
   if (!muted && !Sfx.isMusicOn() && !Sfx.isSfxOn()) {
     Sfx.setMusicOn(true);

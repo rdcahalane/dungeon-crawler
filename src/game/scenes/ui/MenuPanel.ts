@@ -23,7 +23,7 @@ const ROW_H = 40;
 
 export class MenuPanel extends PanelBase {
   constructor(scene: Phaser.Scene, private hooks: MenuHooks) {
-    super(scene, 280, 70, 400, 500, "MENU", UI.silver, () => hooks.close());
+    super(scene, 280, 70, 400, 500, "PAUSED", UI.silver, () => hooks.close());
   }
 
   protected build(): void {
@@ -50,7 +50,7 @@ export class MenuPanel extends PanelBase {
     row(snd.sfx, true, flip(toggleSfx));
     row(snd.all, true, flip(toggleAllSound));
     row("SCANLINES ON OR OFF", true, () => later("crt"));
-    this.dyn.add(label(this.scene, x, y + 4, "PICK A ROW. X CLOSES THIS.", { color: UI.grey }));
+    this.dyn.add(label(this.scene, x, y + 4, "PICK A ROW. ESC OR X RESUMES.", { color: UI.grey }));
   }
 
   protected onKey(e: KeyboardEvent): void {
