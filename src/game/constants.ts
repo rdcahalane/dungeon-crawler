@@ -155,7 +155,7 @@ export const CHARACTER_CLASSES: Record<ClassKey, ClassDef> = {
   wizard: {
     key: 'wizard',
     name: 'Wizard',
-    hitDie: 4,
+    hitDie: 6,
     babFormula: 'half',
     fortGood: false,
     refGood: false,

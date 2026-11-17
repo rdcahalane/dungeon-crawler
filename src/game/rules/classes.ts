@@ -77,7 +77,7 @@ export const CLASS_RULES: Record<ClassKey, ClassRules> = {
     armor: ['light'], weapons: ['dagger', 'sword', 'club', 'sling', 'crossbow'], casting: null,
   },
   wizard: {
-    key: 'wizard', name: 'Wizard', hitDie: 4, nameLevel: 11, hpAfterNameLevel: 1, prime: 'int',
+    key: 'wizard', name: 'Wizard', hitDie: 6, nameLevel: 11, hpAfterNameLevel: 1, prime: 'int',
     armor: [], weapons: ['dagger', 'staff', 'sling'], casting: 'wizard',
   },
   cleric: {

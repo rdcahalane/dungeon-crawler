@@ -78,7 +78,7 @@ describe('hit points', () => {
     expect(hpGainForLevel('fighter', 1, rng, 2)).toBe(12);
     for (let i = 0; i < 100; i++) {
       const v = hpGainForLevel('wizard', 3, rng);
-      expect(v >= 1 && v <= 4).toBe(true);
+      expect(v >= 1 && v <= 6).toBe(true);
     }
     expect(hpGainForLevel('fighter', 10, rng, 4)).toBe(CLASS_RULES.fighter.hpAfterNameLevel);
     expect(hpGainForLevel('wizard', 2, rng, -5)).toBeGreaterThanOrEqual(1);

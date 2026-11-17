@@ -58,8 +58,8 @@ describe('spell definitions', () => {
     expect(damageDice(is, 12)).toEqual([3, 10]);
   });
 
-  it('the wizard dart is weak', () => {
-    expect(WIZARD_DART.dice[0] * WIZARD_DART.dice[1]).toBeLessThanOrEqual(3);
+  it('the wizard dart is a d6 (no bonus dice)', () => {
+    expect(WIZARD_DART.dice[0] * WIZARD_DART.dice[1]).toBeLessThanOrEqual(6);
   });
 });
 

@@ -164,7 +164,7 @@ describe("a level-1 character against goblins", () => {
 
   it("level-1 hit points are the maximum die plus Constitution plus 4", () => {
     expect(startingHp("fighter", 10)).toBe(14);
-    expect(startingHp("wizard", 10)).toBe(8);
+    expect(startingHp("wizard", 10)).toBe(6 + 4);
     expect(startingHp("fighter", 17)).toBe(10 + 3 + 4);
     expect(startingHp("cleric", 3)).toBe(8 - 2 + 4);
   });

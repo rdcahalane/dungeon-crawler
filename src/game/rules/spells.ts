@@ -166,7 +166,8 @@ export function spellsFor(classKey: ClassKey, level?: number): SpellDef[] {
 /** Wizards always have this weak, free attack so level one is playable. */
 export const WIZARD_DART = {
   name: 'Magic Dart',
-  dice: [1, 3] as Dice,
+  // 1d6, up from 1d3 (2026-11-17): with the harder early floors (pressure.ts) wizards fell well below the balance band.
+  dice: [1, 6] as Dice,
   range: 'near' as SpellRange,
   cooldownMs: 900,
   /** Uses the missile (Dexterity) bonus. */
