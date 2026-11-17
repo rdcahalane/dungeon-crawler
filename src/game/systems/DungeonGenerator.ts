@@ -7,6 +7,7 @@ import {
 import type { InscriptionSpawn, MechanismSpec } from "../world/types";
 import { stampVaults } from "../world/stamp";
 import type { ItemInstance } from "../items";
+import { carveCaverns, floorSpot, nearestFloor, pickLayout, ruinate, type FloorLayout } from "../world/layouts";
 
 export interface Room {
   x: number;
@@ -66,6 +67,8 @@ export interface DungeonData {
   mechanisms?: MechanismSpec[];
   inscriptions?: InscriptionSpawn[];
   vaultIds?: string[];
+  /** Map style: dressed halls, natural caverns or fallen ruins. Absent on older saves (halls). */
+  layout?: FloorLayout;
   /** Monsters placed by name (bestiary keys, or 'HOLLOW_KING') rather than by EnemyTypeKey. */
   spawnMarkers?: { tx: number; ty: number; monster: string }[];
 }
@@ -184,6 +187,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
   }
 
   // Connect rooms
+  const links: [number, number][] = [];
   const connected = new Set<number>([0]);
   while (connected.size < rooms.length) {
     let bestDist = Infinity;
@@ -200,6 +204,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
 
     if (from === -1) break;
     connected.add(to);
+    links.push([from, to]);
 
     const a = rooms[from];
     const b = rooms[to];
@@ -212,6 +217,18 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
       carveH(tiles, b.cy, a.cx, b.cx, cw);
     }
   }
+
+  // ── Map style ───────────────────────────────────────────────────────────────
+  // Same rooms and links, carved three ways (see world/layouts.ts).
+  const layout = pickLayout(floor, Math.random);
+  if (layout === 'caverns') {
+    for (const row of tiles) row.fill(TILE.WALL);
+    carveCaverns(tiles, rooms, links, Math.random);
+  } else if (layout === 'ruins') {
+    ruinate(tiles, rooms, Math.random);
+  }
+  // Content goes on open floor inside a room: a cave blob does not fill its box.
+  const spot = (r: Room) => floorSpot(tiles, r, Math.random);
 
   // ── Secret doors ──────────────────────────────────────────────────────────
   const secretDoors: SecretDoor[] = [];
@@ -246,7 +263,9 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
   // ── Player, Stairs Up & Stairs Down ──────────────────────────────────────
   const startRoom = rooms[0];
   // Stairs UP: placed at the top-left of room[0], player spawns at center
-  const stairsUpPos = { tx: startRoom.x + 1, ty: startRoom.y + 1 };
+  let stairsUpPos = nearestFloor(tiles, startRoom.x + 1, startRoom.y + 1);
+  // A small cave can put the nearest floor on the centre, where the player stands.
+  if (stairsUpPos.tx === startRoom.cx && stairsUpPos.ty === startRoom.cy) stairsUpPos = { tx: startRoom.cx - 1, ty: startRoom.cy };
   tiles[stairsUpPos.ty][stairsUpPos.tx] = TILE.STAIRS_UP;
 
   // Player spawns in the center of room[0], near the stairs up
@@ -270,8 +289,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     const vaultRoom = rooms[vaultIdx];
     const vaultChestCount = rng(2, 3);
     for (let c = 0; c < vaultChestCount; c++) {
-      const cx = rng(vaultRoom.x + 1, vaultRoom.x + vaultRoom.w - 2);
-      const cy = rng(vaultRoom.y + 1, vaultRoom.y + vaultRoom.h - 2);
+      const { tx: cx, ty: cy } = spot(vaultRoom);
       const isMimic = floor >= 5 && Math.random() < 0.2;
       chests.push({
         tx: cx, ty: cy,
@@ -306,8 +324,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
       ? rng(3, 4 + Math.floor(floor / 3))
       : rng(1, 2 + Math.floor(floor / 3));
     for (let e = 0; e < count; e++) {
-      const ex = rng(room.x + 1, room.x + room.w - 2);
-      const ey = rng(room.y + 1, room.y + room.h - 2);
+      const { tx: ex, ty: ey } = spot(room);
       const type = pool[rng(0, pool.length - 1)];
       // Only place MIMIC in chests, not as random enemies
       const finalType: EnemyTypeKey = type === 'MIMIC' ? pool[rng(0, pool.length - 2)] : type;
@@ -325,16 +342,14 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     if (rooms[i].type === 'vault') continue; // vault room uses chests
     if (Math.random() < 0.5) {
       const room = rooms[i];
-      const ix = rng(room.x + 1, room.x + room.w - 2);
-      const iy = rng(room.y + 1, room.y + room.h - 2);
+      const { tx: ix, ty: iy } = spot(room);
       items.push({ tx: ix, ty: iy, type: itemTypes[rng(0, itemTypes.length - 1)] });
     }
 
     // Regular chest spawning
     if (Math.random() < 0.35) {
       const room = rooms[i];
-      const cx = rng(room.x + 1, room.x + room.w - 2);
-      const cy = rng(room.y + 1, room.y + room.h - 2);
+      const { tx: cx, ty: cy } = spot(room);
       const isMimic = floor >= 6 && Math.random() < 0.15;
       chests.push({
         tx: cx, ty: cy,
@@ -365,8 +380,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
       if (tag === 'harem') {
         // Decorative NPC items + golden chest
         chests.push({
-          tx: rng(room.x + 1, room.x + room.w - 2),
-          ty: rng(room.y + 1, room.y + room.h - 2),
+          ...spot(room),
           tier: 'golden', isMimic: false,
           trapped: undefined,
         });
@@ -374,8 +388,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
         // Scroll + stat tome chests
         for (let c = 0; c < 2; c++) {
           chests.push({
-            tx: rng(room.x + 1, room.x + room.w - 2),
-            ty: rng(room.y + 1, room.y + room.h - 2),
+            ...spot(room),
             tier: 'iron', isMimic: false,
             trapped: undefined,
           });
@@ -388,8 +401,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
         const arenaCount = rng(5, 8);
         for (let e = 0; e < arenaCount; e++) {
           enemies.push({
-            tx: rng(room.x + 1, room.x + room.w - 2),
-            ty: rng(room.y + 1, room.y + room.h - 2),
+            ...spot(room),
             type: arenaPool[rng(0, arenaPool.length - 1)],
             roomIdx: pick.i,
           });
@@ -397,8 +409,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
       } else if (tag === 'shrine') {
         // Healing item spawn
         items.push({
-          tx: rng(room.x + 1, room.x + room.w - 2),
-          ty: rng(room.y + 1, room.y + room.h - 2),
+          ...spot(room),
           type: 'HEALTH_POTION',
         });
       } else if (tag === 'dragon_den') {
@@ -410,8 +421,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
         });
         for (let c = 0; c < 3; c++) {
           chests.push({
-            tx: rng(room.x + 1, room.x + room.w - 2),
-            ty: rng(room.y + 1, room.y + room.h - 2),
+            ...spot(room),
             tier: 'golden', isMimic: false,
             trapped: floor >= 5 ? pickTrapType(floor) : undefined,
           });
@@ -440,13 +450,11 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     if (!firstHookRoom.modifier && (firstHookRoom.type ?? 'normal') === 'normal') {
       firstHookRoom.modifier = Math.random() < 0.55 ? 'blood_rune' : 'gilded_cache';
     }
-    const ix = firstHookRoom.cx;
-    const iy = Math.min(firstHookRoom.y + firstHookRoom.h - 2, firstHookRoom.cy + 1);
+    const { tx: ix, ty: iy } = nearestFloor(tiles, firstHookRoom.cx, Math.min(firstHookRoom.y + firstHookRoom.h - 2, firstHookRoom.cy + 1));
     if (!items.some(item => item.tx === ix && item.ty === iy)) {
       items.push({ tx: ix, ty: iy, type: Math.random() < 0.65 ? 'WEAPON' : 'ARMOR' });
     }
-    const cx = Math.max(firstHookRoom.x + 1, firstHookRoom.cx - 1);
-    const cy = Math.max(firstHookRoom.y + 1, firstHookRoom.cy - 1);
+    const { tx: cx, ty: cy } = nearestFloor(tiles, Math.max(firstHookRoom.x + 1, firstHookRoom.cx - 1), Math.max(firstHookRoom.y + 1, firstHookRoom.cy - 1));
     if (!chests.some(chest => chest.tx === cx && chest.ty === cy)) {
       chests.push({ tx: cx, ty: cy, tier: 'wooden', isMimic: false, trapped: undefined });
     }
@@ -460,8 +468,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     // Place in a random non-start, non-last room corridor or room
     const roomIdx = rng(1, rooms.length - 2);
     const room = rooms[roomIdx];
-    const tx = rng(room.x + 1, room.x + room.w - 2);
-    const ty = rng(room.y + 1, room.y + room.h - 2);
+    const { tx, ty } = spot(room);
 
     // Don't stack traps
     if (tiles[ty][tx] === TILE.FLOOR && !traps.some(tr => tr.tx === tx && tr.ty === ty)) {
@@ -474,8 +481,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     if (room.type !== 'trap_corridor') continue;
     const trapCount = rng(2, 4);
     for (let t = 0; t < trapCount; t++) {
-      const tx = rng(room.x + 1, room.x + room.w - 2);
-      const ty = rng(room.y + 1, room.y + room.h - 2);
+      const { tx, ty } = spot(room);
 
       if (tiles[ty][tx] === TILE.FLOOR && !traps.some(tr => tr.tx === tx && tr.ty === ty)) {
         tiles[ty][tx] = TILE.TRAP;
@@ -493,8 +499,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     const bossType: EnemyTypeKey = floor >= 6 ? 'TROLL' : floor >= 3 ? 'TANK' : 'BASIC';
     enemies.push({ tx: bossRoom.cx, ty: bossRoom.cy, type: bossType, roomIdx: bossRoomIdx, elite: true });
     chests.push({
-      tx: Math.max(bossRoom.x + 1, bossRoom.cx - 1),
-      ty: Math.min(bossRoom.y + bossRoom.h - 2, bossRoom.cy + 1),
+      ...nearestFloor(tiles, Math.max(bossRoom.x + 1, bossRoom.cx - 1), Math.min(bossRoom.y + bossRoom.h - 2, bossRoom.cy + 1)),
       tier: floor >= 6 ? 'golden' : 'iron',
       isMimic: false,
       trapped: undefined,
@@ -564,7 +569,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
           }
         : undefined;
 
-  const result: DungeonData = { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms, floorObjective };
+  const result: DungeonData = { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms, floorObjective, layout };
   stampVaults(result, floor, { next: () => Math.random() });
   return result;
 }

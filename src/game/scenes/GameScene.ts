@@ -166,6 +166,12 @@ export class GameScene extends Phaser.Scene {
     this.emitHUD();
     this.bus.emit('floor_enter', { floor: this.currentFloor, theme: getFloorThemeIdx(this.currentFloor) });
     this.showFirstFloorHint(ctx);
+    const layoutLine = dungeon.layout === 'caverns'
+      ? 'Natural caverns: no hand cut these passages.'
+      : dungeon.layout === 'ruins'
+        ? 'Fallen ruins: the old walls have given way in places.'
+        : null;
+    if (layoutLine) this.time.delayedCall(600, () => ctx.status(layoutLine));
   }
 
   /** Floor 1, once per character: say how the careful verbs work. Delayed so the HUD has attached to the log. */

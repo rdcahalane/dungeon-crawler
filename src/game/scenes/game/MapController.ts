@@ -2,6 +2,14 @@ import * as Phaser from "phaser";
 import { TILE_SIZE, TILE, MAP_WIDTH, MAP_HEIGHT, FOG_RADIUS, getFloorThemeIdx } from "../../constants";
 import type { GameContext } from "../../GameContext";
 import { ARCADE_ROOM_EVENTS } from "./RoomEventController";
+import { isFreeStanding } from "../../world/layouts";
+
+/** Texture set per map style (see world/layouts.ts); halls keep the original tiles. */
+function tileKeys(layout: string | undefined, ti: number): { floor: string; wall: string; pillar: string | null } {
+  if (layout === "caverns") return { floor: "cave_floor_" + ti, wall: "cave_wall_" + ti, pillar: "cave_pillar_" + ti };
+  if (layout === "ruins") return { floor: "ruin_floor_" + ti, wall: "ruin_wall_" + ti, pillar: "ruin_pillar_" + ti };
+  return { floor: "floor_" + ti, wall: "wall_" + ti, pillar: null };
+}
 
 /** Tilemap, room decoration, fog of war, torch glow, camera and zoom. */
 export class MapController {
@@ -33,8 +41,17 @@ export class MapController {
     const scene = this.ctx.scene;
     const { tiles } = this.ctx.dungeon;
     const ti = this.themeIdx;
-    const floorKey = `floor_${ti}`;
-    const wallKey = `wall_${ti}`;
+    const layout = this.ctx.dungeon.layout;
+    const keys = tileKeys(layout, ti);
+    const floorKey = keys.floor;
+    const wallKey = keys.wall;
+    // Caves have no grid: turn and flip each rock and floor tile so the pattern never repeats.
+    const natural = layout === "caverns";
+    const vary = (img: Phaser.GameObjects.Image, tx: number, ty: number) => {
+      if (!natural) return img;
+      const h = (tx * 73856093) ^ (ty * 19349663);
+      return img.setAngle(((h >>> 3) & 3) * 90).setFlipX(((h >>> 5) & 1) === 1);
+    };
 
     this.ctx.wallGroup = scene.physics.add.staticGroup();
 
@@ -45,7 +62,13 @@ export class MapController {
         const wy = ty * TILE_SIZE + TILE_SIZE / 2;
 
         if (t === TILE.WALL) {
-          scene.add.image(wx, wy, wallKey).setDepth(1);
+          if (keys.pillar && isFreeStanding(tiles, tx, ty)) {
+            // a stalagmite or a column standing in the open: floor under it, the pillar on top
+            vary(scene.add.image(wx, wy, floorKey).setDepth(1), tx, ty);
+            scene.add.image(wx, wy, keys.pillar).setDepth(1.5);
+          } else {
+            vary(scene.add.image(wx, wy, wallKey).setDepth(1), tx, ty);
+          }
           const rect = scene.add.rectangle(wx, wy, TILE_SIZE, TILE_SIZE);
           scene.physics.add.existing(rect, true);
           this.ctx.wallGroup.add(rect);
@@ -66,7 +89,7 @@ export class MapController {
           scene.add.image(wx, wy, "stairs_up").setDepth(2);
         } else {
           // FLOOR and TRAP both render as floor (TRAP has no floor indicator until detected)
-          scene.add.image(wx, wy, floorKey).setDepth(1);
+          vary(scene.add.image(wx, wy, floorKey).setDepth(1), tx, ty);
         }
       }
     }
@@ -108,7 +131,8 @@ export class MapController {
         gilded_cache: 0xffd166,
       };
 
-      scene.add.rectangle(x + w / 2, y + h / 2, w - 10, h - 10)
+      // A cave has no straight walls to trace, so its rooms get no outline.
+      if (this.ctx.dungeon.layout !== 'caverns') scene.add.rectangle(x + w / 2, y + h / 2, w - 10, h - 10)
         .setStrokeStyle(type === 'normal' ? 1 : 2, color, type === 'normal' ? 0.18 : 0.5)
         .setDepth(2);
 

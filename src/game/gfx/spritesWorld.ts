@@ -69,6 +69,145 @@ WORLD_MAPS.wall_2 = wall("0", "3", "4", "2");
 WORLD_MAPS.floor_3 = floor("0", "1", "2", "m");
 WORLD_MAPS.wall_3 = wall("0", "m", "n", "1");
 
+// ── layout styles (world/layouts.ts): natural caverns and fallen ruins ─────
+// Same four colours per theme as the halls tiles above, so a cave on the wet floors is
+// still wet-blue and a ruin in the deep is still violet. X dark, Y base, Z light, W accent.
+
+const CAVE_FLOOR_T: Rows = [
+  "YYYYYYYYYYYYYYYY",
+  "YYYWYYYYYYYYYYYY",
+  "YYYYYYYYYZYYYYYY",
+  "YYYYYYYYYYYYYYWY",
+  "YZYYYYYYYYYYYYYY",
+  "YYYYYYXXYYYYYYYY",
+  "YYYYYXXYYYYYYZYY",
+  "YYYYYYYYYYYYYYYY",
+  "YYYYYYYYYYYWYYYY",
+  "YYWYYYYYYYYYYYYY",
+  "YYYYYYYYYYYYYYYY",
+  "YYYYYYYZYYYYYXYY",
+  "YYYYYYYYYYYYXXYY",
+  "YYYZYYYYYYYYYYYY",
+  "YYYYYYYYYWYYYYYY",
+  "YYYYYYYYYYYYYYYY",
+];
+
+const CAVE_WALL_T: Rows = [
+  "XYYYYYXXXYYYYYYX",
+  "YYZZYYYXYYZZZYYY",
+  "YZZZYYYXYZZZYYYW",
+  "YZZYYYYWXYZYYYYW",
+  "YYYYYYWWXYYYYYWW",
+  "XYYYYWWXXXYYYWWX",
+  "XXWWWWXXYYXXWWXX",
+  "YXXXXXXYYZYXXXXY",
+  "YYYXXYYZZZYYXYYY",
+  "YZZYXYYZZYYYYXYZ",
+  "ZZZYXYYYYYYYWXZZ",
+  "ZZYYXWYYYYYWWXZY",
+  "YYYYXWWYYYWWXXYY",
+  "YYYWXXWWWWWXXYYW",
+  "WWWWXYXXXXXXYYWW",
+  "XXXXXYYYXYYYYWWX",
+];
+
+/** A stalagmite standing in the open (transparent round it: drawn over the cave floor). */
+const CAVE_PILLAR_T: Rows = [
+  "................",
+  ".......ZX.......",
+  "......ZYX.......",
+  "......ZYWX......",
+  ".....ZZYWX......",
+  ".....ZYYYWX.....",
+  "....ZZYYYWX.....",
+  "....ZYYYYWWX....",
+  "...ZZYYYYYWX....",
+  "...ZYYYYYYWWX...",
+  "..ZZYYYYYYYWX...",
+  "..ZYYYYYYYYWWX..",
+  ".ZZYYYYYYYYYWX..",
+  ".ZYYYYYYYYYYWWX.",
+  "XXXXXXXXXXXXXXXX",
+  "................",
+];
+
+/** Flagstones, cracked and gone green at the edges. */
+const RUIN_FLOOR_T: Rows = [
+  "XYYYYYYXYYYYYYYY",
+  "XYZYYYYXYYYYYZYY",
+  "XYYYYYYXYYYWYYYY",
+  "XYYYXYYXYYWWYYYY",
+  "XXXXYXXXXXXXXXXX",
+  "YYYYYXYYYYYXYYYY",
+  "YYZYYYXYYYYXYYZY",
+  "YYYYYYYXYYYXYYYY",
+  "YYYYYYYYYYYXYYYY",
+  "XXXXXXXXXXXXXXXX",
+  "YYYXYYYYYYWWYXYY",
+  "YYYXYZYYYWWYYXYY",
+  "YYYXYYYYYYYYYXYY",
+  "WYYXYYYYYYYYYXYW",
+  "WWYXYYYYZYYYYXWW",
+  "XXXXXXXXXXXXXXXX",
+];
+
+/** Masonry with blocks fallen out of it. */
+const RUIN_WALL_T: Rows = [
+  "ZZZZZXZZZZZZXZZZ",
+  "YYYYYXYYYYYYXYYY",
+  "YYYYYXYYYWYYXYYY",
+  "WWWWWXWWWWWWXWWW",
+  "ZZXZZZZZZXXXXZZZ",
+  "YYXYYYYYXXXXXXYY",
+  "YYXYYYYYYXXXXYYY",
+  "WWXWWWWWWWXXWWWW",
+  "ZZZZXZZZZZZZXZZZ",
+  "YYYYXYYYYYYYXYYY",
+  "YWYYXYYYYYYYXYYY",
+  "WWWWXWWWWWWWXWWW",
+  "XZZZZZZXZZZZZZXX",
+  "XXYYYYYXYYYYYXXX",
+  "XXXYYYYXYYYYYYXX",
+  "XXXXWWWXWWWWWWWX",
+];
+
+/** A broken column (transparent round it). */
+const RUIN_PILLAR_T: Rows = [
+  "................",
+  "...XZZ..ZZZX....",
+  "...XYYZZYYYX....",
+  "..XZZZZZZZZZX...",
+  "..XXYYYYYYWXX...",
+  "....ZYYYYWWX....",
+  "....ZYYXYYWX....",
+  "....ZYYYXYWX....",
+  "....ZYYYYXWX....",
+  "....ZYYYYYWX....",
+  "....ZYYYYYWX....",
+  "....ZYYYYYWX....",
+  "..XZZZZZZZZZX...",
+  ".XZYYYYYYYYYWX..",
+  ".XXXXXXXXXXXXXX.",
+  "................",
+];
+
+/** Per theme: [floor X,Y,Z,W] and [wall X,Y,Z,W], the same colours as floor_N / wall_N. */
+const THEME_FLOOR = [["1", "i", "3", "p"], ["1", "c", "d", "0"], ["1", "2", "3", "0"], ["0", "1", "2", "m"]];
+const THEME_WALL = [["1", "p", "k", "i"], ["1", "d", "e", "c"], ["0", "3", "4", "2"], ["0", "m", "n", "1"]];
+/** Moss on ruined flagstones, per theme (pine on the upper floors, teal and plum below). */
+const MOSS = ["f", "t", "p", "m"];
+
+const xyzw = (rows: Rows, [x, y, z, w]: string[]) => recolor(rows, { X: x, Y: y, Z: z, W: w });
+for (let i = 0; i < THEME_FLOOR.length; i++) {
+  const [fx, fy, fz] = THEME_FLOOR[i];
+  WORLD_MAPS[`cave_floor_${i}`] = xyzw(CAVE_FLOOR_T, THEME_FLOOR[i]);
+  WORLD_MAPS[`cave_wall_${i}`] = xyzw(CAVE_WALL_T, THEME_WALL[i]);
+  WORLD_MAPS[`cave_pillar_${i}`] = xyzw(CAVE_PILLAR_T, THEME_WALL[i]);
+  WORLD_MAPS[`ruin_floor_${i}`] = xyzw(RUIN_FLOOR_T, [fx, fy, fz, MOSS[i]]);
+  WORLD_MAPS[`ruin_wall_${i}`] = xyzw(RUIN_WALL_T, THEME_WALL[i]);
+  WORLD_MAPS[`ruin_pillar_${i}`] = xyzw(RUIN_PILLAR_T, THEME_WALL[i]);
+}
+
 WORLD_MAPS.secret_door = stamp(WORLD_MAPS.wall, 7, 2, ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"]);
 WORLD_MAPS.secret_door_open = stamp(WORLD_MAPS.wall, 4, 0, [
   ...Array.from({ length: 13 }, () => "00000000"),

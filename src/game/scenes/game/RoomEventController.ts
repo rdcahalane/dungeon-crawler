@@ -1,4 +1,5 @@
 import { isTouchDevice } from "../../touch";
+import { floorSpot } from "../../world/layouts";
 import { TOMB_FLOOR } from "../../constants";
 import * as Phaser from "phaser";
 import { TILE_SIZE, EnemyTypeKey, enemyPoolForFloor } from "../../constants";
@@ -644,8 +645,7 @@ export class RoomEventController {
     const ctx = this.ctx;
     const room = ctx.dungeon.rooms[roomIdx];
     if (!room || !ctx.enemyGroup) return;
-    const tx = Phaser.Math.Between(room.x + 1, room.x + room.w - 2);
-    const ty = Phaser.Math.Between(room.y + 1, room.y + room.h - 2);
+    const { tx, ty } = floorSpot(ctx.dungeon.tiles, room, Math.random);
     const enemy = ctx.combat.addEnemy(type, tx, ty, elite);
     (enemy as Enemy & { _roomIdx?: number })._roomIdx = roomIdx;
     ctx.floatText(enemy.x, enemy.y - 24, elite ? 'CHAMPION!' : 'JOINED!', elite ? 0xffd166 : 0xff5a5f, elite ? 13 : 10);
