@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, COLORS, ChestTier, ChestState, TrapTypeKey } from "../constants";
+import { TILE_SIZE, ChestTier, ChestState, TrapTypeKey } from "../constants";
 import { d100 } from "../rules";
 import { mathRng } from "../rules";
 import { LootTable, LootResult } from "../systems/LootTable";
@@ -17,7 +17,8 @@ export class TreasureChest extends Phaser.GameObjects.Container {
   public trapType?: TrapTypeKey;
   public isMimic: boolean;
 
-  private sprite!: Phaser.GameObjects.Rectangle;
+  private sprite!: Phaser.GameObjects.Image;
+  /** A skull on a trapped chest, a question mark on a mimic; empty on a plain locked chest (the sprite says chest). */
   private lockIcon!: Phaser.GameObjects.Text;
   private promptText!: Phaser.GameObjects.Text;
   private _promptVisible = false;
@@ -54,33 +55,30 @@ export class TreasureChest extends Phaser.GameObjects.Container {
   }
 
   private _buildSprite() {
-    const size = TILE_SIZE - 4;
-
-    // Choose chest color by tier
-    const colors: Record<ChestTier, number> = {
-      wooden: COLORS.CHEST_WOODEN,
-      iron: COLORS.CHEST_IRON,
-      golden: COLORS.CHEST_GOLDEN,
-    };
-
-    const color = this.isMimic ? COLORS.ENEMY_MIMIC : colors[this.tier];
-
-    // Chest body
-    this.sprite = this.scene.add.rectangle(0, 0, size, size - 4, color);
-    this.sprite.setDepth(3);
+    // The pixel-art chest for its tier (a mimic passes as a wooden one).
+    const key = this.isMimic ? 'chest_wooden' : `chest_${this.tier}`;
+    this.sprite = this.scene.add.image(0, 0, key).setDepth(3);
     this.add(this.sprite);
 
-    // Lock icon
-    const lockColor = this.chestState === 'trapped' ? '#ff1744' : '#ffffff';
-    this.lockIcon = this.scene.add.text(0, 0, this.isMimic ? '?' : (this.chestState === 'trapped' ? '☠' : '🔒'), {
-      fontSize: '12px',
-      color: lockColor,
+    const mark = this.isMimic ? '?' : this.chestState === 'trapped' ? '☠' : '';
+    this.lockIcon = this.scene.add.text(9, -9, mark, {
+      fontSize: '10px',
+      color: this.chestState === 'trapped' ? '#ff1744' : '#ffffff',
       fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(4);
     this.add(this.lockIcon);
   }
 
+  /** Show the chest as opened: the open sprite, no marks, no prompt. */
+  private _showOpen() {
+    this.chestState = 'open';
+    this.sprite.setTexture('chest_open');
+    this.lockIcon.setText('');
+    this.setPromptVisible(false);
+  }
+
   setPromptVisible(visible: boolean) {
+    if (this.chestState === 'open') visible = false; // an open chest has nothing left to open
     if (visible === this._promptVisible) return;
     this._promptVisible = visible;
     this.promptText.setVisible(visible);
@@ -120,8 +118,7 @@ export class TreasureChest extends Phaser.GameObjects.Container {
     if (this.chestState === 'trapped' && this.trapType) {
       const trap = this.trapType;
       this.chestState = 'locked'; // trap sprung, chest is now just locked
-      this.lockIcon.setText('🔒');
-      this.lockIcon.setColor('#ffffff');
+      this.lockIcon.setText('');
       return {
         opened: false,
         trapTriggered: trap,
@@ -153,11 +150,7 @@ export class TreasureChest extends Phaser.GameObjects.Container {
     }
 
     // Open it!
-    this.chestState = 'open';
-    this.lockIcon.setText('✓');
-    this.lockIcon.setColor('#69f0ae');
-    this.sprite.setFillStyle(0x555555); // darkened open chest
-    this.promptText.setVisible(false);
+    this._showOpen();
 
     const loot = LootTable.rollLoot(floor, this.tier);
     return { opened: true, loot, message: `Opened ${this.tier} chest!` };
@@ -166,11 +159,7 @@ export class TreasureChest extends Phaser.GameObjects.Container {
   /** Knock and the like: open without a roll or a trap. Null if it is already open or is a mimic. */
   forceOpen(floor: number): ChestInteractResult | null {
     if (this.chestState === 'open' || this.isMimic) return null;
-    this.chestState = 'open';
-    this.lockIcon.setText('✓');
-    this.lockIcon.setColor('#69f0ae');
-    this.sprite.setFillStyle(0x555555);
-    this.promptText.setVisible(false);
+    this._showOpen();
     return { opened: true, loot: LootTable.rollLoot(floor, this.tier), message: `The ${this.tier} chest springs open.` };
   }
 

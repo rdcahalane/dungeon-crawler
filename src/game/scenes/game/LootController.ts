@@ -299,7 +299,7 @@ export class LootController {
     if (!p) return Infinity;
     let best = Infinity;
     for (const chest of this.chests) {
-      if (!chest.active) continue;
+      if (!chest.active || chest.chestState === 'open') continue;
       const d = Math.hypot(p.x - chest.x, p.y - chest.y);
       if (d <= CHEST_REACH && d < best) best = d;
     }
@@ -369,7 +369,7 @@ export class LootController {
       const inRange = dist <= CHEST_REACH;
       chest.setPromptVisible(inRange);
 
-      if (inRange && dist <= nearest && chestFirst && Phaser.Input.Keyboard.JustDown(this._eKey)) {
+      if (inRange && chest.chestState !== 'open' && dist <= nearest && chestFirst && Phaser.Input.Keyboard.JustDown(this._eKey)) {
         const openPct = thiefSkill(s.classKey, s.level, 'openLocks') + (player.inventory.has('thieves_tools') ? 10 : 0);
         const result = chest.tryOpen(s.classKey, abilityMod(s.str), abilityMod(s.dex), s.level, ctx.currentFloor, openPct);
         if (result.message) ctx.status(result.message);
