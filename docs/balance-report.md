@@ -1,6 +1,6 @@
 # Balance report
 
-Generated 2026-11-17 at commit de7f5ab; 400 seeded runs per cell, seed 1. Regenerate with `npm run sim`.
+Generated 2026-11-17 at commit 54fb16e; 400 seeded runs per cell, seed 1. Regenerate with `npm run sim`.
 
 Each cell: probability of clearing 4 encounters in a row / 8 in a row (no rest, potions and class healing only), then the monster that dealt the most damage. Character level equals the floor number. Encounters are drawn the way the generator fills rooms. "stuck" is the share of runs that ended because nothing left could be hurt (a monster that needs a magic weapon), counted as a failure to clear.
 
@@ -59,25 +59,25 @@ Each cell: probability of clearing 4 encounters in a row / 8 in a row (no rest, 
 
 | Floor (level) | starter c4 / c8 / top | found c4 / c8 / top | good c4 / c8 / top | found AC, to-hit, avg dmg, HP, potions |
 |---|---|---|---|---|
-| 1 (1) | 49 / 12 / Goblin 43% | 49 / 12 / Goblin 43% | 82 / 57 / Goblin 42% | 10, +2, 2.5, 8, 2 |
-| 2 (2) | 18 / 0 / Giant Spider 51% | 34 / 3 / Giant Spider 52% | 74 / 23 / Giant Spider 54% | 9, +2, 2.5, 14, 2 |
-| 3 (3) | 34 / 0 / Giant Spider 42% | 63 / 10 / Giant Spider 46% | 95 / 64 / Giant Spider 48% | 9, +2, 2.5, 15, 3 |
-| 4 (4) | 8 / 0 / Dark Elf 29% | 36 / 3 / Dark Elf 34% | 83 / 39 / Dark Elf 36% | 9, +2, 3.5, 21, 4 |
-| 5 (5) | 9 / 0 / Ghoul 27% | 36 / 3 / Ghoul 31% | 78 / 17 / Ghoul 34% | 9, +2, 3.5, 21, 6 |
-| 6 (6) | 25 / 0 / Ghoul 21% | 64 / 15 / Ghoul 22% | 92 / 65 / Ghoul 26% | 8, +2, 3.5, 25, 6 |
-| 7 (7) | 17 / 0 / Ghoul 19% | 60 / 11 / Gargoyle 19% | 95 / 58 / Ghoul 23% | 8, +2, 3.5, 23, 6 |
-| 8 (8) | 34 / 0 / Gargoyle 17% | 84 / 33 / Ghoul 17% | 98 / 79 / Ghoul 22% | 7, +2, 3.5, 25, 6 |
-| 9 (9) | 16 / 0 / Troll 20% | 63 / 10 / Troll 25% | 87 / 26 / Troll 26% | 7, +4, 4.5, 23, 6 |
-| 10 (10) | 21 / 0 / Troll 19% | 75 / 14 / Troll 24% | 88 / 29 / Troll 26% | 5, +5, 5.5, 27, 6 |
-| 11 (11) | 35 / 0 / Troll 18% | 88 / 30 / Troll 25% | 96 / 53 / Troll 26% | 5, +5, 5.5, 31, 6 |
-| 12 (12) | 26 / 0 / Troll 19% | 88 / 28 / Troll 28% | 97 / 38 / Troll 27% | 5, +5, 5.5, 33, 6 |
+| 1 (1) | 77 / 27 / Goblin 45% | 77 / 27 / Goblin 45% | 93 / 83 / Goblin 41% | 10, +2, 2.5, 10, 2 |
+| 2 (2) | 38 / 1 / Giant Spider 49% | 56 / 9 / Giant Spider 52% | 90 / 48 / Giant Spider 53% | 9, +2, 2.5, 17, 2 |
+| 3 (3) | 50 / 2 / Giant Spider 47% | 79 / 20 / Giant Spider 47% | 100 / 83 / Giant Spider 49% | 9, +2, 2.5, 19, 3 |
+| 4 (4) | 20 / 0 / Dark Elf 32% | 57 / 8 / Dark Elf 31% | 95 / 70 / Dark Elf 35% | 9, +2, 3.5, 27, 4 |
+| 5 (5) | 21 / 0 / Ghoul 30% | 58 / 8 / Ghoul 33% | 92 / 44 / Ghoul 37% | 9, +2, 3.5, 28, 6 |
+| 6 (6) | 45 / 2 / Gargoyle 22% | 80 / 26 / Gargoyle 24% | 100 / 85 / Ghoul 27% | 8, +2, 3.5, 34, 6 |
+| 7 (7) | 36 / 0 / Gargoyle 19% | 79 / 20 / Ghoul 20% | 99 / 79 / Ghoul 27% | 8, +2, 3.5, 31, 6 |
+| 8 (8) | 58 / 3 / Ghoul 20% | 95 / 50 / Ghoul 20% | 99 / 94 / Gargoyle 20% | 7, +2, 3.5, 35, 6 |
+| 9 (9) | 30 / 0 / Troll 24% | 80 / 17 / Troll 24% | 95 / 41 / Troll 31% | 7, +4, 4.5, 30, 6 |
+| 10 (10) | 39 / 0 / Troll 21% | 86 / 26 / Troll 30% | 98 / 49 / Troll 29% | 5, +5, 5.5, 37, 6 |
+| 11 (11) | 54 / 4 / Troll 21% | 95 / 51 / Troll 27% | 100 / 74 / Troll 30% | 5, +5, 5.5, 42, 6 |
+| 12 (12) | 46 / 1 / Troll 24% | 96 / 43 / Troll 27% | 100 / 62 / Troll 30% | 5, +5, 5.5, 47, 6 |
 
 ## Outliers
 
 Monsters above 40% of damage dealt on a floor (found gear, all classes pooled):
 
 - Floor 1: Goblin deals 45% of all damage to found-gear characters.
-- Floor 2: Giant Spider deals 55% of all damage to found-gear characters.
+- Floor 2: Giant Spider deals 54% of all damage to found-gear characters.
 - Floor 3: Giant Spider deals 48% of all damage to found-gear characters.
 
 Floors where found-gear clear-4 is below 60% or above 97%:
@@ -88,10 +88,9 @@ Floors where found-gear clear-4 is below 60% or above 97%:
 - cleric, floor 1: clear-4 99% (above 97)
 - cleric, floor 2: clear-4 98% (above 97)
 - cleric, floor 3: clear-4 99% (above 97)
-- wizard, floor 1: clear-4 49% (below 60)
-- wizard, floor 2: clear-4 34% (below 60)
-- wizard, floor 4: clear-4 36% (below 60)
-- wizard, floor 5: clear-4 36% (below 60)
+- wizard, floor 2: clear-4 56% (below 60)
+- wizard, floor 4: clear-4 57% (below 60)
+- wizard, floor 5: clear-4 58% (below 60)
 
 Target bands for found-gear clear-4 on floors 3 to 12: fighter 70-90%, thief 55-80%, cleric 70-90%, wizard 55-80%.
 
@@ -139,20 +138,20 @@ Check against the browser play (level 10 fighter, +2 long sword, AC 5, 52 HP, th
 | cleric | 12 | found | yes | 94 | 2 | 4 | 22.7 | 2.6 |
 | cleric | 12 | good | no | 100 | 0 | 0 | 22.4 | 2.6 |
 | cleric | 12 | good | yes | 100 | 0 | 0 | 21.9 | 2.3 |
-| wizard | 10 | found | no | 46 | 54 | 0 | 15.9 | 4.0 |
-| wizard | 10 | found | yes | 42 | 58 | 0 | 16.4 | 3.8 |
-| wizard | 10 | good | no | 66 | 34 | 0 | 15.6 | 4.2 |
-| wizard | 10 | good | yes | 71 | 29 | 0 | 15.4 | 3.7 |
-| wizard | 11 | found | no | 79 | 22 | 0 | 11.3 | 3.1 |
-| wizard | 11 | found | yes | 82 | 19 | 0 | 10.8 | 2.6 |
-| wizard | 11 | good | no | 95 | 5 | 0 | 9.2 | 2.7 |
-| wizard | 11 | good | yes | 94 | 6 | 0 | 9.4 | 2.4 |
-| wizard | 12 | found | no | 84 | 16 | 0 | 9.1 | 2.7 |
-| wizard | 12 | found | yes | 85 | 15 | 0 | 9.4 | 2.4 |
-| wizard | 12 | good | no | 98 | 2 | 0 | 7.8 | 2.5 |
-| wizard | 12 | good | yes | 97 | 3 | 0 | 7.7 | 2.0 |
+| wizard | 10 | found | no | 55 | 45 | 0 | 17.2 | 3.9 |
+| wizard | 10 | found | yes | 51 | 49 | 0 | 17.6 | 3.7 |
+| wizard | 10 | good | no | 82 | 18 | 0 | 16.1 | 3.8 |
+| wizard | 10 | good | yes | 82 | 18 | 0 | 16.1 | 3.5 |
+| wizard | 11 | found | no | 85 | 16 | 0 | 11.4 | 2.5 |
+| wizard | 11 | found | yes | 87 | 13 | 0 | 11.1 | 2.1 |
+| wizard | 11 | good | no | 99 | 1 | 0 | 9.3 | 2.0 |
+| wizard | 11 | good | yes | 99 | 1 | 0 | 9.3 | 1.7 |
+| wizard | 12 | found | no | 93 | 7 | 0 | 8.8 | 2.1 |
+| wizard | 12 | found | yes | 91 | 9 | 0 | 8.8 | 1.8 |
+| wizard | 12 | good | no | 99 | 1 | 0 | 7.5 | 1.8 |
+| wizard | 12 | good | yes | 100 | 0 | 0 | 7.5 | 1.3 |
 
-<!-- generated in 405 s -->
+<!-- generated in 410 s -->
 
 ## Proposed changes
 
