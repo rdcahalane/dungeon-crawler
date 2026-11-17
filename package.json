@@ -10,6 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "sim": "jiti scripts/sim-balance.ts",
+    "narration": "bash scripts/narration/record.sh",
     "deploy:canoe": "bash scripts/deploy-canoe.sh",
     "native:build": "vite build --config vite.native.config.ts",
     "native:sync": "npm run native:build && cap sync",

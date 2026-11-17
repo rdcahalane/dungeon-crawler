@@ -169,6 +169,15 @@ class SfxEngine {
     g.gain.linearRampToValueAtTime(on ? DUCK_LEVEL : 1, now + (on ? DUCK_DOWN_S : DUCK_UP_S));
   }
 
+  /**
+   * Where the narrator's recorded clips play: the running AudioContext and the master gain (so a clip follows the
+   * volume and the all-sound mute, but not the music or effects switches). Null until audio has been unlocked.
+   */
+  voiceOutput(): { ctx: AudioContext; node: AudioNode } | null {
+    if (!this.ctx || !this.master || this.ctx.state !== "running") return null;
+    return { ctx: this.ctx, node: this.master };
+  }
+
   isDucked(): boolean {
     return this.ducked;
   }

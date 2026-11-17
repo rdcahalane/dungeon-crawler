@@ -11,9 +11,10 @@ import PhaserGame from "@/game/PhaserGame";
 import { narrator } from "@/game/audio/Narrator";
 import { makeUtterance, pluginSynth } from "@/game/audio/nativeSpeech";
 
-// Android's WebView has no Web Speech API: give the narrator the native text-to-speech engine instead.
-// On iOS the WebView already has one, and `useSynth` leaves it in place.
-if (!narrator.isAvailable()) narrator.useSynth(pluginSynth(TextToSpeech), makeUtterance);
+// The narrator plays its recorded clips; for any line without one it falls back to a speech engine. Android's
+// WebView has no Web Speech API, so give it the native text-to-speech engine. On iOS the WebView already has one,
+// and `useSynth` leaves it in place.
+narrator.useSynth(pluginSynth(TextToSpeech), makeUtterance);
 import "@/app/globals.css";
 import "./native.css";
 

@@ -24,7 +24,7 @@ function mem(init?: string) {
 const make = (text: string): UtteranceLike => ({ text, voice: null, lang: "", rate: 1, pitch: 1, volume: 1, onend: null, onerror: null });
 
 function mk(synth: FakeSynth | null, extra: Partial<ConstructorParameters<typeof Narrator>[0]> = {}) {
-  return new Narrator({ synth, makeUtterance: make, storage: mem(), sound: () => ({ volume: 0.5, muted: false }), unlocked: true, eventTarget: null, duck: () => {}, ...extra });
+  return new Narrator({ synth, makeUtterance: make, storage: mem(), sound: () => ({ volume: 0.5, muted: false }), unlocked: true, eventTarget: null, duck: () => {}, clips: null, ...extra });
 }
 
 describe("pickVoice", () => {
@@ -151,5 +151,86 @@ describe("music ducking", () => {
     n.speak("Again.");
     n.stop();
     expect(calls).toEqual([true, false, true, false]);
+  });
+});
+
+describe("recorded clips", () => {
+  class FakeClips {
+    plays: Array<{ text: string; end: () => void; fail: () => void; stopped: boolean }> = [];
+    constructor(private known: string[]) {}
+    has(text: string): boolean { return this.known.includes(text); }
+    play(text: string, end: () => void, fail: () => void): () => void {
+      const p = { text, end, fail, stopped: false };
+      this.plays.push(p);
+      return () => { p.stopped = true; };
+    }
+  }
+
+  it("plays the clip instead of the speech engine, busy until it ends", () => {
+    const synth = new FakeSynth([v("Daniel")]);
+    const clips = new FakeClips(["The stair goes down."]);
+    const ducks: boolean[] = [];
+    let done = 0;
+    const n = mk(synth, { clips, duck: (on) => ducks.push(on) });
+    expect(n.speak("The stair goes down.", () => done++)).toBe(true);
+    expect(synth.spoken).toHaveLength(0);
+    expect(n.isSpeaking()).toBe(true);
+    expect(ducks).toEqual([true]);
+    clips.plays[0].end();
+    expect(n.isSpeaking()).toBe(false);
+    expect(ducks).toEqual([true, false]);
+    expect(done).toBe(1);
+  });
+
+  it("uses the speech engine for a line with no clip", () => {
+    const synth = new FakeSynth([v("Daniel")]);
+    const clips = new FakeClips([]);
+    const n = mk(synth, { clips });
+    expect(n.speak("Unrecorded.")).toBe(true);
+    expect(clips.plays).toHaveLength(0);
+    expect(synth.spoken[0].text).toBe("Unrecorded.");
+  });
+
+  it("falls back to the speech engine when a clip cannot play, and ends quietly with no engine", () => {
+    const synth = new FakeSynth([v("Daniel")]);
+    const clips = new FakeClips(["Line."]);
+    const n = mk(synth, { clips });
+    n.speak("Line.");
+    clips.plays[0].fail();
+    expect(synth.spoken[0].text).toBe("Line.");
+    expect(n.isSpeaking()).toBe(true);
+    synth.spoken[0].onend?.();
+    expect(n.isSpeaking()).toBe(false);
+
+    let done = 0;
+    const solo = mk(null, { clips: new FakeClips(["Line."]) });
+    expect(solo.isAvailable()).toBe(true);
+    expect(solo.speak("Line.", () => done++)).toBe(true);
+    (solo as unknown as { clips: FakeClips }).clips.plays[0].fail();
+    expect(solo.isSpeaking()).toBe(false);
+    expect(done).toBe(1);
+  });
+
+  it("stop and a newer line cut the clip off, and its late end changes nothing", () => {
+    const clips = new FakeClips(["One.", "Two."]);
+    let done = 0;
+    const n = mk(null, { clips });
+    n.speak("One.", () => done++);
+    n.speak("Two.");
+    expect(clips.plays[0].stopped).toBe(true);
+    clips.plays[0].end();
+    expect(done).toBe(0);
+    expect(n.isSpeaking()).toBe(true);
+    n.stop();
+    expect(clips.plays[1].stopped).toBe(true);
+    expect(n.isSpeaking()).toBe(false);
+  });
+
+  it("stays silent while muted or switched off, clips or not", () => {
+    const clips = new FakeClips(["Line."]);
+    expect(mk(null, { clips, sound: () => ({ volume: 1, muted: true }) }).speak("Line.")).toBe(false);
+    const off = mk(null, { clips }); off.setEnabled(false);
+    expect(off.speak("Line.")).toBe(false);
+    expect(clips.plays).toHaveLength(0);
   });
 });

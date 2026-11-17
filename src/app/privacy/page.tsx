@@ -17,7 +17,7 @@ export default function PrivacyPage() {
       <p>
         The apps collect no data. They have no accounts, no ads, no analytics and no tracking, and they make no network
         requests. Your characters and settings are saved only on your device and are removed when you delete the app.
-        The narrator uses your device&apos;s built-in text-to-speech; nothing you do in the game leaves the device.
+        The narrator&apos;s voice is recorded and ships inside the app (any line without a recording uses your device&apos;s built-in text-to-speech); nothing you do in the game leaves the device.
       </p>
 
       <h2 className="text-lg text-[#fff08c] mt-6 mb-2">The website (dungeon.civops.io)</h2>

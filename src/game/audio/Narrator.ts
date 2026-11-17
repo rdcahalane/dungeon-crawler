@@ -1,6 +1,8 @@
 /**
- * The narrator's voice: a thin wrapper over the browser's Web Speech API (`speechSynthesis`), no audio files.
- * Phaser-free, so it can be tested with a fake `speechSynthesis`. Safe to import where `window` is missing.
+ * The narrator's voice. Every line has a recorded clip (narrationClips.ts, recorded with scripts/narration/), played
+ * through the game's audio. When a line has no clip, or the clip cannot play, it falls back to the browser's Web
+ * Speech API (`speechSynthesis`, or the phone's text-to-speech in the Android app).
+ * Phaser-free, so it can be tested with fakes. Safe to import where `window` is missing.
  *
  * - Picks a deep British voice if the machine has one (see `pickVoice`), reads slowly in a low pitch.
  * - Speech only starts after the first user input (the same unlock rule as the game's sound).
@@ -9,6 +11,7 @@
  *   still works silently and the text box carries the narration.
  */
 import { Sfx } from "./Sfx";
+import { webClipPlayer, type ClipPlayerLike } from "./narrationClips";
 
 export const VOICE_STORAGE_KEY = "dc-voice";
 
@@ -49,6 +52,8 @@ export interface NarratorDeps {
   eventTarget?: Pick<Window, "addEventListener" | "removeEventListener"> | null;
   /** Lower the music while speaking (true) and bring it back (false). Defaults to `Sfx.duckMusic`. */
   duck?: (on: boolean) => void;
+  /** Recorded clips. Defaults to the web player over `public/narration`; null for none. */
+  clips?: ClipPlayerLike | null;
 }
 
 export const RATE = 0.82;
@@ -103,6 +108,8 @@ export class Narrator {
   private storage: Pick<Storage, "getItem" | "setItem"> | null;
   private sound: () => { volume: number; muted: boolean };
   private duck: (on: boolean) => void;
+  private clips: ClipPlayerLike | null;
+  private stopClip: (() => void) | null = null;
   private voice: VoiceLike | undefined;
   private on: boolean;
   private unlockedFlag: boolean;
@@ -121,6 +128,7 @@ export class Narrator {
     this.storage = deps.storage !== undefined ? deps.storage : safeStorage();
     this.sound = deps.sound ?? (() => ({ volume: Sfx.getVolume(), muted: Sfx.isMuted() }));
     this.duck = deps.duck ?? ((on) => Sfx.duckMusic(on));
+    this.clips = deps.clips !== undefined ? deps.clips : webClipPlayer();
     this.on = this.readEnabled();
     this.unlockedFlag = !!deps.unlocked;
     this.unlockTarget = deps.eventTarget !== undefined ? deps.eventTarget : typeof window !== "undefined" ? window : null;
@@ -140,9 +148,9 @@ export class Narrator {
     }
   }
 
-  /** True when the browser has speech synthesis at all. */
+  /** True when there is any voice at all: recorded clips or the browser's speech synthesis. */
   isAvailable(): boolean {
-    return this.synth !== null;
+    return this.synth !== null || this.clips !== null;
   }
 
   get enabled(): boolean {
@@ -178,7 +186,7 @@ export class Narrator {
 
   /** True when a call to `speak` would make sound: API present, switched on, input seen, game not muted. */
   canSpeak(): boolean {
-    return this.synth !== null && this.on && this.unlockedFlag && !this.sound().muted;
+    return this.isAvailable() && this.on && this.unlockedFlag && !this.sound().muted;
   }
 
   /** True from the start of an utterance until it ends, errors or is cancelled. */
@@ -191,9 +199,39 @@ export class Narrator {
    * `onDone` runs when the utterance ends or fails (not when a newer `speak` or `stop` cancels it).
    */
   speak(text: string, onDone?: () => void): boolean {
-    if (!this.synth || !this.make) return false;
+    if (!this.isAvailable()) return false;
     this.cancelCurrent();
     if (!this.canSpeak() || !text.trim()) return false;
+    const mine = ++this.token;
+    const finish = () => {
+      if (this.token !== mine) return;
+      this.busy = false;
+      this.stopClip = null;
+      this.duck(false);
+      onDone?.();
+    };
+    if (this.clips?.has(text)) {
+      this.busy = true;
+      this.duck(true); // the music drops to a murmur while the voice reads
+      // A clip that cannot play hands over to the speech engine, or ends quietly if there is none.
+      const fallback = () => {
+        if (this.token !== mine) return;
+        this.stopClip = null;
+        if (!this.speakSynth(text, finish)) finish();
+      };
+      this.stopClip = this.clips.play(text, finish, fallback);
+      return true;
+    }
+    if (!this.speakSynth(text, finish)) {
+      this.busy = false;
+      return false;
+    }
+    return true;
+  }
+
+  /** Read `text` with the speech engine. `finish` runs on end or error. False if it could not start. */
+  private speakSynth(text: string, finish: () => void): boolean {
+    if (!this.synth || !this.make) return false;
     const u = this.make(text);
     const { rate, pitch } = settingsFor(this.voice);
     u.voice = this.voice ?? null;
@@ -201,14 +239,7 @@ export class Narrator {
     u.rate = rate;
     u.pitch = pitch;
     u.volume = clamp(this.sound().volume, 0, 1);
-    const mine = ++this.token;
     this.busy = true;
-    const finish = () => {
-      if (this.token !== mine) return;
-      this.busy = false;
-      this.duck(false);
-      onDone?.();
-    };
     u.onend = finish;
     u.onerror = finish;
     try {
@@ -244,6 +275,9 @@ export class Narrator {
 
   private cancelCurrent(): void {
     this.token++;
+    const stopClip = this.stopClip;
+    this.stopClip = null;
+    stopClip?.();
     if (this.busy) this.duck(false);
     this.busy = false;
     try {
