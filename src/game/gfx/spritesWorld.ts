@@ -2,7 +2,7 @@
  * World sprites: dungeon tiles, tavern, decals, mechanisms. 16x16 maps drawn 2x.
  * Palette chars come from palette.ts. Phaser-free.
  */
-import { mirror, quad, recolor, stamp, type Rows } from "./spriteTools";
+import { mirror, quad, recolor, solid, stamp, type Rows } from "./spriteTools";
 
 // ── templates (placeholders X Y Z W are recoloured per use) ────────────────
 
@@ -420,7 +420,8 @@ WORLD_MAPS.secret_door_open = stamp(WORLD_MAPS.wall, 4, 0, [
   "22222222",
 ]);
 
-WORLD_MAPS.trap_detected = stamp(floor("1", "2", "2", "2"), 4, 4, [
+// A found trap is an X painted over whatever floor it is on (it used to carry its own hall tile, a square on cave floors).
+WORLD_MAPS.trap_detected = stamp(solid(16, 16, "."), 4, 4, [
   "8......8",
   "88....88",
   ".88..88.",
