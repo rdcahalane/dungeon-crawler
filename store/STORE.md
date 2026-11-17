@@ -10,7 +10,7 @@ calls; saves stay on the device.
 | Name | Dungeon Crawler |
 | Subtitle (iOS, 30 chars) | The Tomb of the Hollow King |
 | Bundle / application id | `io.civops.dungeoncrawler` |
-| Version | 1.0 (build 1 / versionCode 1) |
+| Version | 1.2 (build 5 / versionCode 5) |
 | Category | Games: Role Playing (secondary: Adventure) |
 | Price | Free |
 | Orientation | Landscape only, iPhone, iPad and Android phones/tablets |
@@ -97,6 +97,14 @@ as soon as Google approves (typically within 7 days).
 Production release 2 (1.1), 2026-11-16: the six map styles (halls, caverns, ruins, mines, flooded crypts, sunken
 temples) and wading. Sending it restarted the review 1.0 had begun the same day, so 1.0 never ships on its own and
 1.1 is the first public build. The iOS project is bumped to 1.1 (build 2) too, waiting on the Apple account.
+
+Production release 1.2 (versionCode 5, iOS build 5), 2026-11-17: recorded narration (189 clips, the bundle grows to
+16 MB), visible chests, Esc pause menu, found-trap X without its own tile. versionCodes 3 and 4 were uploaded to Play
+and abandoned, so never reuse them. Sending 1.2 restarts the review 1.1 was in. The 16 MB bundle is over the
+Chrome-extension upload limit (about 10 MB), so the file has to be chosen in the browser by hand.
+Build releases from a clean worktree at a pushed commit (`git worktree add`, `cp -cR node_modules`, copy
+`android/local.properties`, `android/keystore.properties` and `android/capacitor-cordova-android-plugins`):
+`deploy-canoe.sh` and `native:sync` both take the working tree as it is, uncommitted edits included.
 
 ## What only Ryan can do (hard gates)
 
