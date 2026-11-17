@@ -10,7 +10,7 @@ calls; saves stay on the device.
 | Name | Dungeon Crawler |
 | Subtitle (iOS, 30 chars) | The Tomb of the Hollow King |
 | Bundle / application id | `io.civops.dungeoncrawler` |
-| Version | 1.2 (build 5 / versionCode 5) |
+| Version | 1.3 (build 6 / versionCode 6) |
 | Category | Games: Role Playing (secondary: Adventure) |
 | Price | Free |
 | Orientation | Landscape only, iPhone, iPad and Android phones/tablets |
@@ -105,6 +105,9 @@ tile. It ships WITHOUT the recorded narration: `native-dist/narration` was delet
 Chrome-extension upload limit (about 10 MB); Ryan's call was to ship without the voice rather than wait for a manual
 upload. versionCodes 3 and 4 were uploaded to Play and abandoned, so never reuse them. Next: 1.3 (versionCode 6, iOS
 build 6) with the clips, uploaded by hand or with the clips made smaller.
+Production release 1.3 (versionCode 6, iOS build 6), 2026-11-17, sent the same day at Ryan's request, restarting
+1.2's review: the wizard buff (Magic Dart 1d6, d6 hit die). Still no recorded narration (same reason as 1.2), so the
+voice moves to 1.4 (versionCode 7).
 Build releases from a clean worktree at a pushed commit (`git worktree add`, `cp -cR node_modules`, copy
 `android/local.properties`, `android/keystore.properties` and `android/capacitor-cordova-android-plugins`):
 `deploy-canoe.sh` and `native:sync` both take the working tree as it is, uncommitted edits included.
