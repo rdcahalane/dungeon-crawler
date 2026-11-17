@@ -170,7 +170,13 @@ export class GameScene extends Phaser.Scene {
       ? 'Natural caverns: no hand cut these passages.'
       : dungeon.layout === 'ruins'
         ? 'Fallen ruins: the old walls have given way in places.'
-        : null;
+        : dungeon.layout === 'mine'
+          ? 'Old mine workings: timber props, and shafts that go nowhere.'
+          : dungeon.layout === 'crypt'
+            ? 'A flooded crypt: the dead lie in their niches, and the water has come in.'
+            : dungeon.layout === 'temple'
+              ? 'A sunken temple: wide halls, and the lower ones half drowned.'
+              : null;
     if (layoutLine) this.time.delayedCall(600, () => ctx.status(layoutLine));
   }
 

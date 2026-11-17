@@ -191,6 +191,196 @@ const RUIN_PILLAR_T: Rows = [
   "................",
 ];
 
+const MINE_FLOOR_T: Rows = [
+  "YYYYYYYYYYYYYYYY",
+  "YYZYYYYYYWYYYYYY",
+  "YYYYYYXYYYYYYZYY",
+  "YYYYYYYYYYYYYYYY",
+  "YWYYYYYYYZYYYYYY",
+  "YYYYYZYYYYYYYYXY",
+  "YYYYYYYYYYYWYYYY",
+  "YYXYYYYYYYYYYYYY",
+  "YYYYYYYYZYYYYYYY",
+  "YYYYYWYYYYYYYYYY",
+  "YYYYYYYYYYYYXYYY",
+  "YZYYYYYYYYYYYYYY",
+  "YYYYYYYXYYYYYWYY",
+  "YYYYYYYYYYYYYYYY",
+  "YYYWYYYYYYZYYYYY",
+  "YYYYYYYYYYYYYYYY",
+];
+
+const MINE_WALL_T: Rows = [
+  "XYYYYYYYXXYYYYYY",
+  "YYZYYYYXYYYYZZYY",
+  "YZZYYYXYYYYZZYYW",
+  "YYYYYXYYYYYYYYWW",
+  "YYYYXYYYZYYYYWWX",
+  "WYYXYYYZZYYYWWXY",
+  "WWXYYYYZYYYWWXYY",
+  "XWWYYYYYYYWWXYYY",
+  "YXWWYYYYYWWXYYYZ",
+  "YYXWWYYYWWXYYYZZ",
+  "YYYXWWYWWXYYYYZY",
+  "ZYYYXWWWXYYYYYYY",
+  "ZZYYYXWXYYYZYYYY",
+  "YZYYYYXYYYZZYYYX",
+  "YYYYYYYYYYZYYYXX",
+  "XYYYYYYYYYYYYXXX",
+];
+
+const MINE_PILLAR_T: Rows = [
+  "................",
+  ".XXXXXXXXXXXXXX.",
+  ".XZZZZZZZZZZZZX.",
+  ".XYYYYYYYYYYYWX.",
+  ".XXXXXXXXXXXXXX.",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "...XZYX..XZYX...",
+  "..XXXXXX.XXXXXX.",
+  "................",
+];
+
+const CRYPT_FLOOR_T: Rows = [
+  "XXXXXXXXXXXXXXXX",
+  "XZZZZZZXXZZZZZZX",
+  "XZYYYYYXXZYYYYYX",
+  "XZYYYYYXXZYYYYYX",
+  "XZYYWYYXXZYYYYYX",
+  "XZYYYYYXXZYYWYYX",
+  "XZYYYYYXXZYYYYYX",
+  "XXXXXXXXXXXXXXXX",
+  "XXXXXXXXXXXXXXXX",
+  "XZZZZZZXXZZZZZZX",
+  "XZYYYYYXXZYYYYYX",
+  "XZYWYYYXXZYYYYYX",
+  "XZYYYYYXXZYYYYWX",
+  "XZYYYYYXXZYYYYYX",
+  "XZYYYYYXXZYYYYYX",
+  "XXXXXXXXXXXXXXXX",
+];
+
+const CRYPT_WALL_T: Rows = [
+  "ZZZZZZZXZZZZZZZX",
+  "YYYYYYYXYYYYYYYX",
+  "YXXXXXYXYXXXXXYX",
+  "YXWWWXYXYXWWWXYX",
+  "YXWXWXYXYXWXWXYX",
+  "YXWWWXYXYXWWWXYX",
+  "YXXWXXYXYXXWXXYX",
+  "XXXXXXXXXXXXXXXX",
+  "ZZZXZZZZZZZXZZZZ",
+  "YYYXYYYYYYYXYYYY",
+  "YYYXYYYYYYYXYYYY",
+  "YYYXYYYYYYYXYYYY",
+  "XXXXXXXXXXXXXXXX",
+  "ZZZZZZZXZZZZZZZX",
+  "YYYYYYYXYYYYYYYX",
+  "XXXXXXXXXXXXXXXX",
+];
+
+const CRYPT_PILLAR_T: Rows = [
+  "................",
+  "................",
+  "..XXXXXXXXXXXX..",
+  ".XZZZZZZZZZZZZX.",
+  ".XZYYYYYYYYYYWX.",
+  ".XZYYYWWWYYYYWX.",
+  ".XZYYYYWYYYYYWX.",
+  ".XZYYYWWWYYYYWX.",
+  ".XZYYYYYYYYYYWX.",
+  ".XZYYYYYYYYYYWX.",
+  ".XWWWWWWWWWWWWX.",
+  ".XYYYYYYYYYYYYX.",
+  ".XWWWWWWWWWWWWX.",
+  "..XXXXXXXXXXXX..",
+  "................",
+  "................",
+];
+
+const TEMPLE_FLOOR_T: Rows = [
+  "XYYYYYYXXYYYYYYX",
+  "YZYYYYXZZXYYYYZY",
+  "YYZYYXZWWZXYYZYY",
+  "YYYZXZWYYWZXZYYY",
+  "YYYXZWYYYYWZXYYY",
+  "YYXZWYYYYYYWZXYY",
+  "YXZWYYYYYYYYWZXY",
+  "XZWYYYYYYYYYYWZX",
+  "XZWYYYYYYYYYYWZX",
+  "YXZWYYYYYYYYWZXY",
+  "YYXZWYYYYYYWZXYY",
+  "YYYXZWYYYYWZXYYY",
+  "YYYZXZWYYWZXZYYY",
+  "YYZYYXZWWZXYYZYY",
+  "YZYYYYXZZXYYYYZY",
+  "XYYYYYYXXYYYYYYX",
+];
+
+const TEMPLE_WALL_T: Rows = [
+  "ZZZZZZZZZZZZZZZX",
+  "ZYYYYYYYYYYYYYWX",
+  "ZYYYYYYYYYYYYYWX",
+  "ZYYYXXXXXXXYYYWX",
+  "ZYYYXYYYYYXYYYWX",
+  "ZYYYYYXXXYYYYYWX",
+  "ZYYYYYXYXYYYYYWX",
+  "ZYYYXXXYXXXYYYWX",
+  "ZYYYYYXYXYYYYYWX",
+  "ZYYYYYXXXYYYYYWX",
+  "ZYYYXYYYYYXYYYWX",
+  "ZYYYXXXXXXXYYYWX",
+  "ZYYYYYYYYYYYYYWX",
+  "ZYYYYYYYYYYYYYWX",
+  "ZWWWWWWWWWWWWWWX",
+  "XXXXXXXXXXXXXXXX",
+];
+
+const TEMPLE_PILLAR_T: Rows = [
+  "................",
+  "..XXXXXXXXXXXX..",
+  "..XZZZZZZZZZZX..",
+  "...XXXXXXXXXX...",
+  "....XZYZYZWX....",
+  "....XZYZYZWX....",
+  "....XZYZYZWX....",
+  "....XZYZYZWX....",
+  "....XZYZYZWX....",
+  "....XZYZYZWX....",
+  "....XZYZYZWX....",
+  "....XZYZYZWX....",
+  "...XXXXXXXXXX...",
+  "..XZZZZZZZZZZX..",
+  "..XXXXXXXXXXXX..",
+  "................",
+];
+
+const WATER_T: Rows = [
+  "YYYYYYYYYYYYYYYY",
+  "YYYZZZYYYYYYYYYY",
+  "YYZYYYZYYYYYYYYY",
+  "YYYYYYYYYYYYZZZY",
+  "YYYYYYYYYYYZYYYZ",
+  "YYYYYYYYYYYYYYYY",
+  "YYYYYWYYYYYYYYYY",
+  "YYYYYYYYYYYYYYYY",
+  "YZZZYYYYYYYYYYYY",
+  "ZYYYZYYYYYZZZYYY",
+  "YYYYYYYYYZYYYZYY",
+  "YYYYYYYYYYYYYYYY",
+  "YYYYYYYYYYYYYWYY",
+  "YYYYYYZZZYYYYYYY",
+  "YYYYYZYYYZYYYYYY",
+  "YYYYYYYYYYYYYYYY",
+];
+
 /** Per theme: [floor X,Y,Z,W] and [wall X,Y,Z,W], the same colours as floor_N / wall_N. */
 const THEME_FLOOR = [["1", "i", "3", "p"], ["1", "c", "d", "0"], ["1", "2", "3", "0"], ["0", "1", "2", "m"]];
 const THEME_WALL = [["1", "p", "k", "i"], ["1", "d", "e", "c"], ["0", "3", "4", "2"], ["0", "m", "n", "1"]];
@@ -206,7 +396,21 @@ for (let i = 0; i < THEME_FLOOR.length; i++) {
   WORLD_MAPS[`ruin_floor_${i}`] = xyzw(RUIN_FLOOR_T, [fx, fy, fz, MOSS[i]]);
   WORLD_MAPS[`ruin_wall_${i}`] = xyzw(RUIN_WALL_T, THEME_WALL[i]);
   WORLD_MAPS[`ruin_pillar_${i}`] = xyzw(RUIN_PILLAR_T, THEME_WALL[i]);
+  const [wx, wy, wz, ww] = THEME_WALL[i];
+  WORLD_MAPS[`mine_floor_${i}`] = xyzw(MINE_FLOOR_T, THEME_FLOOR[i]);
+  WORLD_MAPS[`mine_wall_${i}`] = xyzw(MINE_WALL_T, THEME_WALL[i]);
+  WORLD_MAPS[`mine_pillar_${i}`] = xyzw(MINE_PILLAR_T, ["1", "d", "e", "c"]); // timber, whatever the rock
+  WORLD_MAPS[`crypt_floor_${i}`] = xyzw(CRYPT_FLOOR_T, THEME_FLOOR[i]);
+  WORLD_MAPS[`crypt_wall_${i}`] = xyzw(CRYPT_WALL_T, [wx, wy, wz, "v"]); // bone in the niches
+  WORLD_MAPS[`crypt_pillar_${i}`] = xyzw(CRYPT_PILLAR_T, THEME_WALL[i]);
+  // Temple mosaic: the floor's dark and base, the wall's face and highlight as the inlay.
+  WORLD_MAPS[`temple_floor_${i}`] = xyzw(TEMPLE_FLOOR_T, [fx, fy, wy, wz]);
+  WORLD_MAPS[`temple_wall_${i}`] = xyzw(TEMPLE_WALL_T, [wx, wy, wz, ww]);
+  WORLD_MAPS[`temple_pillar_${i}`] = xyzw(TEMPLE_PILLAR_T, THEME_WALL[i]);
 }
+// Water over crypt and temple floors: shallows you wade through, pools you cannot cross.
+WORLD_MAPS.water_shallow = xyzw(WATER_T, ["1", "i", "p", "k"]);
+WORLD_MAPS.water_deep = xyzw(WATER_T, ["0", "1", "i", "p"]);
 
 WORLD_MAPS.secret_door = stamp(WORLD_MAPS.wall, 7, 2, ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"]);
 WORLD_MAPS.secret_door_open = stamp(WORLD_MAPS.wall, 4, 0, [

@@ -8,6 +8,9 @@ import { isFreeStanding } from "../../world/layouts";
 function tileKeys(layout: string | undefined, ti: number): { floor: string; wall: string; pillar: string | null } {
   if (layout === "caverns") return { floor: "cave_floor_" + ti, wall: "cave_wall_" + ti, pillar: "cave_pillar_" + ti };
   if (layout === "ruins") return { floor: "ruin_floor_" + ti, wall: "ruin_wall_" + ti, pillar: "ruin_pillar_" + ti };
+  if (layout === "mine") return { floor: "mine_floor_" + ti, wall: "mine_wall_" + ti, pillar: "mine_pillar_" + ti };
+  if (layout === "crypt") return { floor: "crypt_floor_" + ti, wall: "crypt_wall_" + ti, pillar: "crypt_pillar_" + ti };
+  if (layout === "temple") return { floor: "temple_floor_" + ti, wall: "temple_wall_" + ti, pillar: "temple_pillar_" + ti };
   return { floor: "floor_" + ti, wall: "wall_" + ti, pillar: null };
 }
 
@@ -45,8 +48,10 @@ export class MapController {
     const keys = tileKeys(layout, ti);
     const floorKey = keys.floor;
     const wallKey = keys.wall;
-    // Caves have no grid: turn and flip each rock and floor tile so the pattern never repeats.
-    const natural = layout === "caverns";
+    // Caves and mines have no grid: turn and flip each rock and floor tile so the pattern never repeats.
+    const natural = layout === "caverns" || layout === "mine";
+    const shallows = new Set(this.ctx.dungeon.water?.shallows ?? []);
+    const pools = new Set(this.ctx.dungeon.water?.pools ?? []);
     const vary = (img: Phaser.GameObjects.Image, tx: number, ty: number) => {
       if (!natural) return img;
       const h = (tx * 73856093) ^ (ty * 19349663);
@@ -61,13 +66,18 @@ export class MapController {
         const wx = tx * TILE_SIZE + TILE_SIZE / 2;
         const wy = ty * TILE_SIZE + TILE_SIZE / 2;
 
-        if (t === TILE.WALL) {
+        const k = ty * MAP_WIDTH + tx;
+        if (t === TILE.WALL && pools.has(k)) {
+          // a deep pool: still solid underneath, drawn as dark water
+          scene.add.image(wx, wy, "water_deep").setDepth(1);
+        } else if (t === TILE.WALL) {
           if (keys.pillar && isFreeStanding(tiles, tx, ty)) {
             // a stalagmite or a column standing in the open: floor under it, the pillar on top
             vary(scene.add.image(wx, wy, floorKey).setDepth(1), tx, ty);
             scene.add.image(wx, wy, keys.pillar).setDepth(1.5);
           } else {
-            vary(scene.add.image(wx, wy, wallKey).setDepth(1), tx, ty);
+            const wallImg = scene.add.image(wx, wy, wallKey).setDepth(1);
+            if (layout === "caverns") vary(wallImg, tx, ty); // mine rock keeps its strata running one way
           }
           const rect = scene.add.rectangle(wx, wy, TILE_SIZE, TILE_SIZE);
           scene.physics.add.existing(rect, true);
@@ -89,7 +99,7 @@ export class MapController {
           scene.add.image(wx, wy, "stairs_up").setDepth(2);
         } else {
           // FLOOR and TRAP both render as floor (TRAP has no floor indicator until detected)
-          vary(scene.add.image(wx, wy, floorKey).setDepth(1), tx, ty);
+          vary(scene.add.image(wx, wy, shallows.has(k) ? "water_shallow" : floorKey).setDepth(1), tx, ty);
         }
       }
     }

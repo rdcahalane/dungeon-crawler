@@ -210,9 +210,13 @@ export const CREATURE_KEYS: readonly string[] = [
 export const WALK_FRAME_KEYS: readonly string[] = CREATURE_KEYS.map((k) => `${k}_f2`);
 
 /** Tiles for the caverns and ruins map styles (world/layouts.ts), one set per floor theme. */
-export const LAYOUT_TILE_KEYS: readonly string[] = ["cave", "ruin"].flatMap((style) =>
-  ["floor", "wall", "pillar"].flatMap((part) => [0, 1, 2, 3].map((i) => `${style}_${part}_${i}`)),
-);
+export const LAYOUT_TILE_KEYS: readonly string[] = [
+  ...["cave", "ruin", "mine", "crypt", "temple"].flatMap((style) =>
+    ["floor", "wall", "pillar"].flatMap((part) => [0, 1, 2, 3].map((i) => `${style}_${part}_${i}`)),
+  ),
+  "water_shallow",
+  "water_deep",
+];
 
 /** Every texture registerRetroTextures creates (deduplicated). */
 export const RETRO_TEXTURE_KEYS: readonly string[] = Array.from(

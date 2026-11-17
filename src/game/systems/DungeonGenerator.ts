@@ -7,7 +7,7 @@ import {
 import type { InscriptionSpawn, MechanismSpec } from "../world/types";
 import { stampVaults } from "../world/stamp";
 import type { ItemInstance } from "../items";
-import { carveCaverns, floorSpot, nearestFloor, pickLayout, ruinate, type FloorLayout } from "../world/layouts";
+import { carveCaverns, carveCrypt, carveMine, carveTemple, floorSpot, nearestFloor, pickLayout, ruinate, type FloorLayout, type FloorWater } from "../world/layouts";
 
 export interface Room {
   x: number;
@@ -69,6 +69,8 @@ export interface DungeonData {
   vaultIds?: string[];
   /** Map style: dressed halls, natural caverns or fallen ruins. Absent on older saves (halls). */
   layout?: FloorLayout;
+  /** Shallows and deep pools (crypt and temple floors). Drawn over the tiles; pools are WALL. */
+  water?: FloorWater;
   /** Monsters placed by name (bestiary keys, or 'HOLLOW_KING') rather than by EnemyTypeKey. */
   spawnMarkers?: { tx: number; ty: number; monster: string }[];
 }
@@ -226,6 +228,16 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
     carveCaverns(tiles, rooms, links, Math.random);
   } else if (layout === 'ruins') {
     ruinate(tiles, rooms, Math.random);
+  }
+  let water: FloorWater | undefined;
+  if (layout === 'mine') {
+    for (const row of tiles) row.fill(TILE.WALL);
+    carveMine(tiles, rooms, links, Math.random);
+  } else if (layout === 'crypt') {
+    water = carveCrypt(tiles, rooms, Math.random);
+  } else if (layout === 'temple') {
+    for (const row of tiles) row.fill(TILE.WALL);
+    water = carveTemple(tiles, rooms, links, Math.random);
   }
   // Content goes on open floor inside a room: a cave blob does not fill its box.
   const spot = (r: Room) => floorSpot(tiles, r, Math.random);
@@ -569,7 +581,7 @@ export function generateDungeon(floor: number, specialRoomTags?: string[]): Dung
           }
         : undefined;
 
-  const result: DungeonData = { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms, floorObjective, layout };
+  const result: DungeonData = { tiles, rooms, playerStart, stairsPos, stairsUpPos, enemies, items, secretDoors, traps, chests, questRooms, floorObjective, layout, water };
   stampVaults(result, floor, { next: () => Math.random() });
   return result;
 }

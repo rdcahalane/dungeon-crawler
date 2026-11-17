@@ -21,10 +21,12 @@ function reach(d: DungeonData): Set<number> {
   return seen;
 }
 
+const ALL = ["halls", "caverns", "ruins", "mine", "crypt", "temple"] as const;
+
 /** Generate until each style has turned up a few times. */
 function floorsByLayout(): Record<FloorLayout, DungeonData[]> {
-  const out: Record<FloorLayout, DungeonData[]> = { halls: [], caverns: [], ruins: [] };
-  for (let i = 0; i < 90; i++) {
+  const out: Record<FloorLayout, DungeonData[]> = { halls: [], caverns: [], ruins: [], mine: [], crypt: [], temple: [] };
+  for (let i = 0; i < 220; i++) {
     const floor = 2 + (i % 10);
     const d = generateDungeon(floor, i % 4 === 0 ? ["library", "arena"] : undefined);
     out[d.layout ?? "halls"].push(d);
@@ -36,14 +38,14 @@ describe("map styles", () => {
   const byLayout = floorsByLayout();
 
   it("every style turns up across the floors", () => {
-    for (const l of ["halls", "caverns", "ruins"] as const) expect(byLayout[l].length, l).toBeGreaterThan(3);
+    for (const l of ALL) expect(byLayout[l].length, l).toBeGreaterThan(3);
   });
 
   it("floor 1 is always the halls", () => {
     for (let i = 0; i < 10; i++) expect(generateDungeon(1).layout).toBe("halls");
   });
 
-  for (const layout of ["caverns", "ruins", "halls"] as const) {
+  for (const layout of ALL) {
     it(`${layout}: the stairs, every monster, chest, item and trap are on reachable floor`, () => {
       for (const d of byLayout[layout]) {
         const r = reach(d);
@@ -91,10 +93,30 @@ describe("map styles", () => {
     expect(openRing(byLayout.ruins)).toBeGreaterThan(openRing(byLayout.halls));
   });
 
+  it("water: shallows lie on open floor, pools are solid, and only crypts and temples have any", () => {
+    let shallows = 0;
+    let pools = 0;
+    for (const l of ALL) {
+      for (const d of byLayout[l]) {
+        if (l !== "crypt" && l !== "temple") { expect(d.water, l).toBeUndefined(); continue; }
+        for (const k of d.water?.pools ?? []) { expect(d.tiles[Math.floor(k / MAP_WIDTH)][k % MAP_WIDTH]).toBe(TILE.WALL); pools++; }
+        for (const k of d.water?.shallows ?? []) { expect(d.tiles[Math.floor(k / MAP_WIDTH)][k % MAP_WIDTH]).not.toBe(TILE.WALL); shallows++; }
+      }
+    }
+    expect(shallows).toBeGreaterThan(50);
+    expect(pools).toBeGreaterThan(3);
+  });
+
+  it("temples are not boxes either: cross and octagon halls leave rock in their corners", () => {
+    let corners = 0;
+    for (const d of byLayout.temple) for (const r of d.rooms) if (d.tiles[r.y][r.x] === TILE.WALL) corners++;
+    expect(corners).toBeGreaterThan(byLayout.temple.length);
+  });
+
   it("pickLayout follows the weights and never picks a style outside the three", () => {
     const rand = vi.fn(() => 0.999);
     expect(pickLayout(1, rand)).toBe("halls");
-    expect(["halls", "caverns", "ruins"]).toContain(pickLayout(5, rand));
+    expect(ALL).toContain(pickLayout(5, rand));
     expect(pickLayout(2, () => 0)).toBe("caverns");
   });
 });
